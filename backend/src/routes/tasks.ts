@@ -1,12 +1,22 @@
-import { Prisma, Task, TaskStatus } from "@prisma/client";
+import { Task, TaskStatus } from "@prisma/client";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
+import { RecurrenceStore } from "../recurrence/recurrence-store";
+import { materializeRecurringTasksForDate } from "../recurrence/recurrence-service";
+import {
+  getBearerToken,
+  isStorageNotInitializedPrismaError,
+  sendError,
+  sendStorageNotInitializedError,
+  zodIssuesToStrings,
+} from "./route-helpers";
 import { formatDateOnly, parseDateOnly, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
 type TasksRouteOptions = {
   taskStore: TaskStore;
   authService: AuthService;
+  recurrenceStore?: RecurrenceStore;
 };
 
 const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -50,47 +60,8 @@ const listTasksQuerySchema = z.object({
   date: targetDateSchema
 });
 
-type ApiErrorCode = "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "INTERNAL_ERROR";
-
-function sendError(
-  reply: {
-    code: (statusCode: number) => {
-      send: (payload: unknown) => unknown;
-    };
-  },
-  statusCode: number,
-  code: ApiErrorCode,
-  message: string,
-  details?: string[]
-) {
-  const payload: {
-    error: { code: ApiErrorCode; message: string; details?: string[] };
-  } = {
-    error: {
-      code,
-      message
-    }
-  };
-
-  if (details && details.length > 0) {
-    payload.error.details = details;
-  }
-
-  return reply.code(statusCode).send(payload);
-}
-
-function zodIssuesToStrings(error: z.ZodError): string[] {
-  return error.issues.map((issue) => {
-    const path = issue.path.join(".");
-    return path ? `${path}: ${issue.message}` : issue.message;
-  });
-}
-
 function isTaskTableMissingError(error: unknown): boolean {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2021"
-  );
+  return isStorageNotInitializedPrismaError(error);
 }
 
 function sendTaskStorageNotInitializedError(
@@ -100,26 +71,7 @@ function sendTaskStorageNotInitializedError(
     };
   }
 ) {
-  return sendError(
-    reply,
-    503,
-    "INTERNAL_ERROR",
-    "Task storage is not initialized. Apply Prisma migrations and retry."
-  );
-}
-
-function getBearerToken(value: string | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const [scheme, token] = value.trim().split(/\s+/, 2);
-
-  if (!scheme || scheme.toLowerCase() !== "bearer" || !token) {
-    return null;
-  }
-
-  return token;
+  return sendStorageNotInitializedError(reply, "Task");
 }
 
 function serializeTask(task: Task) {
@@ -132,6 +84,10 @@ function serializeTask(task: Task) {
     priority: task.priority,
     project: task.project,
     plannedTime: task.plannedTime,
+    recurrenceSourceTaskId: task.recurrenceSourceTaskId ?? null,
+    recurrenceOccurrenceDate: task.recurrenceOccurrenceDate
+      ? formatDateOnly(task.recurrenceOccurrenceDate)
+      : null,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
     completedAt: task.completedAt?.toISOString() ?? null,
@@ -185,7 +141,7 @@ function getTimestampsForStatusTransition(task: Task, nextStatus: TaskStatus, no
 }
 
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore, authService } = options;
+  const { taskStore, authService, recurrenceStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -227,6 +183,10 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     }
 
     try {
+      if (recurrenceStore) {
+        await materializeRecurringTasksForDate(targetDate, taskStore, recurrenceStore);
+      }
+
       const tasks = await taskStore.listByDate(targetDate);
       return reply.send({
         data: tasks.map(serializeTask)

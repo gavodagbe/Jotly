@@ -8,6 +8,8 @@ export type TaskCreateInput = {
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;
+  recurrenceSourceTaskId?: string | null;
+  recurrenceOccurrenceDate?: Date | null;
   completedAt: Date | null;
   cancelledAt: Date | null;
 };

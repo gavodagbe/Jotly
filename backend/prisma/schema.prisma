@@ -20,6 +20,12 @@ enum TaskPriority {
   high
 }
 
+enum RecurrenceFrequency {
+  daily
+  weekly
+  monthly
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -44,20 +50,67 @@ model Session {
 }
 
 model Task {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
-  status      TaskStatus
-  targetDate  DateTime     @db.Date
-  priority    TaskPriority
-  project     String?
-  plannedTime Int?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  completedAt DateTime?
-  cancelledAt DateTime?
+  id                       String              @id @default(cuid())
+  title                    String
+  description              String?
+  status                   TaskStatus
+  targetDate               DateTime            @db.Date
+  priority                 TaskPriority
+  project                  String?
+  plannedTime              Int?
+  recurrenceSourceTaskId   String?
+  recurrenceOccurrenceDate DateTime?           @db.Date
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  comments                 TaskComment[]
+  attachments              TaskAttachment[]
+  recurrenceRule           TaskRecurrenceRule?
+  sourceTask               Task?               @relation("TaskRecurrenceInstances", fields: [recurrenceSourceTaskId], references: [id], onDelete: SetNull)
+  recurrenceInstances      Task[]              @relation("TaskRecurrenceInstances")
 
   @@index([targetDate])
   @@index([status])
   @@index([updatedAt])
+  @@index([recurrenceSourceTaskId])
+  @@unique([recurrenceSourceTaskId, recurrenceOccurrenceDate])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+model TaskAttachment {
+  id          String   @id @default(cuid())
+  taskId      String
+  name        String
+  url         String
+  contentType String?
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+model TaskRecurrenceRule {
+  id        String              @id @default(cuid())
+  taskId    String              @unique
+  frequency RecurrenceFrequency
+  interval  Int                 @default(1)
+  weekdays  Int[]               @default([])
+  endsOn    DateTime?           @db.Date
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  task      Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([endsOn])
 }

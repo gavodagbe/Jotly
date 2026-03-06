@@ -1,15 +1,24 @@
 import Fastify, { FastifyInstance } from "fastify";
+import { createPrismaAttachmentStore, AttachmentStore } from "./attachments/attachment-store";
 import { createAuthService } from "./auth/auth-service";
 import { createPrismaAuthStore, AuthStore } from "./auth/auth-store";
+import { createPrismaCommentStore, CommentStore } from "./comments/comment-store";
 import healthRoutes from "./routes/health";
 import authRoutes from "./routes/auth";
+import attachmentsRoutes from "./routes/attachments";
+import commentsRoutes from "./routes/comments";
+import recurrenceRoutes from "./routes/recurrence";
 import tasksRoutes from "./routes/tasks";
+import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
 
 export type BuildAppOptions = {
   logLevel: string;
   taskStore?: TaskStore;
   authStore?: AuthStore;
+  commentStore?: CommentStore;
+  attachmentStore?: AttachmentStore;
+  recurrenceStore?: RecurrenceStore;
   authSessionTtlHours?: number;
 };
 
@@ -22,6 +31,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   const taskStore = options.taskStore ?? createPrismaTaskStore();
   const authStore = options.authStore ?? createPrismaAuthStore();
+  const commentStore =
+    options.commentStore ??
+    (options.taskStore ? undefined : createPrismaCommentStore());
+  const attachmentStore =
+    options.attachmentStore ??
+    (options.taskStore ? undefined : createPrismaAttachmentStore());
+  const recurrenceStore =
+    options.recurrenceStore ??
+    (options.taskStore ? undefined : createPrismaRecurrenceStore());
   const authService = createAuthService({
     authStore,
     sessionTtlMs: (options.authSessionTtlHours ?? 168) * 60 * 60 * 1000
@@ -29,7 +47,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   app.register(healthRoutes);
   app.register(authRoutes, { authService });
-  app.register(tasksRoutes, { taskStore, authService });
+  app.register(tasksRoutes, { taskStore, authService, recurrenceStore });
+  if (commentStore) {
+    app.register(commentsRoutes, { taskStore, commentStore, authService });
+  }
+
+  if (attachmentStore) {
+    app.register(attachmentsRoutes, { taskStore, attachmentStore, authService });
+  }
+
+  if (recurrenceStore) {
+    app.register(recurrenceRoutes, { taskStore, recurrenceStore, authService });
+  }
 
   app.setErrorHandler((error, request, reply) => {
     const candidateStatusCode = (error as { statusCode?: number }).statusCode;
@@ -63,6 +92,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (authStore.close) {
       await authStore.close();
+    }
+
+    if (commentStore?.close) {
+      await commentStore.close();
+    }
+
+    if (attachmentStore?.close) {
+      await attachmentStore.close();
+    }
+
+    if (recurrenceStore?.close) {
+      await recurrenceStore.close();
     }
   });
 

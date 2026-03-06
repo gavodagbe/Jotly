@@ -12,11 +12,12 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app-meta";
 
 type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
 type TaskPriority = "low" | "medium" | "high";
+type RecurrenceFrequency = "daily" | "weekly" | "monthly";
 
 type Task = {
   id: string;
@@ -27,6 +28,8 @@ type Task = {
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;
+  recurrenceSourceTaskId: string | null;
+  recurrenceOccurrenceDate: string | null;
 };
 
 type TaskMutationInput = {
@@ -37,6 +40,47 @@ type TaskMutationInput = {
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;
+};
+
+type TaskComment = {
+  id: string;
+  taskId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type TaskAttachment = {
+  id: string;
+  taskId: string;
+  name: string;
+  url: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+};
+
+type TaskRecurrenceRule = {
+  id: string;
+  taskId: string;
+  frequency: RecurrenceFrequency;
+  interval: number;
+  weekdays: number[];
+  endsOn: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type TaskRecurrenceMutationInput = {
+  frequency: RecurrenceFrequency;
+  interval: number;
+  weekdays: number[];
+  endsOn: string | null;
+};
+
+type TaskAttachmentMutationInput = {
+  name: string;
+  url: string;
 };
 
 type AuthUser = {
@@ -64,10 +108,19 @@ type TaskFormValues = {
   plannedTime: string;
 };
 
+type RecurrenceFormValues = {
+  enabled: boolean;
+  frequency: RecurrenceFrequency;
+  interval: string;
+  weekdays: number[];
+  endsOn: string;
+};
+
 type TaskDialogMode = "create" | "edit";
 type ApiErrorPayload = { error?: { message?: string } } | null;
 
 const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
+const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
 
 const BOARD_COLUMNS: ReadonlyArray<{
   status: TaskStatus;
@@ -86,14 +139,41 @@ const PRIORITY_OPTIONS: ReadonlyArray<{ value: TaskPriority; label: string }> = 
   { value: "high", label: "High" },
 ];
 
+const RECURRENCE_FREQUENCY_OPTIONS: ReadonlyArray<{ value: RecurrenceFrequency; label: string }> = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+];
+
+const WEEKDAY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+];
+
 const BOARD_COLUMN_STATUSES = new Set<TaskStatus>(BOARD_COLUMNS.map((column) => column.status));
 const PRIORITY_VALUES = new Set<TaskPriority>(PRIORITY_OPTIONS.map((option) => option.value));
+const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>(
+  RECURRENCE_FREQUENCY_OPTIONS.map((option) => option.value)
+);
 
 const dateHeadingFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
   month: "long",
   day: "numeric",
   year: "numeric",
+});
+
+const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
 });
 
 const statusChipClassByStatus: Record<TaskStatus, string> = {
@@ -170,6 +250,16 @@ function getDateHeading(value: string): string {
   return dateHeadingFormatter.format(parseDateInput(value));
 }
 
+function formatDateTime(value: string): string {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return dateTimeFormatter.format(parsed);
+}
+
 function formatPriority(priority: TaskPriority): string {
   return priority.charAt(0).toUpperCase() + priority.slice(1);
 }
@@ -197,6 +287,10 @@ function isTaskPriority(value: string): value is TaskPriority {
   return PRIORITY_VALUES.has(value as TaskPriority);
 }
 
+function isRecurrenceFrequency(value: string): value is RecurrenceFrequency {
+  return RECURRENCE_FREQUENCY_VALUES.has(value as RecurrenceFrequency);
+}
+
 function isDateOnly(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -204,6 +298,63 @@ function isDateOnly(value: string): boolean {
 function normalizeOptionalTextInput(value: string): string | null {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeProjectName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function getUniqueSortedProjectNames(values: string[]): string[] {
+  const seen = new Set<string>();
+  const uniqueNames: string[] = [];
+
+  for (const value of values) {
+    const normalized = normalizeProjectName(value);
+
+    if (!normalized) {
+      continue;
+    }
+
+    const key = normalized.toLocaleLowerCase();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    uniqueNames.push(normalized);
+  }
+
+  return uniqueNames.sort((left, right) =>
+    left.localeCompare(right, undefined, { sensitivity: "base" })
+  );
+}
+
+function parseStoredProjectOptions(rawValue: string | null): string[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const textValues = parsed.filter((value): value is string => typeof value === "string");
+    return getUniqueSortedProjectNames(textValues);
+  } catch {
+    return [];
+  }
+}
+
+function areStringListsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
 }
 
 function escapeHtml(value: string): string {
@@ -311,6 +462,30 @@ function getDefaultTaskFormValues(targetDate: string): TaskFormValues {
   };
 }
 
+function getDefaultRecurrenceFormValues(): RecurrenceFormValues {
+  return {
+    enabled: false,
+    frequency: "daily",
+    interval: "1",
+    weekdays: [],
+    endsOn: "",
+  };
+}
+
+function getRecurrenceFormValues(rule: TaskRecurrenceRule | null): RecurrenceFormValues {
+  if (!rule) {
+    return getDefaultRecurrenceFormValues();
+  }
+
+  return {
+    enabled: true,
+    frequency: rule.frequency,
+    interval: String(rule.interval),
+    weekdays: [...rule.weekdays].sort((left, right) => left - right),
+    endsOn: rule.endsOn ?? "",
+  };
+}
+
 function getTaskFormValues(task: Task): TaskFormValues {
   return {
     title: task.title,
@@ -362,6 +537,55 @@ function buildTaskMutationInput(values: TaskFormValues): { data?: TaskMutationIn
       priority: values.priority,
       project: normalizeOptionalTextInput(values.project),
       plannedTime,
+    },
+  };
+}
+
+function buildRecurrenceMutationInput(
+  values: RecurrenceFormValues
+): { data?: TaskRecurrenceMutationInput; error?: string } {
+  if (!values.enabled) {
+    return {};
+  }
+
+  if (!isRecurrenceFrequency(values.frequency)) {
+    return { error: "Recurrence frequency is invalid." };
+  }
+
+  const intervalValue = values.interval.trim();
+  const interval = Number(intervalValue);
+
+  if (!intervalValue || !Number.isInteger(interval) || interval < 1) {
+    return { error: "Recurrence interval must be an integer greater than or equal to 1." };
+  }
+
+  const normalizedWeekdays = [...values.weekdays].sort((left, right) => left - right);
+
+  if (values.frequency === "weekly" && normalizedWeekdays.length === 0) {
+    return { error: "Select at least one weekday for weekly recurrence." };
+  }
+
+  if (!values.endsOn.trim()) {
+    return {
+      data: {
+        frequency: values.frequency,
+        interval,
+        weekdays: values.frequency === "weekly" ? normalizedWeekdays : [],
+        endsOn: null,
+      },
+    };
+  }
+
+  if (!isDateOnly(values.endsOn.trim())) {
+    return { error: "Recurrence end date must be in YYYY-MM-DD format." };
+  }
+
+  return {
+    data: {
+      frequency: values.frequency,
+      interval,
+      weekdays: values.frequency === "weekly" ? normalizedWeekdays : [],
+      endsOn: values.endsOn.trim(),
     },
   };
 }
@@ -560,6 +784,188 @@ async function updateTaskStatus(taskId: string, status: TaskStatus, token: strin
   }
 
   return payload.data;
+}
+
+async function loadTaskComments(taskId: string, token: string): Promise<TaskComment[]> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/comments`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskComment[]; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load comments"));
+  }
+
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function createTaskComment(taskId: string, body: string, token: string): Promise<TaskComment> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/comments`, {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({ body }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskComment; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create comment"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to create comment.");
+  }
+
+  return payload.data;
+}
+
+async function deleteTaskComment(taskId: string, commentId: string, token: string): Promise<void> {
+  const response = await fetch(
+    `/backend-api/tasks/${encodeURIComponent(taskId)}/comments/${encodeURIComponent(commentId)}`,
+    {
+      method: "DELETE",
+      headers: createAuthHeaders(token, false),
+    }
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskComment; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete comment"));
+  }
+}
+
+async function loadTaskAttachments(taskId: string, token: string): Promise<TaskAttachment[]> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/attachments`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskAttachment[]; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load attachments"));
+  }
+
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function createTaskAttachment(
+  taskId: string,
+  input: TaskAttachmentMutationInput,
+  token: string
+): Promise<TaskAttachment> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/attachments`, {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      name: input.name,
+      url: input.url,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskAttachment; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create attachment"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to create attachment.");
+  }
+
+  return payload.data;
+}
+
+async function deleteTaskAttachment(taskId: string, attachmentId: string, token: string): Promise<void> {
+  const response = await fetch(
+    `/backend-api/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    {
+      method: "DELETE",
+      headers: createAuthHeaders(token, false),
+    }
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskAttachment; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete attachment"));
+  }
+}
+
+async function loadTaskRecurrence(taskId: string, token: string): Promise<TaskRecurrenceRule | null> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/recurrence`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskRecurrenceRule | null; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load recurrence settings"));
+  }
+
+  return payload?.data ?? null;
+}
+
+async function upsertTaskRecurrence(
+  taskId: string,
+  input: TaskRecurrenceMutationInput,
+  token: string
+): Promise<TaskRecurrenceRule> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/recurrence`, {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskRecurrenceRule; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save recurrence settings"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to save recurrence settings.");
+  }
+
+  return payload.data;
+}
+
+async function deleteTaskRecurrence(taskId: string, token: string): Promise<void> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/recurrence`, {
+    method: "DELETE",
+    headers: createAuthHeaders(token, false),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskRecurrenceRule | null; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to remove recurrence settings"));
+  }
 }
 
 type AppNavbarProps = {
@@ -873,6 +1279,11 @@ function TaskCard({ task, isDragging, isSaving, onEdit, onDelete }: TaskCardProp
             Time: {formatPlannedTime(task.plannedTime)}
           </span>
         ) : null}
+        {task.recurrenceSourceTaskId ? (
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] text-emerald-700">
+            Recurring
+          </span>
+        ) : null}
       </div>
     </article>
   );
@@ -1069,6 +1480,30 @@ export function AppShell() {
   const [taskFormValues, setTaskFormValues] = useState<TaskFormValues>(() =>
     getDefaultTaskFormValues(toDateInputValue(new Date()))
   );
+  const [recurrenceFormValues, setRecurrenceFormValues] = useState<RecurrenceFormValues>(
+    getDefaultRecurrenceFormValues
+  );
+  const [taskRecurrenceRule, setTaskRecurrenceRule] = useState<TaskRecurrenceRule | null>(null);
+  const [isTaskDetailsLoading, setIsTaskDetailsLoading] = useState(false);
+  const [taskDetailsErrorMessage, setTaskDetailsErrorMessage] = useState<string | null>(null);
+
+  const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
+  const [taskCommentDraft, setTaskCommentDraft] = useState("");
+  const [taskCommentErrorMessage, setTaskCommentErrorMessage] = useState<string | null>(null);
+  const [isCreatingTaskComment, setIsCreatingTaskComment] = useState(false);
+  const [pendingCommentIds, setPendingCommentIds] = useState<string[]>([]);
+
+  const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
+  const [taskAttachmentNameDraft, setTaskAttachmentNameDraft] = useState("");
+  const [taskAttachmentUrlDraft, setTaskAttachmentUrlDraft] = useState("");
+  const [taskAttachmentErrorMessage, setTaskAttachmentErrorMessage] = useState<string | null>(null);
+  const [isCreatingTaskAttachment, setIsCreatingTaskAttachment] = useState(false);
+  const [pendingAttachmentIds, setPendingAttachmentIds] = useState<string[]>([]);
+
+  const [projectOptions, setProjectOptions] = useState<string[]>([]);
+  const [newProjectDraft, setNewProjectDraft] = useState("");
+  const [projectFormErrorMessage, setProjectFormErrorMessage] = useState<string | null>(null);
+
   const [taskFormErrorMessage, setTaskFormErrorMessage] = useState<string | null>(null);
   const [isSubmittingTask, setIsSubmittingTask] = useState(false);
 
@@ -1094,6 +1529,36 @@ export function AppShell() {
 
   const isTaskDialogOpen = taskDialogMode !== null;
   const isMutationPending = isSubmittingTask || isDeletingTask;
+  const isEditingGeneratedTask =
+    taskDialogMode === "edit" && (editingTask?.recurrenceSourceTaskId ?? null) !== null;
+  const normalizedSelectedProject = normalizeProjectName(taskFormValues.project);
+
+  const selectedProjectIsUsed = useMemo(() => {
+    if (!normalizedSelectedProject) {
+      return false;
+    }
+
+    const selectedProjectKey = normalizedSelectedProject.toLocaleLowerCase();
+
+    return tasks.some(
+      (task) =>
+        normalizeProjectName(task.project ?? "").toLocaleLowerCase() === selectedProjectKey
+    );
+  }, [normalizedSelectedProject, tasks]);
+
+  const projectSelectOptions = useMemo(
+    () => getUniqueSortedProjectNames([...projectOptions, normalizedSelectedProject]),
+    [normalizedSelectedProject, projectOptions]
+  );
+
+  const taskDialogHeightClass = taskDialogMode === "edit" ? "max-h-[76vh]" : "max-h-[82vh]";
+
+  const saveProjectOptions = useCallback((values: string[]) => {
+    const nextOptions = getUniqueSortedProjectNames(values);
+    setProjectOptions(nextOptions);
+    window.localStorage.setItem(PROJECT_OPTIONS_STORAGE_KEY, JSON.stringify(nextOptions));
+    return nextOptions;
+  }, []);
 
   function applyAuthSession(token: string, user: AuthUser) {
     window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
@@ -1103,7 +1568,7 @@ export function AppShell() {
     setErrorMessage(null);
   }
 
-  function clearAuthSession() {
+  const clearAuthSession = useCallback(() => {
     window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     setAuthToken(null);
     setAuthUser(null);
@@ -1115,7 +1580,24 @@ export function AppShell() {
     setEditingTaskId(null);
     setTaskToDelete(null);
     setAuthFormValues((current) => ({ ...current, password: "" }));
-  }
+    setTaskRecurrenceRule(null);
+    setRecurrenceFormValues(getDefaultRecurrenceFormValues());
+    setTaskDetailsErrorMessage(null);
+    setIsTaskDetailsLoading(false);
+    setTaskComments([]);
+    setTaskCommentDraft("");
+    setTaskCommentErrorMessage(null);
+    setIsCreatingTaskComment(false);
+    setPendingCommentIds([]);
+    setTaskAttachments([]);
+    setTaskAttachmentNameDraft("");
+    setTaskAttachmentUrlDraft("");
+    setTaskAttachmentErrorMessage(null);
+    setIsCreatingTaskAttachment(false);
+    setPendingAttachmentIds([]);
+    setNewProjectDraft("");
+    setProjectFormErrorMessage(null);
+  }, []);
 
   function handleAuthFormFieldChange(field: keyof AuthFormValues, value: string) {
     setAuthFormValues((current) => ({
@@ -1175,6 +1657,46 @@ export function AppShell() {
     });
   }
 
+  function markCommentAsPending(commentId: string, isPending: boolean) {
+    setPendingCommentIds((previousIds) => {
+      if (isPending) {
+        return previousIds.includes(commentId) ? previousIds : [...previousIds, commentId];
+      }
+
+      return previousIds.filter((id) => id !== commentId);
+    });
+  }
+
+  function markAttachmentAsPending(attachmentId: string, isPending: boolean) {
+    setPendingAttachmentIds((previousIds) => {
+      if (isPending) {
+        return previousIds.includes(attachmentId) ? previousIds : [...previousIds, attachmentId];
+      }
+
+      return previousIds.filter((id) => id !== attachmentId);
+    });
+  }
+
+  function resetTaskDetailsState() {
+    setTaskRecurrenceRule(null);
+    setRecurrenceFormValues(getDefaultRecurrenceFormValues());
+    setTaskDetailsErrorMessage(null);
+    setIsTaskDetailsLoading(false);
+
+    setTaskComments([]);
+    setTaskCommentDraft("");
+    setTaskCommentErrorMessage(null);
+    setIsCreatingTaskComment(false);
+    setPendingCommentIds([]);
+
+    setTaskAttachments([]);
+    setTaskAttachmentNameDraft("");
+    setTaskAttachmentUrlDraft("");
+    setTaskAttachmentErrorMessage(null);
+    setIsCreatingTaskAttachment(false);
+    setPendingAttachmentIds([]);
+  }
+
   function openCreateTaskDialog(initialStatus: TaskStatus = "todo") {
     setTaskDialogMode("create");
     setEditingTaskId(null);
@@ -1182,16 +1704,24 @@ export function AppShell() {
       ...getDefaultTaskFormValues(selectedDate),
       status: initialStatus,
     });
+    setRecurrenceFormValues(getDefaultRecurrenceFormValues());
     setTaskFormErrorMessage(null);
+    setProjectFormErrorMessage(null);
+    setNewProjectDraft("");
     setDeleteErrorMessage(null);
+    resetTaskDetailsState();
   }
 
   function openEditTaskDialog(task: Task) {
     setTaskDialogMode("edit");
     setEditingTaskId(task.id);
     setTaskFormValues(getTaskFormValues(task));
+    setRecurrenceFormValues(getDefaultRecurrenceFormValues());
     setTaskFormErrorMessage(null);
+    setProjectFormErrorMessage(null);
+    setNewProjectDraft("");
     setDeleteErrorMessage(null);
+    resetTaskDetailsState();
   }
 
   function closeTaskDialog() {
@@ -1202,6 +1732,9 @@ export function AppShell() {
     setTaskDialogMode(null);
     setEditingTaskId(null);
     setTaskFormErrorMessage(null);
+    setProjectFormErrorMessage(null);
+    setNewProjectDraft("");
+    resetTaskDetailsState();
   }
 
   function openDeleteDialog(task: Task) {
@@ -1232,8 +1765,11 @@ export function AppShell() {
     setTaskDialogMode(null);
     setEditingTaskId(null);
     setTaskFormErrorMessage(null);
+    setProjectFormErrorMessage(null);
+    setNewProjectDraft("");
     setTaskToDelete(null);
     setDeleteErrorMessage(null);
+    resetTaskDetailsState();
 
     setSelectedDate(nextDate);
   }
@@ -1243,6 +1779,243 @@ export function AppShell() {
       ...current,
       [field]: value,
     }));
+
+    if (field === "project") {
+      setProjectFormErrorMessage(null);
+    }
+  }
+
+  function updateRecurrenceFormField(
+    field: "enabled" | "frequency" | "interval" | "endsOn",
+    value: boolean | string
+  ) {
+    setRecurrenceFormValues((current) => {
+      if (field === "enabled") {
+        return {
+          ...current,
+          enabled: Boolean(value),
+        };
+      }
+
+      if (field === "frequency" && typeof value === "string" && isRecurrenceFrequency(value)) {
+        return {
+          ...current,
+          frequency: value,
+          weekdays: value === "weekly" ? current.weekdays : [],
+        };
+      }
+
+      if (field === "interval" && typeof value === "string") {
+        return {
+          ...current,
+          interval: value,
+        };
+      }
+
+      if (field === "endsOn" && typeof value === "string") {
+        return {
+          ...current,
+          endsOn: value,
+        };
+      }
+
+      return current;
+    });
+  }
+
+  function toggleRecurrenceWeekday(weekday: number) {
+    setRecurrenceFormValues((current) => {
+      const isSelected = current.weekdays.includes(weekday);
+      const weekdays = isSelected
+        ? current.weekdays.filter((item) => item !== weekday)
+        : [...current.weekdays, weekday].sort((left, right) => left - right);
+
+      return {
+        ...current,
+        weekdays,
+      };
+    });
+  }
+
+  function handleCreateProjectOption() {
+    const normalizedName = normalizeProjectName(newProjectDraft);
+
+    if (!normalizedName) {
+      setProjectFormErrorMessage("Project name is required.");
+      return;
+    }
+
+    const existingProject = projectOptions.find(
+      (projectName) =>
+        projectName.toLocaleLowerCase() === normalizedName.toLocaleLowerCase()
+    );
+
+    if (existingProject) {
+      updateTaskFormField("project", existingProject);
+      setNewProjectDraft("");
+      setProjectFormErrorMessage(null);
+      return;
+    }
+
+    saveProjectOptions([...projectOptions, normalizedName]);
+    updateTaskFormField("project", normalizedName);
+    setNewProjectDraft("");
+    setProjectFormErrorMessage(null);
+  }
+
+  function handleDeleteSelectedProjectOption() {
+    const selectedProject = normalizeProjectName(taskFormValues.project);
+
+    if (!selectedProject) {
+      setProjectFormErrorMessage("Select a project to delete.");
+      return;
+    }
+
+    if (selectedProjectIsUsed) {
+      setProjectFormErrorMessage(
+        "This project is in use on the current board and cannot be deleted."
+      );
+      return;
+    }
+
+    const nextOptions = projectOptions.filter(
+      (projectName) =>
+        projectName.toLocaleLowerCase() !== selectedProject.toLocaleLowerCase()
+    );
+
+    saveProjectOptions(nextOptions);
+    updateTaskFormField("project", "");
+    setProjectFormErrorMessage(null);
+  }
+
+  async function handleCreateComment() {
+    if (!editingTaskId || isCreatingTaskComment) {
+      return;
+    }
+
+    const body = taskCommentDraft.trim();
+
+    if (!body) {
+      setTaskCommentErrorMessage("Comment text is required.");
+      return;
+    }
+
+    if (!authToken) {
+      setTaskCommentErrorMessage("Authentication is required.");
+      return;
+    }
+
+    setTaskCommentErrorMessage(null);
+    setIsCreatingTaskComment(true);
+
+    try {
+      const comment = await createTaskComment(editingTaskId, body, authToken);
+      setTaskComments((currentComments) => [...currentComments, comment]);
+      setTaskCommentDraft("");
+    } catch (error) {
+      setTaskCommentErrorMessage(error instanceof Error ? error.message : "Unable to create comment.");
+    } finally {
+      setIsCreatingTaskComment(false);
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (!editingTaskId) {
+      return;
+    }
+
+    if (!authToken) {
+      setTaskCommentErrorMessage("Authentication is required.");
+      return;
+    }
+
+    setTaskCommentErrorMessage(null);
+    markCommentAsPending(commentId, true);
+
+    try {
+      await deleteTaskComment(editingTaskId, commentId, authToken);
+      setTaskComments((currentComments) =>
+        currentComments.filter((comment) => comment.id !== commentId)
+      );
+    } catch (error) {
+      setTaskCommentErrorMessage(error instanceof Error ? error.message : "Unable to delete comment.");
+    } finally {
+      markCommentAsPending(commentId, false);
+    }
+  }
+
+  async function handleCreateAttachment() {
+    if (!editingTaskId || isCreatingTaskAttachment) {
+      return;
+    }
+
+    const name = taskAttachmentNameDraft.trim();
+    const url = taskAttachmentUrlDraft.trim();
+
+    if (!name) {
+      setTaskAttachmentErrorMessage("Attachment name is required.");
+      return;
+    }
+
+    if (!url) {
+      setTaskAttachmentErrorMessage("Attachment URL is required.");
+      return;
+    }
+
+    if (!authToken) {
+      setTaskAttachmentErrorMessage("Authentication is required.");
+      return;
+    }
+
+    setTaskAttachmentErrorMessage(null);
+    setIsCreatingTaskAttachment(true);
+
+    try {
+      const attachment = await createTaskAttachment(
+        editingTaskId,
+        {
+          name,
+          url,
+        },
+        authToken
+      );
+      setTaskAttachments((currentAttachments) => [...currentAttachments, attachment]);
+      setTaskAttachmentNameDraft("");
+      setTaskAttachmentUrlDraft("");
+    } catch (error) {
+      setTaskAttachmentErrorMessage(
+        error instanceof Error ? error.message : "Unable to create attachment."
+      );
+    } finally {
+      setIsCreatingTaskAttachment(false);
+    }
+  }
+
+  async function handleDeleteAttachment(attachmentId: string) {
+    if (!editingTaskId) {
+      return;
+    }
+
+    if (!authToken) {
+      setTaskAttachmentErrorMessage("Authentication is required.");
+      return;
+    }
+
+    setTaskAttachmentErrorMessage(null);
+    markAttachmentAsPending(attachmentId, true);
+
+    try {
+      await deleteTaskAttachment(editingTaskId, attachmentId, authToken);
+      setTaskAttachments((currentAttachments) =>
+        currentAttachments.filter((attachment) => attachment.id !== attachmentId)
+      );
+    } catch (error) {
+      setTaskAttachmentErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete attachment."
+      );
+    } finally {
+      markAttachmentAsPending(attachmentId, false);
+    }
   }
 
   async function handleTaskFormSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1258,6 +2031,12 @@ export function AppShell() {
       return;
     }
 
+    const recurrenceResult = buildRecurrenceMutationInput(recurrenceFormValues);
+    if (recurrenceFormValues.enabled && !recurrenceResult.data) {
+      setTaskFormErrorMessage(recurrenceResult.error ?? "Invalid recurrence settings.");
+      return;
+    }
+
     setTaskFormErrorMessage(null);
     setDeleteErrorMessage(null);
     setIsSubmittingTask(true);
@@ -1267,12 +2046,21 @@ export function AppShell() {
         throw new Error("Authentication is required.");
       }
 
+      const selectedProjectName = normalizeProjectName(taskFormValues.project);
+
+      if (selectedProjectName) {
+        saveProjectOptions([...projectOptions, selectedProjectName]);
+      }
+
+      let savedTask: Task;
+
       if (taskDialogMode === "create") {
         const createdTask = await createTask(inputResult.data, authToken);
 
         setTasks((currentTasks) =>
           createdTask.targetDate === selectedDate ? [...currentTasks, createdTask] : currentTasks
         );
+        savedTask = createdTask;
       } else {
         if (!editingTaskId) {
           throw new Error("Task not found.");
@@ -1295,11 +2083,40 @@ export function AppShell() {
 
           return [...currentTasks, updatedTask];
         });
+
+        savedTask = updatedTask;
+      }
+
+      if (!savedTask.recurrenceSourceTaskId) {
+        if (recurrenceResult.data) {
+          try {
+            const savedRule = await upsertTaskRecurrence(savedTask.id, recurrenceResult.data, authToken);
+            setTaskRecurrenceRule(savedRule);
+          } catch (error) {
+            setErrorMessage(
+              error instanceof Error
+                ? `Task saved, but recurrence could not be updated: ${error.message}`
+                : "Task saved, but recurrence could not be updated."
+            );
+          }
+        } else if (taskDialogMode === "edit" && taskRecurrenceRule) {
+          try {
+            await deleteTaskRecurrence(savedTask.id, authToken);
+            setTaskRecurrenceRule(null);
+          } catch (error) {
+            setErrorMessage(
+              error instanceof Error
+                ? `Task saved, but recurrence could not be removed: ${error.message}`
+                : "Task saved, but recurrence could not be removed."
+            );
+          }
+        }
       }
 
       setTaskDialogMode(null);
       setEditingTaskId(null);
       setTaskFormErrorMessage(null);
+      resetTaskDetailsState();
     } catch (error) {
       setTaskFormErrorMessage(error instanceof Error ? error.message : "Unable to save task.");
     } finally {
@@ -1326,6 +2143,7 @@ export function AppShell() {
       if (editingTaskId === taskToDelete.id) {
         setTaskDialogMode(null);
         setEditingTaskId(null);
+        resetTaskDetailsState();
       }
 
       setTaskToDelete(null);
@@ -1337,8 +2155,66 @@ export function AppShell() {
   }
 
   useEffect(() => {
+    if (taskDialogMode !== "edit" || !editingTaskId) {
+      return;
+    }
+
+    if (!authToken) {
+      setTaskDetailsErrorMessage("Authentication is required.");
+      return;
+    }
+
+    let cancelled = false;
+    const isGeneratedTask = (editingTask?.recurrenceSourceTaskId ?? null) !== null;
+
+    setIsTaskDetailsLoading(true);
+    setTaskDetailsErrorMessage(null);
+    setTaskCommentErrorMessage(null);
+    setTaskAttachmentErrorMessage(null);
+
+    Promise.all([
+      loadTaskComments(editingTaskId, authToken),
+      loadTaskAttachments(editingTaskId, authToken),
+      isGeneratedTask ? Promise.resolve(null) : loadTaskRecurrence(editingTaskId, authToken),
+    ])
+      .then(([comments, attachments, recurrenceRule]) => {
+        if (cancelled) {
+          return;
+        }
+
+        setTaskComments(comments);
+        setTaskAttachments(attachments);
+        setTaskRecurrenceRule(recurrenceRule);
+        setRecurrenceFormValues(getRecurrenceFormValues(recurrenceRule));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
+        setTaskDetailsErrorMessage(
+          error instanceof Error ? error.message : "Unable to load task details."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsTaskDetailsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, editingTask?.recurrenceSourceTaskId, editingTaskId, taskDialogMode]);
+
+  useEffect(() => {
     const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    const storedProjectOptions = parseStoredProjectOptions(
+      window.localStorage.getItem(PROJECT_OPTIONS_STORAGE_KEY)
+    );
+
     setAuthToken(storedToken);
+    setProjectOptions(storedProjectOptions);
     setIsAuthReady(true);
   }, []);
 
@@ -1371,7 +2247,7 @@ export function AppShell() {
     return () => {
       cancelled = true;
     };
-  }, [authToken, isAuthReady]);
+  }, [authToken, clearAuthSession, isAuthReady]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -1408,6 +2284,37 @@ export function AppShell() {
 
     return () => controller.abort();
   }, [authToken, authUser, isAuthReady, selectedDate]);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    const projectsFromTasks = getUniqueSortedProjectNames(
+      tasks.map((task) => task.project ?? "")
+    );
+
+    if (projectsFromTasks.length === 0) {
+      return;
+    }
+
+    setProjectOptions((currentOptions) => {
+      const mergedOptions = getUniqueSortedProjectNames([
+        ...currentOptions,
+        ...projectsFromTasks,
+      ]);
+
+      if (areStringListsEqual(currentOptions, mergedOptions)) {
+        return currentOptions;
+      }
+
+      window.localStorage.setItem(
+        PROJECT_OPTIONS_STORAGE_KEY,
+        JSON.stringify(mergedOptions)
+      );
+      return mergedOptions;
+    });
+  }, [isAuthReady, tasks]);
 
   const tasksByStatus = useMemo(() => {
     return {
@@ -1727,9 +2634,9 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={taskDialogTitle}
-            className="w-full max-w-2xl rounded-3xl border border-line bg-surface p-5 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-6"
+            className={`flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface p-4 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-5 ${taskDialogHeightClass}`}
           >
-            <header className="mb-4 flex items-center justify-between gap-2">
+            <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">{taskDialogTitle}</h2>
                 <p className="mt-1 text-sm text-muted">Set details clearly so this task is easy to complete.</p>
@@ -1744,7 +2651,7 @@ export function AppShell() {
               </button>
             </header>
 
-            <form className="space-y-4" onSubmit={handleTaskFormSubmit}>
+            <form className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" onSubmit={handleTaskFormSubmit}>
               <label className="block text-sm font-semibold text-foreground">
                 Title
                 <input
@@ -1838,17 +2745,347 @@ export function AppShell() {
                 </label>
               </div>
 
-              <label className="block text-sm font-semibold text-foreground">
-                Project
-                <input
-                  type="text"
-                  value={taskFormValues.project}
-                  onChange={(event) => updateTaskFormField("project", event.target.value)}
-                  className={textFieldClass}
-                  placeholder="Optional context, e.g. Website Redesign"
-                  disabled={isSubmittingTask}
-                />
-              </label>
+              <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Project</h3>
+                    <p className="text-xs text-muted">
+                      Select an existing project or create a new one.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={dangerButtonClass}
+                    onClick={handleDeleteSelectedProjectOption}
+                    disabled={
+                      isSubmittingTask ||
+                      !normalizedSelectedProject ||
+                      selectedProjectIsUsed
+                    }
+                  >
+                    Delete Project
+                  </button>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <label className="block text-sm font-semibold text-foreground">
+                    Project
+                    <select
+                      value={taskFormValues.project}
+                      onChange={(event) => updateTaskFormField("project", event.target.value)}
+                      className={textFieldClass}
+                      disabled={isSubmittingTask}
+                    >
+                      <option value="">No project</option>
+                      {projectSelectOptions.map((projectName) => (
+                        <option key={projectName} value={projectName}>
+                          {projectName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="text-xs text-muted">
+                    {selectedProjectIsUsed
+                      ? "Used on current board"
+                      : "Can be deleted if unused"}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <label className="block text-sm font-semibold text-foreground">
+                    New Project
+                    <input
+                      type="text"
+                      value={newProjectDraft}
+                      onChange={(event) => setNewProjectDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleCreateProjectOption();
+                        }
+                      }}
+                      className={textFieldClass}
+                      placeholder="Type a project name"
+                      disabled={isSubmittingTask}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className={controlButtonClass}
+                    onClick={handleCreateProjectOption}
+                    disabled={isSubmittingTask}
+                  >
+                    Add Project
+                  </button>
+                </div>
+
+                {projectFormErrorMessage ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {projectFormErrorMessage}
+                  </p>
+                ) : null}
+              </section>
+
+              <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Recurrence</h3>
+                    <p className="text-xs text-muted">
+                      Automatically create future task instances.
+                    </p>
+                  </div>
+
+                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={recurrenceFormValues.enabled}
+                      onChange={(event) =>
+                        updateRecurrenceFormField("enabled", event.target.checked)
+                      }
+                      disabled={isSubmittingTask || isEditingGeneratedTask}
+                    />
+                    Repeat task
+                  </label>
+                </div>
+
+                {isEditingGeneratedTask ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    This is a generated recurrence instance. Edit the source task to change recurrence.
+                  </p>
+                ) : null}
+
+                {recurrenceFormValues.enabled && !isEditingGeneratedTask ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-sm font-semibold text-foreground">
+                        Frequency
+                        <select
+                          value={recurrenceFormValues.frequency}
+                          onChange={(event) =>
+                            updateRecurrenceFormField("frequency", event.target.value)
+                          }
+                          className={textFieldClass}
+                          disabled={isSubmittingTask}
+                        >
+                          {RECURRENCE_FREQUENCY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="block text-sm font-semibold text-foreground">
+                        Every
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={recurrenceFormValues.interval}
+                          onChange={(event) =>
+                            updateRecurrenceFormField("interval", event.target.value)
+                          }
+                          className={textFieldClass}
+                          disabled={isSubmittingTask}
+                        />
+                      </label>
+                    </div>
+
+                    {recurrenceFormValues.frequency === "weekly" ? (
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Weekdays</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {WEEKDAY_OPTIONS.map((option) => {
+                            const isSelected = recurrenceFormValues.weekdays.includes(option.value);
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                  isSelected
+                                    ? "border-accent bg-accent text-white"
+                                    : "border-line bg-surface text-foreground/85 hover:border-accent/45 hover:text-accent"
+                                }`}
+                                onClick={() => toggleRecurrenceWeekday(option.value)}
+                                disabled={isSubmittingTask}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <label className="block text-sm font-semibold text-foreground">
+                      Ends On (optional)
+                      <input
+                        type="date"
+                        value={recurrenceFormValues.endsOn}
+                        onChange={(event) => updateRecurrenceFormField("endsOn", event.target.value)}
+                        className={textFieldClass}
+                        disabled={isSubmittingTask}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </section>
+
+              {taskDialogMode === "edit" ? (
+                <section className="max-h-[42vh] space-y-4 overflow-y-auto rounded-2xl border border-line bg-surface-soft/50 p-4">
+                  <header>
+                    <h3 className="text-sm font-semibold text-foreground">Task Details</h3>
+                    <p className="text-xs text-muted">Comments and attachments for this task.</p>
+                  </header>
+
+                  {isTaskDetailsLoading ? (
+                    <p className="text-sm text-muted">Loading task details...</p>
+                  ) : null}
+
+                  {taskDetailsErrorMessage ? (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      {taskDetailsErrorMessage}
+                    </p>
+                  ) : null}
+
+                  <section>
+                    <h4 className="text-sm font-semibold text-foreground">
+                      Comments ({taskComments.length})
+                    </h4>
+                    <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
+                      {taskComments.length === 0 ? (
+                        <p className="rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                          No comments yet.
+                        </p>
+                      ) : (
+                        taskComments.map((comment) => (
+                          <article
+                            key={comment.id}
+                            className="rounded-xl border border-line bg-surface px-3 py-2.5"
+                          >
+                            <p className="text-sm text-foreground">{comment.body}</p>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <p className="text-xs text-muted">{formatDateTime(comment.createdAt)}</p>
+                              <button
+                                type="button"
+                                className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+                                onClick={() => handleDeleteComment(comment.id)}
+                                disabled={isSubmittingTask || pendingCommentIds.includes(comment.id)}
+                              >
+                                {pendingCommentIds.includes(comment.id) ? "Removing..." : "Remove"}
+                              </button>
+                            </div>
+                          </article>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      <textarea
+                        value={taskCommentDraft}
+                        onChange={(event) => setTaskCommentDraft(event.target.value)}
+                        className={`${textFieldClass} mt-0 min-h-[76px] resize-y`}
+                        placeholder="Add a comment..."
+                        disabled={isSubmittingTask || isCreatingTaskComment}
+                      />
+                      {taskCommentErrorMessage ? (
+                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                          {taskCommentErrorMessage}
+                        </p>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={controlButtonClass}
+                        onClick={handleCreateComment}
+                        disabled={isSubmittingTask || isCreatingTaskComment}
+                      >
+                        {isCreatingTaskComment ? "Adding..." : "Add comment"}
+                      </button>
+                    </div>
+                  </section>
+
+                  <section>
+                    <h4 className="text-sm font-semibold text-foreground">
+                      Attachments ({taskAttachments.length})
+                    </h4>
+                    <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
+                      {taskAttachments.length === 0 ? (
+                        <p className="rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                          No attachments yet.
+                        </p>
+                      ) : (
+                        taskAttachments.map((attachment) => (
+                          <article
+                            key={attachment.id}
+                            className="rounded-xl border border-line bg-surface px-3 py-2.5"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">{attachment.name}</p>
+                                <a
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                >
+                                  {attachment.url}
+                                </a>
+                              </div>
+                              <button
+                                type="button"
+                                className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+                                onClick={() => handleDeleteAttachment(attachment.id)}
+                                disabled={isSubmittingTask || pendingAttachmentIds.includes(attachment.id)}
+                              >
+                                {pendingAttachmentIds.includes(attachment.id) ? "Removing..." : "Remove"}
+                              </button>
+                            </div>
+                          </article>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                      <label className="block text-sm font-semibold text-foreground">
+                        Name
+                        <input
+                          type="text"
+                          value={taskAttachmentNameDraft}
+                          onChange={(event) => setTaskAttachmentNameDraft(event.target.value)}
+                          className={textFieldClass}
+                          disabled={isSubmittingTask || isCreatingTaskAttachment}
+                          placeholder="Spec"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-foreground">
+                        URL
+                        <input
+                          type="url"
+                          value={taskAttachmentUrlDraft}
+                          onChange={(event) => setTaskAttachmentUrlDraft(event.target.value)}
+                          className={textFieldClass}
+                          disabled={isSubmittingTask || isCreatingTaskAttachment}
+                          placeholder="https://example.com/file"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className={controlButtonClass}
+                        onClick={handleCreateAttachment}
+                        disabled={isSubmittingTask || isCreatingTaskAttachment}
+                      >
+                        {isCreatingTaskAttachment ? "Adding..." : "Add"}
+                      </button>
+                    </div>
+
+                    {taskAttachmentErrorMessage ? (
+                      <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        {taskAttachmentErrorMessage}
+                      </p>
+                    ) : null}
+                  </section>
+                </section>
+              ) : null}
 
               {taskFormErrorMessage ? (
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
