@@ -33,3 +33,79 @@ Services:
 - PostgreSQL: `localhost:5432` (data persisted in named volume `postgres_data`)
 
 Note: inside Docker Compose, backend connects to PostgreSQL via service hostname `postgres` using `DATABASE_URL_DOCKER`.
+
+## Production Deployment (Hostinger VM + Nginx)
+
+This repo now includes production-specific assets:
+- `docker-compose.prod.yml`
+- `backend/Dockerfile.prod`
+- `frontend/Dockerfile.prod`
+- `scripts/deploy.sh`
+- `scripts/start-prod.sh`
+- `scripts/stop-prod.sh`
+- `scripts/install-nginx-site.sh`
+- `deploy/nginx/jotly.godwinavodagbe.com.conf`
+- `.env.prod.example`
+
+### 1. Prepare VM env file
+
+```bash
+cp .env.prod.example .env.prod
+```
+
+Update `.env.prod`:
+- set a strong `POSTGRES_PASSWORD`
+- keep `FRONTEND_HOST_PORT=3100` (or choose another free port)
+- keep `FRONTEND_BACKEND_API_BASE_URL=http://backend:3001`
+- set `NEXT_PUBLIC_API_BASE_URL=https://jotly.godwinavodagbe.com/backend-api`
+
+### 2. Deploy from GitHub
+
+```bash
+./scripts/deploy.sh main
+```
+
+This script:
+- fetches/pulls latest code from branch
+- builds production images
+- starts containers with compose project `jotly_prod` (default)
+- verifies health endpoint on `http://127.0.0.1:3100/backend-api/health`
+
+### 3. Configure Nginx on VM
+
+Install HTTP site first (based on `.env.prod` values):
+
+```bash
+sudo ./scripts/install-nginx-site.sh http
+```
+
+This writes and enables:
+- `/etc/nginx/sites-available/<APP_DOMAIN>.conf`
+- `/etc/nginx/sites-enabled/<APP_DOMAIN>.conf`
+
+Default upstream:
+- `http://127.0.0.1:3100` (from `FRONTEND_HOST_PORT`)
+
+### 4. HTTPS certificate
+
+Issue/attach TLS cert with Certbot:
+
+```bash
+sudo certbot --nginx -d jotly.godwinavodagbe.com
+```
+
+Then switch to explicit HTTPS config and reload:
+
+```bash
+sudo ./scripts/install-nginx-site.sh https
+```
+
+Reference static HTTPS config for this domain:
+- `deploy/nginx/jotly.godwinavodagbe.com.conf`
+
+### 5. Runtime commands
+
+```bash
+./scripts/start-prod.sh
+./scripts/stop-prod.sh
+```
