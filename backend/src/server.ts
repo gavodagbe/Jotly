@@ -3,7 +3,10 @@ import { getEnv } from "./config/env";
 
 async function start(): Promise<void> {
   const env = getEnv();
-  const app = buildApp({ logLevel: env.LOG_LEVEL });
+  const app = buildApp({
+    logLevel: env.LOG_LEVEL,
+    authSessionTtlHours: env.AUTH_SESSION_TTL_HOURS
+  });
 
   try {
     await app.listen({ host: env.HOST, port: env.PORT });

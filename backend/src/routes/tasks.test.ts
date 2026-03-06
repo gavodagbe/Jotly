@@ -1,6 +1,7 @@
 import { Task, TaskPriority, TaskStatus } from "@prisma/client";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AuthSession, AuthStore, AuthUser, CreateAuthSessionInput, CreateAuthUserInput } from "../auth/auth-store";
 import { buildApp } from "../app";
 import { formatDateOnly, TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
@@ -68,6 +69,79 @@ class InMemoryTaskStore implements TaskStore {
   }
 }
 
+class InMemoryAuthStore implements AuthStore {
+  private readonly users = new Map<string, AuthUser>();
+  private readonly usersByEmail = new Map<string, AuthUser>();
+  private readonly sessions = new Map<string, AuthSession>();
+  private readonly sessionsByTokenHash = new Map<string, AuthSession>();
+  private userIdCounter = 1;
+  private sessionIdCounter = 1;
+
+  async createUser(input: CreateAuthUserInput): Promise<AuthUser> {
+    const now = new Date();
+    const user: AuthUser = {
+      id: `user-${this.userIdCounter++}`,
+      email: input.email,
+      passwordHash: input.passwordHash,
+      displayName: input.displayName,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.users.set(user.id, user);
+    this.usersByEmail.set(user.email, user);
+    return user;
+  }
+
+  async findUserByEmail(email: string): Promise<AuthUser | null> {
+    return this.usersByEmail.get(email) ?? null;
+  }
+
+  async findUserById(id: string): Promise<AuthUser | null> {
+    return this.users.get(id) ?? null;
+  }
+
+  async createSession(input: CreateAuthSessionInput): Promise<AuthSession> {
+    const session: AuthSession = {
+      id: `session-${this.sessionIdCounter++}`,
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      expiresAt: input.expiresAt,
+      createdAt: new Date(),
+      revokedAt: null
+    };
+
+    this.sessions.set(session.id, session);
+    this.sessionsByTokenHash.set(session.tokenHash, session);
+    return session;
+  }
+
+  async findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null> {
+    return this.sessionsByTokenHash.get(tokenHash) ?? null;
+  }
+
+  async revokeSession(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+
+    if (!session) {
+      return;
+    }
+
+    const revoked = { ...session, revokedAt: new Date() };
+    this.sessions.set(sessionId, revoked);
+    this.sessionsByTokenHash.set(revoked.tokenHash, revoked);
+  }
+
+  async deleteExpiredSessions(now: Date): Promise<void> {
+    for (const [id, session] of this.sessions.entries()) {
+      if (session.expiresAt.getTime() <= now.getTime() || session.revokedAt) {
+        this.sessions.delete(id);
+        this.sessionsByTokenHash.delete(session.tokenHash);
+      }
+    }
+  }
+}
+
 function parsePayload(payload: string) {
   return JSON.parse(payload) as Record<string, unknown>;
 }
@@ -75,8 +149,30 @@ function parsePayload(payload: string) {
 function createAppForTest() {
   return buildApp({
     logLevel: "silent",
-    taskStore: new InMemoryTaskStore()
+    taskStore: new InMemoryTaskStore(),
+    authStore: new InMemoryAuthStore()
   });
+}
+
+async function registerAndGetToken(app: ReturnType<typeof createAppForTest>): Promise<string> {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: {
+      email: `user-${Math.random().toString(36).slice(2)}@example.com`,
+      password: "password123"
+    }
+  });
+
+  assert.equal(response.statusCode, 201);
+  const body = parsePayload(response.payload);
+  return (body.data as { token: string }).token;
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return {
+    authorization: `Bearer ${token}`
+  };
 }
 
 test("POST /api/tasks creates a task with defaults", async (t) => {
@@ -84,10 +180,12 @@ test("POST /api/tasks creates a task with defaults", async (t) => {
   t.after(async () => {
     await app.close();
   });
+  const token = await registerAndGetToken(app);
 
   const response = await app.inject({
     method: "POST",
     url: "/api/tasks",
+    headers: authHeaders(token),
     payload: {
       title: "Write tests",
       targetDate: "2026-03-06"
@@ -111,10 +209,12 @@ test("GET /api/tasks filters tasks by selected date", async (t) => {
   t.after(async () => {
     await app.close();
   });
+  const token = await registerAndGetToken(app);
 
   await app.inject({
     method: "POST",
     url: "/api/tasks",
+    headers: authHeaders(token),
     payload: {
       title: "Task for selected date",
       targetDate: "2026-03-06"
@@ -124,6 +224,7 @@ test("GET /api/tasks filters tasks by selected date", async (t) => {
   await app.inject({
     method: "POST",
     url: "/api/tasks",
+    headers: authHeaders(token),
     payload: {
       title: "Task for another date",
       targetDate: "2026-03-07"
@@ -132,7 +233,8 @@ test("GET /api/tasks filters tasks by selected date", async (t) => {
 
   const response = await app.inject({
     method: "GET",
-    url: "/api/tasks?date=2026-03-06"
+    url: "/api/tasks?date=2026-03-06",
+    headers: authHeaders(token)
   });
 
   assert.equal(response.statusCode, 200);
@@ -148,10 +250,12 @@ test("PATCH /api/tasks manages status timestamps consistently", async (t) => {
   t.after(async () => {
     await app.close();
   });
+  const token = await registerAndGetToken(app);
 
   const created = await app.inject({
     method: "POST",
     url: "/api/tasks",
+    headers: authHeaders(token),
     payload: {
       title: "Transition me",
       targetDate: "2026-03-06",
@@ -166,6 +270,7 @@ test("PATCH /api/tasks manages status timestamps consistently", async (t) => {
   const doneResponse = await app.inject({
     method: "PATCH",
     url: `/api/tasks/${taskId}`,
+    headers: authHeaders(token),
     payload: {
       status: "done"
     }
@@ -181,6 +286,7 @@ test("PATCH /api/tasks manages status timestamps consistently", async (t) => {
   const cancelledResponse = await app.inject({
     method: "PATCH",
     url: `/api/tasks/${taskId}`,
+    headers: authHeaders(token),
     payload: {
       status: "cancelled"
     }
@@ -196,6 +302,7 @@ test("PATCH /api/tasks manages status timestamps consistently", async (t) => {
   const todoResponse = await app.inject({
     method: "PATCH",
     url: `/api/tasks/${taskId}`,
+    headers: authHeaders(token),
     payload: {
       status: "todo"
     }
@@ -214,10 +321,12 @@ test("DELETE /api/tasks removes a task", async (t) => {
   t.after(async () => {
     await app.close();
   });
+  const token = await registerAndGetToken(app);
 
   const created = await app.inject({
     method: "POST",
     url: "/api/tasks",
+    headers: authHeaders(token),
     payload: {
       title: "Delete me",
       targetDate: "2026-03-06"
@@ -229,14 +338,16 @@ test("DELETE /api/tasks removes a task", async (t) => {
 
   const deleteResponse = await app.inject({
     method: "DELETE",
-    url: `/api/tasks/${taskId}`
+    url: `/api/tasks/${taskId}`,
+    headers: authHeaders(token)
   });
 
   assert.equal(deleteResponse.statusCode, 200);
 
   const getAfterDelete = await app.inject({
     method: "GET",
-    url: `/api/tasks/${taskId}`
+    url: `/api/tasks/${taskId}`,
+    headers: authHeaders(token)
   });
 
   assert.equal(getAfterDelete.statusCode, 404);
@@ -252,10 +363,12 @@ test("validation errors return structured JSON shape", async (t) => {
   t.after(async () => {
     await app.close();
   });
+  const token = await registerAndGetToken(app);
 
   const response = await app.inject({
     method: "POST",
     url: "/api/tasks",
+    headers: authHeaders(token),
     payload: {
       title: "",
       targetDate: "invalid-date"
@@ -275,11 +388,13 @@ test("malformed JSON returns a structured validation error", async (t) => {
   t.after(async () => {
     await app.close();
   });
+  const token = await registerAndGetToken(app);
 
   const response = await app.inject({
     method: "POST",
     url: "/api/tasks",
     headers: {
+      ...authHeaders(token),
       "content-type": "application/json"
     },
     payload: "{"
@@ -291,4 +406,23 @@ test("malformed JSON returns a structured validation error", async (t) => {
 
   assert.equal(error.code, "VALIDATION_ERROR");
   assert.equal(typeof error.message, "string");
+});
+
+test("task endpoints require authentication", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/tasks?date=2026-03-06"
+  });
+
+  assert.equal(response.statusCode, 401);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "UNAUTHORIZED",
+    message: "Authentication is required"
+  });
 });
