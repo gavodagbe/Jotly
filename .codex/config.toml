@@ -1,0 +1,6 @@
+# Jotly project-local Codex configuration.
+# Atlassian MCP (Jira + Confluence) is the primary planning context source.
+
+[context]
+ticket_source = "jira"
+documentation_source = "confluence"
