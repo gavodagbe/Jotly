@@ -5,6 +5,10 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().min(1).default("0.0.0.0"),
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .default("postgresql://postgres:postgres@localhost:5432/jotly"),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info")
