@@ -1,32 +1,90 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f5ef;
+  --background: #ecf2f7;
   --surface: #ffffff;
-  --foreground: #17201a;
-  --muted: #5d6a61;
-  --line: #d4ddd5;
-  --accent: #2e7a53;
-  --accent-soft: #ddf2e5;
-  --font-sans: "Avenir Next", "Manrope", "Segoe UI", sans-serif;
+  --surface-soft: #f7fafc;
+  --foreground: #102230;
+  --muted: #4f6270;
+  --line: #cfdbe5;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --accent-soft: #d7f0ed;
+  --danger: #b42336;
+  --danger-soft: #fde8eb;
+  --font-sans: "Avenir Next", "Plus Jakarta Sans", "Segoe UI", sans-serif;
   --font-mono: "Fira Mono", "Menlo", monospace;
+  color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-soft: var(--surface-soft);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 }
 
 body {
   min-height: 100vh;
-  background: radial-gradient(circle at top right, #e6f3ea 0%, var(--background) 45%);
+  background:
+    radial-gradient(circle at 12% -10%, #d9ecfa 0%, transparent 36%),
+    radial-gradient(circle at 90% 10%, #d8f4ef 0%, transparent 32%),
+    linear-gradient(180deg, #f2f7fb 0%, var(--background) 36%, #e7eef5 100%);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+::selection {
+  background: #c5e7e2;
+}
+
+.rich-text-render p {
+  margin: 0 0 0.4rem;
+}
+
+.rich-text-render p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-text-render ul,
+.rich-text-render ol {
+  margin: 0.25rem 0 0.35rem 1rem;
+  padding-left: 0.6rem;
+}
+
+.rich-text-render ul {
+  list-style: disc;
+}
+
+.rich-text-render ol {
+  list-style: decimal;
+}
+
+.rich-text-render blockquote {
+  margin: 0.35rem 0;
+  border-left: 3px solid #9ec9c4;
+  padding-left: 0.65rem;
+  color: #3e5663;
+}
+
+.rich-text-render code {
+  border: 1px solid #cfdbe5;
+  border-radius: 0.35rem;
+  background: #f3f7fa;
+  padding: 0.08rem 0.3rem;
+  font-size: 0.85em;
+}
+
+.rich-text-render a {
+  color: #0f766e;
+  text-decoration: underline;
 }
