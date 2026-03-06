@@ -1,4 +1,18 @@
-# Jotly — Architecture Decisions and Risks
+# Jotly - Architecture Decisions and Risks
+
+## Current implementation reality check
+Implemented in the current codebase:
+- backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
+- Prisma task model with status and lifecycle timestamps (`backend/prisma/schema.prisma`)
+- frontend date-driven Kanban board with create/edit/delete dialogs and drag-and-drop status updates (`frontend/src/components/layout/app-shell.tsx`)
+- Docker Compose local runtime (frontend, backend, postgres)
+
+Not implemented yet:
+- comments
+- attachments
+- recurrence
+- AI assistant
+- reporting
 
 ## Key decisions
 
@@ -74,6 +88,65 @@ Reason:
 - cleaner Git history
 - safer delivery workflow
 
+## Future module boundary map
+The boundaries below are for preparation only; no feature implementation is part of Sprint 1.
+
+### Comments
+- Relation to tasks: comments are children of tasks.
+- Likely backend module: `backend/src/comments/`.
+- Likely frontend feature area: `frontend/src/features/comments/`.
+- Likely API surface:
+  - `GET /api/tasks/:id/comments`
+  - `POST /api/tasks/:id/comments`
+  - `PATCH /api/tasks/:id/comments/:commentId`
+  - `DELETE /api/tasks/:id/comments/:commentId`
+- Sprint 1 posture: postponed.
+
+### Attachments
+- Relation to tasks: attachments are task-linked assets.
+- Ownership split: metadata in PostgreSQL, binary storage via dedicated storage integration later.
+- Likely backend module: `backend/src/attachments/`.
+- Likely frontend feature area: `frontend/src/features/attachments/`.
+- Likely API surface:
+  - `GET /api/tasks/:id/attachments`
+  - `POST /api/tasks/:id/attachments`
+  - `DELETE /api/tasks/:id/attachments/:attachmentId`
+- Sprint 1 posture: postponed.
+
+### Recurrence
+- Relation to tasks: recurrence rules generate date-specific task instances.
+- Likely backend module: `backend/src/recurrence/`.
+- Likely frontend feature area: `frontend/src/features/recurrence/`.
+- Likely approach: keep concrete tasks explicit and persist recurrence metadata separately.
+- Sprint 1 posture: postponed.
+
+### AI assistant
+- Relation to task history: read-oriented assistant over task history and future contextual modules.
+- Likely backend module: `backend/src/assistant/`.
+- Likely frontend feature area: `frontend/src/features/assistant/`.
+- Expected dependencies: task records first, then comments/attachments signals when available.
+- Sprint 1 posture: postponed.
+
+### Reporting
+- Relation to task history: aggregated analytics over task lifecycle and date dimensions.
+- Likely backend module: `backend/src/reporting/`.
+- Likely frontend feature area: `frontend/src/features/reporting/`.
+- Expected dependencies: task status/date/timestamps first, then recurrence/comments/attachments data when added.
+- Sprint 1 posture: postponed.
+
+## Future entities and extension points
+Likely future entities (documentation only):
+- `TaskComment`
+- `TaskAttachment`
+- `TaskRecurrenceRule`
+- `TaskActivityEvent` (only if event-level reporting is needed later)
+
+Current extension points to preserve:
+- backend route split by domain in `backend/src/routes/`
+- backend task domain module in `backend/src/tasks/`
+- frontend feature folders in `frontend/src/features/`
+- stable task API contract for frontend/backend integration
+
 ## Sprint 1 postponed areas
 These are intentionally not fully implemented in Sprint 1:
 - comments
@@ -90,37 +163,33 @@ These are intentionally not fully implemented in Sprint 1:
 
 ## Main risks
 
-### Risk 1 — Scope creep
+### Risk 1 - Scope creep
 Sprint 1 could become too broad.
 
 Mitigation:
 - respect Jira ticket boundaries strictly
 
-### Risk 2 — Over-engineering
+### Risk 2 - Over-engineering
 Future modules could create premature abstractions.
 
 Mitigation:
 - document boundaries without overbuilding
 
-### Risk 3 — Frontend/backend drift
+### Risk 3 - Frontend/backend drift
 Contracts may diverge as features evolve.
 
 Mitigation:
 - keep API explicit and stable
 - update both sides carefully
 
-### Risk 4 — Docs drift
+### Risk 4 - Docs drift
 Planning files may stop matching the repo.
 
 Mitigation:
 - update docs only when architecture, scope, or technical conventions truly change
 
-## Future module notes
-Future modules to prepare but not build yet:
-- comments
-- attachments
-- recurrence
-- AI assistant over task history
-- reporting
+### Risk 5 - Reporting blind spots
+Later analytics work can be blocked if lifecycle timestamps and status semantics change unexpectedly.
 
-When these modules start, update this file if a meaningful architectural decision changes.
+Mitigation:
+- keep current task lifecycle fields stable unless a dedicated migration ticket updates docs and API together

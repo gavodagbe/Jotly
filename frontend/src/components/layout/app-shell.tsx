@@ -39,6 +39,21 @@ type TaskMutationInput = {
   plannedTime: number | null;
 };
 
+type AuthUser = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  createdAt: string;
+};
+
+type AuthMode = "login" | "register";
+
+type AuthFormValues = {
+  email: string;
+  password: string;
+  displayName: string;
+};
+
 type TaskFormValues = {
   title: string;
   description: string;
@@ -51,6 +66,8 @@ type TaskFormValues = {
 
 type TaskDialogMode = "create" | "edit";
 type ApiErrorPayload = { error?: { message?: string } } | null;
+
+const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 
 const BOARD_COLUMNS: ReadonlyArray<{
   status: TaskStatus;
@@ -206,9 +223,106 @@ function buildTaskMutationInput(values: TaskFormValues): { data?: TaskMutationIn
   };
 }
 
-async function loadTasksByDate(date: string, signal?: AbortSignal): Promise<Task[]> {
+function createAuthHeaders(token: string, includesJsonBody: boolean): HeadersInit {
+  return {
+    ...(includesJsonBody ? { "Content-Type": "application/json" } : {}),
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+async function registerUser(values: AuthFormValues): Promise<{ user: AuthUser; token: string }> {
+  const response = await fetch("/backend-api/auth/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: values.email.trim(),
+      password: values.password,
+      displayName: values.displayName.trim() || null,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { user: AuthUser; token: string }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to register"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to register.");
+  }
+
+  return payload.data;
+}
+
+async function loginUser(values: AuthFormValues): Promise<{ user: AuthUser; token: string }> {
+  const response = await fetch("/backend-api/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: values.email.trim(),
+      password: values.password,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { user: AuthUser; token: string }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to login"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to login.");
+  }
+
+  return payload.data;
+}
+
+async function loadCurrentUser(token: string): Promise<AuthUser> {
+  const response = await fetch("/backend-api/auth/me", {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { user?: AuthUser }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to validate session"));
+  }
+
+  if (!payload?.data?.user) {
+    throw new Error("Unable to validate session.");
+  }
+
+  return payload.data.user;
+}
+
+async function logoutUser(token: string): Promise<void> {
+  const response = await fetch("/backend-api/auth/logout", {
+    method: "POST",
+    headers: createAuthHeaders(token, false),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to logout"));
+  }
+}
+
+async function loadTasksByDate(date: string, token: string, signal?: AbortSignal): Promise<Task[]> {
   const response = await fetch(`/backend-api/tasks?date=${encodeURIComponent(date)}`, {
     method: "GET",
+    headers: createAuthHeaders(token, false),
     signal,
     cache: "no-store",
   });
@@ -224,12 +338,10 @@ async function loadTasksByDate(date: string, signal?: AbortSignal): Promise<Task
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
-async function createTask(input: TaskMutationInput): Promise<Task> {
+async function createTask(input: TaskMutationInput, token: string): Promise<Task> {
   const response = await fetch("/backend-api/tasks", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: createAuthHeaders(token, true),
     body: JSON.stringify(input),
   });
 
@@ -248,12 +360,10 @@ async function createTask(input: TaskMutationInput): Promise<Task> {
   return payload.data;
 }
 
-async function updateTask(taskId: string, input: TaskMutationInput): Promise<Task> {
+async function updateTask(taskId: string, input: TaskMutationInput, token: string): Promise<Task> {
   const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: createAuthHeaders(token, true),
     body: JSON.stringify(input),
   });
 
@@ -272,9 +382,10 @@ async function updateTask(taskId: string, input: TaskMutationInput): Promise<Tas
   return payload.data;
 }
 
-async function deleteTaskById(taskId: string): Promise<void> {
+async function deleteTaskById(taskId: string, token: string): Promise<void> {
   const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
     method: "DELETE",
+    headers: createAuthHeaders(token, false),
   });
 
   const payload = (await response.json().catch(() => null)) as
@@ -286,12 +397,10 @@ async function deleteTaskById(taskId: string): Promise<void> {
   }
 }
 
-async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task> {
+async function updateTaskStatus(taskId: string, status: TaskStatus, token: string): Promise<Task> {
   const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: createAuthHeaders(token, true),
     body: JSON.stringify({ status }),
   });
 
@@ -403,10 +512,142 @@ function TaskColumn({ status, children }: TaskColumnProps) {
   );
 }
 
+type AuthPanelProps = {
+  mode: AuthMode;
+  values: AuthFormValues;
+  isSubmitting: boolean;
+  errorMessage: string | null;
+  onModeChange: (mode: AuthMode) => void;
+  onValueChange: (field: keyof AuthFormValues, value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+function AuthPanel({
+  mode,
+  values,
+  isSubmitting,
+  errorMessage,
+  onModeChange,
+  onValueChange,
+  onSubmit,
+}: AuthPanelProps) {
+  const submitLabel =
+    mode === "login"
+      ? isSubmitting
+        ? "Signing in..."
+        : "Sign in"
+      : isSubmitting
+      ? "Creating..."
+      : "Create account";
+
+  return (
+    <div className="mx-auto flex min-h-screen w-full max-w-[720px] flex-col justify-center px-4 py-10 sm:px-8">
+      <section className="rounded-3xl border border-line bg-surface p-6 shadow-sm sm:p-8">
+        <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">Authentication</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{APP_NAME}</h1>
+        <p className="mt-2 text-sm text-muted">{APP_TAGLINE}</p>
+
+        <div className="mt-6 flex items-center gap-2">
+          <button
+            type="button"
+            className={`${controlButtonClass} ${mode === "login" ? "border-accent/40 text-accent" : ""}`}
+            onClick={() => onModeChange("login")}
+            disabled={isSubmitting}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            className={`${controlButtonClass} ${mode === "register" ? "border-accent/40 text-accent" : ""}`}
+            onClick={() => onModeChange("register")}
+            disabled={isSubmitting}
+          >
+            Register
+          </button>
+        </div>
+
+        <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+          <label className="block text-sm font-medium text-foreground">
+            Email
+            <input
+              type="email"
+              autoComplete="email"
+              value={values.email}
+              onChange={(event) => onValueChange("email", event.target.value)}
+              className={textFieldClass}
+              disabled={isSubmitting}
+              required
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-foreground">
+            Password
+            <input
+              type="password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              value={values.password}
+              onChange={(event) => onValueChange("password", event.target.value)}
+              className={textFieldClass}
+              disabled={isSubmitting}
+              minLength={8}
+              required
+            />
+          </label>
+
+          {mode === "register" ? (
+            <label className="block text-sm font-medium text-foreground">
+              Display Name (optional)
+              <input
+                type="text"
+                autoComplete="name"
+                value={values.displayName}
+                onChange={(event) => onValueChange("displayName", event.target.value)}
+                className={textFieldClass}
+                disabled={isSubmitting}
+              />
+            </label>
+          ) : null}
+
+          {errorMessage ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {errorMessage}
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            className="w-full rounded-xl border border-accent/50 bg-accent-soft px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSubmitting}
+          >
+            {submitLabel}
+          </button>
+          <p className="text-xs text-muted">
+            {mode === "login"
+              ? "Use your account to access protected task APIs."
+              : "New accounts are available immediately after registration."}
+          </p>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 export function AppShell() {
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [authFormValues, setAuthFormValues] = useState<AuthFormValues>({
+    email: "",
+    password: "",
+    displayName: "",
+  });
+  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+
   const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dragErrorMessage, setDragErrorMessage] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -442,6 +683,76 @@ export function AppShell() {
 
   const isTaskDialogOpen = taskDialogMode !== null;
   const isMutationPending = isSubmittingTask || isDeletingTask;
+
+  function applyAuthSession(token: string, user: AuthUser) {
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    setAuthToken(token);
+    setAuthUser(user);
+    setAuthErrorMessage(null);
+    setErrorMessage(null);
+  }
+
+  function clearAuthSession() {
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    setAuthToken(null);
+    setAuthUser(null);
+    setTasks([]);
+    setErrorMessage(null);
+    setDragErrorMessage(null);
+    setIsLoading(false);
+    setTaskDialogMode(null);
+    setEditingTaskId(null);
+    setTaskToDelete(null);
+    setAuthFormValues((current) => ({ ...current, password: "" }));
+  }
+
+  function handleAuthFormFieldChange(field: keyof AuthFormValues, value: string) {
+    setAuthFormValues((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isAuthSubmitting) {
+      return;
+    }
+
+    setAuthErrorMessage(null);
+    setIsAuthSubmitting(true);
+
+    try {
+      const result =
+        authMode === "login" ? await loginUser(authFormValues) : await registerUser(authFormValues);
+
+      applyAuthSession(result.token, result.user);
+      setAuthFormValues({
+        email: result.user.email,
+        password: "",
+        displayName: result.user.displayName ?? "",
+      });
+    } catch (error) {
+      setAuthErrorMessage(error instanceof Error ? error.message : "Unable to authenticate.");
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  }
+
+  async function handleLogout() {
+    const token = authToken;
+
+    try {
+      if (token) {
+        await logoutUser(token);
+      }
+    } catch {
+      // Keep logout UX predictable even if backend session cleanup fails.
+    } finally {
+      clearAuthSession();
+    }
+  }
 
   function markTaskAsPending(taskId: string, isPending: boolean) {
     setPendingTaskIds((previousIds) => {
@@ -538,8 +849,12 @@ export function AppShell() {
     setIsSubmittingTask(true);
 
     try {
+      if (!authToken) {
+        throw new Error("Authentication is required.");
+      }
+
       if (taskDialogMode === "create") {
-        const createdTask = await createTask(inputResult.data);
+        const createdTask = await createTask(inputResult.data, authToken);
 
         setTasks((currentTasks) =>
           createdTask.targetDate === selectedDate ? [...currentTasks, createdTask] : currentTasks
@@ -549,7 +864,7 @@ export function AppShell() {
           throw new Error("Task not found.");
         }
 
-        const updatedTask = await updateTask(editingTaskId, inputResult.data);
+        const updatedTask = await updateTask(editingTaskId, inputResult.data, authToken);
 
         setTasks((currentTasks) => {
           const hasTask = currentTasks.some((task) => task.id === editingTaskId);
@@ -587,7 +902,11 @@ export function AppShell() {
     setIsDeletingTask(true);
 
     try {
-      await deleteTaskById(taskToDelete.id);
+      if (!authToken) {
+        throw new Error("Authentication is required.");
+      }
+
+      await deleteTaskById(taskToDelete.id, authToken);
       setTasks((currentTasks) => currentTasks.filter((task) => task.id !== taskToDelete.id));
 
       if (editingTaskId === taskToDelete.id) {
@@ -604,9 +923,58 @@ export function AppShell() {
   }
 
   useEffect(() => {
+    const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    setAuthToken(storedToken);
+    setIsAuthReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken) {
+      setAuthUser(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    loadCurrentUser(authToken)
+      .then((user) => {
+        if (!cancelled) {
+          setAuthUser(user);
+          setAuthErrorMessage(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          clearAuthSession();
+          setAuthErrorMessage("Your session expired. Please sign in again.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, isAuthReady]);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken || !authUser) {
+      setTasks([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage(null);
     const controller = new AbortController();
 
-    loadTasksByDate(selectedDate, controller.signal)
+    loadTasksByDate(selectedDate, authToken, controller.signal)
       .then((nextTasks) => {
         setTasks(nextTasks);
       })
@@ -625,7 +993,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [selectedDate]);
+  }, [authToken, authUser, isAuthReady, selectedDate]);
 
   const tasksByStatus = useMemo(() => {
     return {
@@ -663,6 +1031,11 @@ export function AppShell() {
       return;
     }
 
+    if (!authToken) {
+      setDragErrorMessage("Authentication is required.");
+      return;
+    }
+
     const taskId = String(event.active.id);
     const nextStatusId = event.over ? String(event.over.id) : null;
 
@@ -690,7 +1063,7 @@ export function AppShell() {
     markTaskAsPending(taskId, true);
 
     try {
-      const updatedTask = await updateTaskStatus(taskId, nextStatusId);
+      const updatedTask = await updateTaskStatus(taskId, nextStatusId, authToken);
       setTasks((currentTasks) =>
         currentTasks.map((task) => (task.id === taskId ? { ...task, ...updatedTask } : task))
       );
@@ -711,12 +1084,50 @@ export function AppShell() {
     }
   }
 
+  if (!isAuthReady) {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-[720px] items-center justify-center px-4 py-10 text-sm text-muted sm:px-8">
+        Initializing session...
+      </div>
+    );
+  }
+
+  if (!authToken || !authUser) {
+    return (
+      <AuthPanel
+        mode={authMode}
+        values={authFormValues}
+        isSubmitting={isAuthSubmitting}
+        errorMessage={authErrorMessage}
+        onModeChange={(mode) => {
+          setAuthMode(mode);
+          setAuthErrorMessage(null);
+        }}
+        onValueChange={handleAuthFormFieldChange}
+        onSubmit={handleAuthSubmit}
+      />
+    );
+  }
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1240px] flex-col gap-6 px-4 py-8 sm:px-8 lg:px-10">
       <header className="rounded-3xl border border-line bg-surface/90 px-6 py-7 shadow-sm backdrop-blur sm:px-8">
-        <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">JOT-7 Date Board</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">{APP_NAME}</h1>
-        <p className="mt-2 max-w-2xl text-base text-muted sm:text-lg">{APP_TAGLINE}</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">Authenticated Date Board</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">{APP_NAME}</h1>
+            <p className="mt-2 max-w-2xl text-base text-muted sm:text-lg">{APP_TAGLINE}</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+              {authUser.displayName ?? authUser.email}
+            </p>
+            <button type="button" className={controlButtonClass} onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
+        </div>
       </header>
 
       <section className="rounded-3xl border border-line bg-surface px-5 py-5 shadow-sm sm:px-6">

@@ -1,10 +1,12 @@
 import { Prisma, Task, TaskStatus } from "@prisma/client";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { AuthService } from "../auth/auth-service";
 import { formatDateOnly, parseDateOnly, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
 type TasksRouteOptions = {
   taskStore: TaskStore;
+  authService: AuthService;
 };
 
 const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -48,7 +50,7 @@ const listTasksQuerySchema = z.object({
   date: targetDateSchema
 });
 
-type ApiErrorCode = "VALIDATION_ERROR" | "NOT_FOUND" | "INTERNAL_ERROR";
+type ApiErrorCode = "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "INTERNAL_ERROR";
 
 function sendError(
   reply: {
@@ -104,6 +106,20 @@ function sendTaskStorageNotInitializedError(
     "INTERNAL_ERROR",
     "Task storage is not initialized. Apply Prisma migrations and retry."
   );
+}
+
+function getBearerToken(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const [scheme, token] = value.trim().split(/\s+/, 2);
+
+  if (!scheme || scheme.toLowerCase() !== "bearer" || !token) {
+    return null;
+  }
+
+  return token;
 }
 
 function serializeTask(task: Task) {
@@ -169,7 +185,21 @@ function getTimestampsForStatusTransition(task: Task, nextStatus: TaskStatus, no
 }
 
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore } = options;
+  const { taskStore, authService } = options;
+
+  app.addHook("preHandler", async (request, reply) => {
+    const token = getBearerToken(request.headers.authorization);
+
+    if (!token) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const authContext = await authService.authenticateBearerToken(token);
+
+    if (!authContext) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+  });
 
   app.get("/api/tasks", async (request, reply) => {
     const queryResult = listTasksQuerySchema.safeParse(request.query);

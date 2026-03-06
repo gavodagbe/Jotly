@@ -1,11 +1,16 @@
 import Fastify, { FastifyInstance } from "fastify";
+import { createAuthService } from "./auth/auth-service";
+import { createPrismaAuthStore, AuthStore } from "./auth/auth-store";
 import healthRoutes from "./routes/health";
+import authRoutes from "./routes/auth";
 import tasksRoutes from "./routes/tasks";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
 
 export type BuildAppOptions = {
   logLevel: string;
   taskStore?: TaskStore;
+  authStore?: AuthStore;
+  authSessionTtlHours?: number;
 };
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -16,9 +21,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   const taskStore = options.taskStore ?? createPrismaTaskStore();
+  const authStore = options.authStore ?? createPrismaAuthStore();
+  const authService = createAuthService({
+    authStore,
+    sessionTtlMs: (options.authSessionTtlHours ?? 168) * 60 * 60 * 1000
+  });
 
   app.register(healthRoutes);
-  app.register(tasksRoutes, { taskStore });
+  app.register(authRoutes, { authService });
+  app.register(tasksRoutes, { taskStore, authService });
 
   app.setErrorHandler((error, request, reply) => {
     const candidateStatusCode = (error as { statusCode?: number }).statusCode;
@@ -48,6 +59,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.addHook("onClose", async () => {
     if (taskStore.close) {
       await taskStore.close();
+    }
+
+    if (authStore.close) {
+      await authStore.close();
     }
   });
 

@@ -9,6 +9,7 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default("postgresql://postgres:postgres@localhost:5432/jotly"),
+  AUTH_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 365).default(24 * 7),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info")
