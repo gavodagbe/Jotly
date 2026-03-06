@@ -1,4 +1,4 @@
-import { Task, TaskStatus } from "@prisma/client";
+import { Prisma, Task, TaskStatus } from "@prisma/client";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { formatDateOnly, parseDateOnly, TaskStore, TaskUpdateInput } from "../tasks/task-store";
@@ -82,6 +82,28 @@ function zodIssuesToStrings(error: z.ZodError): string[] {
     const path = issue.path.join(".");
     return path ? `${path}: ${issue.message}` : issue.message;
   });
+}
+
+function isTaskTableMissingError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2021"
+  );
+}
+
+function sendTaskStorageNotInitializedError(
+  reply: {
+    code: (statusCode: number) => {
+      send: (payload: unknown) => unknown;
+    };
+  }
+) {
+  return sendError(
+    reply,
+    503,
+    "INTERNAL_ERROR",
+    "Task storage is not initialized. Apply Prisma migrations and retry."
+  );
 }
 
 function serializeTask(task: Task) {
@@ -180,6 +202,11 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         data: tasks.map(serializeTask)
       });
     } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
       request.log.error(error, "Failed to list tasks");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list tasks");
     }
@@ -229,6 +256,11 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         data: serializeTask(task)
       });
     } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
       request.log.error(error, "Failed to create task");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to create task");
     }
@@ -259,6 +291,11 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         data: serializeTask(task)
       });
     } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
       request.log.error(error, "Failed to fetch task");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to fetch task");
     }
@@ -355,6 +392,11 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         data: serializeTask(updatedTask)
       });
     } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
       request.log.error(error, "Failed to update task");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to update task");
     }
@@ -385,6 +427,11 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         data: serializeTask(deletedTask)
       });
     } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
       request.log.error(error, "Failed to delete task");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to delete task");
     }
