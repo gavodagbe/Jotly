@@ -34,4 +34,10 @@ src/
 
 ## Scope
 
-This setup intentionally includes only the frontend shell and styling foundation. Product business features are implemented in later Jira tickets.
+Current frontend includes:
+- authenticated dashboard flow
+- date-driven Kanban board
+- create/edit/delete task dialog
+- drag-and-drop status updates
+- task comments, attachments, and recurrence controls
+- AI assistant chatbot (FAB) with global user context across all task dates

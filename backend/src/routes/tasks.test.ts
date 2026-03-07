@@ -17,6 +17,11 @@ class InMemoryTaskStore implements TaskStore {
     return matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
+  async listByUser(userId: string): Promise<Task[]> {
+    const matches = [...this.tasks.values()].filter((task) => task.userId === userId);
+    return matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
   async getById(id: string, userId: string): Promise<Task | null> {
     const task = this.tasks.get(id) ?? null;
     return task && task.userId === userId ? task : null;

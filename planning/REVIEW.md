@@ -5,6 +5,7 @@ Implemented in the current codebase:
 - backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
 - backend auth/session API (`backend/src/routes/auth.ts`)
 - authenticated ownership boundaries on task-linked routes (tasks/comments/attachments/recurrence)
+- backend AI assistant reply API (`backend/src/routes/assistant.ts`)
 - backend comments API (`backend/src/routes/comments.ts`)
 - backend attachments API (`backend/src/routes/attachments.ts`)
 - backend recurrence API (`backend/src/routes/recurrence.ts`)
@@ -13,11 +14,11 @@ Implemented in the current codebase:
 - Prisma task model with status, priority, and lifecycle timestamps (`backend/prisma/schema.prisma`)
 - frontend date-driven Kanban board with create/edit/delete dialogs and drag-and-drop status updates (`frontend/src/components/layout/app-shell.tsx`)
 - frontend task details support for comments, recurrence, and file-based attachments converted to `data:` URLs before upload (`frontend/src/components/layout/app-shell.tsx`)
+- frontend AI assistant chatbot (FAB) with global user task context (`frontend/src/components/layout/app-shell.tsx`)
 - Docker Compose local runtime (frontend, backend, postgres)
-- route tests for auth/tasks/comments/attachments/recurrence
+- route tests for auth/tasks/comments/attachments/recurrence/assistant
 
 Not implemented yet:
-- AI assistant
 - reporting
 - notifications
 - mobile client
@@ -134,9 +135,14 @@ The boundaries below reflect current ownership and future evolution points.
 
 ### AI assistant
 - Relation to task history: read-oriented assistant over tasks and related entities.
-- Likely backend module: `backend/src/assistant/`.
-- Likely frontend feature area: `frontend/src/features/assistant/`.
-- Sprint posture: postponed.
+- Current backend module: `backend/src/assistant/`.
+- Current API surface:
+  - `POST /api/assistant/reply`
+- Current behavior:
+  - uses user question + owned tasks/comments across all dates as context
+  - supports `heuristic` (default) and `openai` provider modes
+  - falls back to heuristic when OpenAI is unavailable
+- Current posture: implemented.
 
 ### Reporting
 - Relation to task history: aggregated analytics over task lifecycle and date dimensions.
@@ -156,7 +162,7 @@ Likely future entities:
 
 Current extension points to preserve:
 - backend route split by domain in `backend/src/routes/`
-- backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, and `backend/src/recurrence/`
+- backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, `backend/src/recurrence/`, and `backend/src/assistant/`
 - frontend feature folders in `frontend/src/features/`
 - stable task API contract for frontend/backend integration
 
@@ -195,3 +201,10 @@ Analytics work can be blocked if lifecycle semantics drift.
 
 Mitigation:
 - preserve current status and timestamp semantics unless changed via dedicated migration + API ticket
+
+### Risk 6 - Assistant provider availability
+External AI provider calls can fail or time out.
+
+Mitigation:
+- keep heuristic provider as default-safe mode
+- keep OpenAI integration optional and environment-controlled

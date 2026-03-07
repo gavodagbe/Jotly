@@ -1,4 +1,8 @@
 import Fastify, { FastifyInstance } from "fastify";
+import {
+  createAssistantService,
+  AssistantService,
+} from "./assistant/assistant-service";
 import { createPrismaAttachmentStore, AttachmentStore } from "./attachments/attachment-store";
 import { createAuthService } from "./auth/auth-service";
 import { createPrismaAuthStore, AuthStore } from "./auth/auth-store";
@@ -6,6 +10,7 @@ import { createPrismaCommentStore, CommentStore } from "./comments/comment-store
 import healthRoutes from "./routes/health";
 import authRoutes from "./routes/auth";
 import attachmentsRoutes from "./routes/attachments";
+import assistantRoutes from "./routes/assistant";
 import commentsRoutes from "./routes/comments";
 import recurrenceRoutes from "./routes/recurrence";
 import tasksRoutes from "./routes/tasks";
@@ -19,6 +24,12 @@ export type BuildAppOptions = {
   commentStore?: CommentStore;
   attachmentStore?: AttachmentStore;
   recurrenceStore?: RecurrenceStore;
+  assistantService?: AssistantService;
+  assistantProvider?: "openai" | "heuristic";
+  openAiApiKey?: string;
+  openAiModel?: string;
+  openAiBaseUrl?: string;
+  assistantRequestTimeoutMs?: number;
   authSessionTtlHours?: number;
 };
 
@@ -43,6 +54,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const recurrenceStore =
     options.recurrenceStore ??
     (options.taskStore ? undefined : createPrismaRecurrenceStore());
+  const assistantService =
+    options.assistantService ??
+    createAssistantService({
+      provider: options.assistantProvider ?? "heuristic",
+      openAiApiKey: options.openAiApiKey,
+      openAiModel: options.openAiModel ?? "gpt-4o-mini",
+      openAiBaseUrl: options.openAiBaseUrl ?? "https://api.openai.com/v1",
+      requestTimeoutMs: options.assistantRequestTimeoutMs ?? 10000,
+    });
   const authService = createAuthService({
     authStore,
     sessionTtlMs: (options.authSessionTtlHours ?? 168) * 60 * 60 * 1000
@@ -62,6 +82,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (recurrenceStore) {
     app.register(recurrenceRoutes, { taskStore, recurrenceStore, authService });
   }
+  app.register(assistantRoutes, { taskStore, commentStore, authService, assistantService });
 
   app.setErrorHandler((error, request, reply) => {
     const candidateStatusCode = (error as { statusCode?: number }).statusCode;

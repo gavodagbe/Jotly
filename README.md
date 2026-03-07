@@ -6,6 +6,7 @@ This repository currently contains the MVP foundation:
 - `frontend/` Next.js app shell
 - `backend/` Fastify API foundation
 - Docker Compose local stack with PostgreSQL
+- Authenticated task board with comments, attachments, recurrence, and AI assistant
 
 ## Repository Layout
 - `frontend/` - frontend application workspace
@@ -33,6 +34,24 @@ Services:
 - PostgreSQL: `localhost:5432` (data persisted in named volume `postgres_data`)
 
 Note: inside Docker Compose, backend connects to PostgreSQL via service hostname `postgres` using `DATABASE_URL_DOCKER`.
+
+## AI Assistant Configuration
+
+Backend assistant route:
+- `POST /api/assistant/reply`
+- request body: `{ "question": "..." }`
+- authenticated scope: all tasks/comments owned by the current user across all dates
+
+Modes:
+- `AI_ASSISTANT_PROVIDER=heuristic` (default, no external dependency)
+- `AI_ASSISTANT_PROVIDER=openai` (requires `OPENAI_API_KEY`)
+
+Relevant backend env vars:
+- `AI_ASSISTANT_PROVIDER`
+- `OPENAI_API_KEY` (required only for OpenAI provider)
+- `OPENAI_MODEL` (default: `gpt-4o-mini`)
+- `OPENAI_API_BASE_URL` (default: `https://api.openai.com/v1`)
+- `AI_ASSISTANT_TIMEOUT_MS` (default: `10000`)
 
 ## Production Deployment (Hostinger VM + Nginx)
 

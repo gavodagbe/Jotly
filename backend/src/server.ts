@@ -5,7 +5,12 @@ async function start(): Promise<void> {
   const env = getEnv();
   const app = buildApp({
     logLevel: env.LOG_LEVEL,
-    authSessionTtlHours: env.AUTH_SESSION_TTL_HOURS
+    authSessionTtlHours: env.AUTH_SESSION_TTL_HOURS,
+    assistantProvider: env.AI_ASSISTANT_PROVIDER,
+    openAiApiKey: env.OPENAI_API_KEY,
+    openAiModel: env.OPENAI_MODEL,
+    openAiBaseUrl: env.OPENAI_API_BASE_URL,
+    assistantRequestTimeoutMs: env.AI_ASSISTANT_TIMEOUT_MS,
   });
 
   try {

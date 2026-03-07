@@ -36,13 +36,14 @@ This section reflects the current repository implementation.
 - Comments endpoints in `backend/src/routes/comments.ts`
 - Attachments endpoints in `backend/src/routes/attachments.ts`
 - Recurrence endpoints in `backend/src/routes/recurrence.ts`
+- AI assistant endpoint in `backend/src/routes/assistant.ts`
 
 ### Database
 - PostgreSQL
 - Prisma `Task` model with status, priority, date, and lifecycle timestamps
 
 ### Testing
-- Node test runner tests for auth/tasks/comments/attachments/recurrence routes
+- Node test runner tests for auth/tasks/comments/attachments/recurrence/assistant routes
 
 ### Infrastructure
 - Docker
@@ -98,6 +99,7 @@ Implemented endpoints:
 - `GET /api/tasks/:id/recurrence`
 - `PUT /api/tasks/:id/recurrence`
 - `DELETE /api/tasks/:id/recurrence`
+- `POST /api/assistant/reply`
 
 Rules:
 - JSON-only API
@@ -121,6 +123,7 @@ Main UI currently includes:
 - date selector
 - previous / today / next navigation
 - 4-column Kanban board
+- AI assistant chatbot (FAB) using global user task context
 - create/edit task dialog
 - delete confirmation dialog
 - empty states and API error states
@@ -134,7 +137,6 @@ UI principles:
 
 ## Sprint 1 postponed modules
 The following modules are explicitly postponed after Sprint 1 implementation:
-- AI assistant
 - reporting
 - notifications
 - mobile app
@@ -170,10 +172,13 @@ The modules below define intended boundaries without pre-building abstractions.
 
 ### AI assistant
 - Relation to task history: read-oriented assistant over tasks, status transitions, and dates.
-- Likely backend ownership: `backend/src/assistant/`.
-- Data/query dependencies: task list/history plus future comment and attachment metadata.
-- Likely frontend entry points: assistant panel under `frontend/src/features/assistant/`.
-- Sprint 1 status: postponed.
+- Current backend ownership: `backend/src/assistant/`.
+- Current API surface: `POST /api/assistant/reply`.
+- Current behavior:
+  - uses user question + owned tasks/comments across all dates as context
+  - supports `heuristic` (default) and `openai` provider modes
+  - falls back to heuristic when OpenAI is unavailable
+- Current status: implemented.
 
 ### Reporting
 - Likely reporting dimensions: completion by date, status distribution, throughput trends, cancellation rate.

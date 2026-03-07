@@ -1,6 +1,7 @@
 import { Task, TaskComment, TaskPriority, TaskStatus } from "@prisma/client";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AssistantReplyInput, AssistantService } from "../assistant/assistant-service";
 import { AuthSession, AuthStore, AuthUser, CreateAuthSessionInput, CreateAuthUserInput } from "../auth/auth-store";
 import { CommentStore, TaskCommentCreateInput, TaskCommentUpdateInput } from "../comments/comment-store";
 import { buildApp } from "../app";
@@ -15,12 +16,12 @@ class InMemoryTaskStore implements TaskStore {
     const matches = [...this.tasks.values()].filter(
       (task) => task.userId === userId && formatDateOnly(task.targetDate) === selectedDate
     );
-    return matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    return matches.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
   }
 
   async listByUser(userId: string): Promise<Task[]> {
     const matches = [...this.tasks.values()].filter((task) => task.userId === userId);
-    return matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    return matches.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
   }
 
   async getById(id: string, userId: string): Promise<Task | null> {
@@ -211,6 +212,18 @@ class InMemoryAuthStore implements AuthStore {
   }
 }
 
+class EchoAssistantService implements AssistantService {
+  async generateReply(input: AssistantReplyInput) {
+    const firstTaskTitle = input.tasks[0]?.title ?? "none";
+
+    return {
+      answer: `tasks=${input.tasks.length};first=${firstTaskTitle};question=${input.question}`,
+      source: "heuristic" as const,
+      warning: null,
+    };
+  }
+}
+
 function parsePayload(payload: string) {
   return JSON.parse(payload) as Record<string, unknown>;
 }
@@ -227,6 +240,7 @@ function createAppForTest() {
     taskStore: new InMemoryTaskStore(),
     commentStore: new InMemoryCommentStore(),
     authStore: new InMemoryAuthStore(),
+    assistantService: new EchoAssistantService(),
   });
 }
 
@@ -245,16 +259,21 @@ async function registerAndGetToken(app: ReturnType<typeof createAppForTest>): Pr
   return (body.data as { token: string }).token;
 }
 
-async function createTask(app: ReturnType<typeof createAppForTest>, token: string): Promise<string> {
+async function createTask(
+  app: ReturnType<typeof createAppForTest>,
+  token: string,
+  title: string,
+  targetDate = "2026-03-06"
+): Promise<string> {
   const response = await app.inject({
     method: "POST",
     url: "/api/tasks",
     headers: authHeaders(token),
     payload: {
-      title: "Task with comments",
-      targetDate: "2026-03-06",
+      title,
+      targetDate,
       status: "todo" satisfies TaskStatus,
-      priority: "medium" satisfies TaskPriority,
+      priority: "high" satisfies TaskPriority,
     },
   });
 
@@ -263,7 +282,7 @@ async function createTask(app: ReturnType<typeof createAppForTest>, token: strin
   return (body.data as { id: string }).id;
 }
 
-test("comments endpoints support create, list, update, and delete", async (t) => {
+test("POST /api/assistant/reply returns assistant guidance with usage metadata across all user dates", async (t) => {
   const app = createAppForTest();
 
   t.after(async () => {
@@ -271,69 +290,58 @@ test("comments endpoints support create, list, update, and delete", async (t) =>
   });
 
   const token = await registerAndGetToken(app);
-  const taskId = await createTask(app, token);
+  const firstTaskId = await createTask(app, token, "Finish release note", "2026-03-06");
+  await createTask(app, token, "Prepare sprint recap", "2026-03-07");
 
-  const createResponse = await app.inject({
+  const commentResponse = await app.inject({
     method: "POST",
-    url: `/api/tasks/${taskId}/comments`,
+    url: `/api/tasks/${firstTaskId}/comments`,
     headers: authHeaders(token),
     payload: {
-      body: "Initial note",
+      body: "Waiting for copy review",
     },
   });
 
-  assert.equal(createResponse.statusCode, 201);
-  const createPayload = parsePayload(createResponse.payload);
-  const createdComment = createPayload.data as { id: string; body: string };
-  assert.equal(createdComment.body, "Initial note");
+  assert.equal(commentResponse.statusCode, 201);
 
-  const listResponse = await app.inject({
-    method: "GET",
-    url: `/api/tasks/${taskId}/comments`,
-    headers: authHeaders(token),
-  });
-
-  assert.equal(listResponse.statusCode, 200);
-  const listPayload = parsePayload(listResponse.payload);
-  const listedComments = listPayload.data as Array<{ id: string; body: string }>;
-  assert.equal(listedComments.length, 1);
-  assert.equal(listedComments[0].body, "Initial note");
-
-  const updateResponse = await app.inject({
-    method: "PATCH",
-    url: `/api/tasks/${taskId}/comments/${createdComment.id}`,
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/reply",
     headers: authHeaders(token),
     payload: {
-      body: "Updated note",
+      question: "What should I do first?",
     },
   });
 
-  assert.equal(updateResponse.statusCode, 200);
-  const updatePayload = parsePayload(updateResponse.payload);
-  const updatedComment = updatePayload.data as { body: string };
-  assert.equal(updatedComment.body, "Updated note");
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as Record<string, unknown>;
 
-  const deleteResponse = await app.inject({
-    method: "DELETE",
-    url: `/api/tasks/${taskId}/comments/${createdComment.id}`,
-    headers: authHeaders(token),
-  });
-
-  assert.equal(deleteResponse.statusCode, 200);
-
-  const listAfterDelete = await app.inject({
-    method: "GET",
-    url: `/api/tasks/${taskId}/comments`,
-    headers: authHeaders(token),
-  });
-
-  assert.equal(listAfterDelete.statusCode, 200);
-  const listAfterDeletePayload = parsePayload(listAfterDelete.payload);
-  const listAfterDeleteData = listAfterDeletePayload.data as Array<unknown>;
-  assert.equal(listAfterDeleteData.length, 0);
+  assert.equal(data.source, "heuristic");
+  assert.equal(data.usedTaskCount, 2);
+  assert.equal(data.usedCommentCount, 1);
+  assert.match(String(data.answer), /tasks=2/);
 });
 
-test("comments endpoints enforce task ownership boundaries", async (t) => {
+test("POST /api/assistant/reply requires authentication", async (t) => {
+  const app = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/reply",
+    payload: {
+      question: "What is next?",
+    },
+  });
+
+  assert.equal(response.statusCode, 401);
+});
+
+test("POST /api/assistant/reply only uses tasks from authenticated user", async (t) => {
   const app = createAppForTest();
 
   t.after(async () => {
@@ -342,44 +350,48 @@ test("comments endpoints enforce task ownership boundaries", async (t) => {
 
   const ownerToken = await registerAndGetToken(app);
   const otherUserToken = await registerAndGetToken(app);
-  const taskId = await createTask(app, ownerToken);
 
-  const listResponse = await app.inject({
-    method: "GET",
-    url: `/api/tasks/${taskId}/comments`,
-    headers: authHeaders(otherUserToken),
-  });
+  await createTask(app, ownerToken, "Owner private task");
 
-  assert.equal(listResponse.statusCode, 404);
-
-  const createResponse = await app.inject({
+  const response = await app.inject({
     method: "POST",
-    url: `/api/tasks/${taskId}/comments`,
+    url: "/api/assistant/reply",
     headers: authHeaders(otherUserToken),
     payload: {
-      body: "Should not be added",
+      question: "What should I focus on?",
     },
   });
 
-  assert.equal(createResponse.statusCode, 404);
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as Record<string, unknown>;
+
+  assert.equal(data.usedTaskCount, 0);
+  assert.match(String(data.answer), /tasks=0/);
 });
 
-test("comments endpoints require authentication", async (t) => {
+test("POST /api/assistant/reply validates body", async (t) => {
   const app = createAppForTest();
 
   t.after(async () => {
     await app.close();
   });
 
+  const token = await registerAndGetToken(app);
   const response = await app.inject({
-    method: "GET",
-    url: "/api/tasks/task-1/comments",
+    method: "POST",
+    url: "/api/assistant/reply",
+    headers: authHeaders(token),
+    payload: {
+      question: "",
+    },
   });
 
-  assert.equal(response.statusCode, 401);
+  assert.equal(response.statusCode, 400);
   const body = parsePayload(response.payload);
-  assert.deepEqual(body.error, {
-    code: "UNAUTHORIZED",
-    message: "Authentication is required",
-  });
+  const error = body.error as { code: string; details?: string[] };
+
+  assert.equal(error.code, "VALIDATION_ERROR");
+  assert.ok(Array.isArray(error.details));
+  assert.ok(error.details && error.details.length >= 1);
 });

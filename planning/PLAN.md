@@ -40,6 +40,7 @@ Completed:
 - attachments module (API + tests)
 - recurrence module (API + tests)
 - frontend task details integrations for comments/attachments/recurrence
+- AI assistant module (backend route + frontend panel)
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal
@@ -47,8 +48,13 @@ Latest attachment handling conventions:
 - backend enforces max attachment size of 5 MB per item
 - backend app body limit set to 8 MB for upload payloads
 
+Latest AI assistant conventions:
+- endpoint: `POST /api/assistant/reply`
+- authenticated scope: all current user tasks/comments across all dates
+- provider modes: `heuristic` (default) or `openai`
+- automatic fallback to heuristic when OpenAI is unavailable
+
 Still not implemented:
-- AI assistant
 - reporting
 - notifications
 - mobile client

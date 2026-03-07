@@ -25,6 +25,11 @@ services:
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
       AUTH_SESSION_TTL_HOURS: ${AUTH_SESSION_TTL_HOURS:-168}
+      AI_ASSISTANT_PROVIDER: ${AI_ASSISTANT_PROVIDER:-heuristic}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1}
+      AI_ASSISTANT_TIMEOUT_MS: ${AI_ASSISTANT_TIMEOUT_MS:-10000}
       DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://postgres:postgres@postgres:5432/jotly}
     depends_on:
       postgres:

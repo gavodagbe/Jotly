@@ -19,6 +19,7 @@ export type TaskUpdateInput = Partial<Omit<TaskCreateInput, "userId">>;
 
 export type TaskStore = {
   listByDate(targetDate: Date, userId: string): Promise<Task[]>;
+  listByUser(userId: string): Promise<Task[]>;
   getById(id: string, userId: string): Promise<Task | null>;
   create(input: TaskCreateInput): Promise<Task>;
   update(id: string, input: TaskUpdateInput, userId: string): Promise<Task | null>;
@@ -72,6 +73,22 @@ export function createPrismaTaskStore(prisma = new PrismaClient()): TaskStore {
         orderBy: {
           createdAt: "asc"
         }
+      });
+    },
+
+    async listByUser(userId) {
+      return prisma.task.findMany({
+        where: {
+          userId,
+        },
+        orderBy: [
+          {
+            targetDate: "asc",
+          },
+          {
+            createdAt: "asc",
+          },
+        ],
       });
     },
 

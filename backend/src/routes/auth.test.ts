@@ -10,6 +10,10 @@ class NoopTaskStore implements TaskStore {
     return [];
   }
 
+  async listByUser(_userId: string): Promise<Task[]> {
+    return [];
+  }
+
   async getById(_id: string, _userId: string): Promise<Task | null> {
     return null;
   }

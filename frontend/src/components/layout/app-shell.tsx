@@ -78,6 +78,25 @@ type TaskRecurrenceMutationInput = {
   endsOn: string | null;
 };
 
+type AssistantReplyPayload = {
+  answer: string;
+  source: "openai" | "heuristic";
+  warning: string | null;
+  generatedAt: string;
+  usedTaskCount: number;
+  usedCommentCount: number;
+};
+
+type AssistantChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  source?: "openai" | "heuristic";
+  usedTaskCount?: number;
+  usedCommentCount?: number;
+};
+
 type TaskAttachmentMutationInput = {
   name: string;
   file: File;
@@ -132,6 +151,13 @@ class ApiRequestError extends Error {
 const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
 const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
+
+const ASSISTANT_PROMPT_SUGGESTIONS: ReadonlyArray<string> = [
+  "What should I prioritize across all my tasks?",
+  "Create a realistic order for my open tasks this week.",
+  "Which tasks look blocked and what should I unblock first?",
+];
 
 const BOARD_COLUMNS: ReadonlyArray<{
   status: TaskStatus;
@@ -1026,6 +1052,30 @@ async function deleteTaskRecurrence(taskId: string, token: string): Promise<void
   }
 }
 
+async function requestAssistantReply(question: string, token: string): Promise<AssistantReplyPayload> {
+  const response = await fetch("/backend-api/assistant/reply", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      question,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: AssistantReplyPayload; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to generate assistant reply"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to generate assistant reply.");
+  }
+
+  return payload.data;
+}
+
 type AppNavbarProps = {
   user: AuthUser | null;
   onLogout?: () => void;
@@ -1530,6 +1580,12 @@ export function AppShell() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dragErrorMessage, setDragErrorMessage] = useState<string | null>(null);
+  const [isAssistantPanelOpen, setIsAssistantPanelOpen] = useState(false);
+  const [assistantQuestion, setAssistantQuestion] = useState("");
+  const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([]);
+  const [assistantErrorMessage, setAssistantErrorMessage] = useState<string | null>(null);
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+  const assistantMessagesEndRef = useRef<HTMLDivElement | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
 
@@ -1635,6 +1691,11 @@ export function AppShell() {
     setTasks([]);
     setErrorMessage(null);
     setDragErrorMessage(null);
+    setIsAssistantPanelOpen(false);
+    setAssistantQuestion("");
+    setAssistantMessages([]);
+    setAssistantErrorMessage(null);
+    setIsAssistantLoading(false);
     setIsLoading(false);
     setTaskDialogMode(null);
     setEditingTaskId(null);
@@ -1826,6 +1887,7 @@ export function AppShell() {
     setIsLoading(true);
     setErrorMessage(null);
     setDragErrorMessage(null);
+    setAssistantErrorMessage(null);
     setActiveTaskId(null);
     setPendingTaskIds([]);
 
@@ -1839,6 +1901,71 @@ export function AppShell() {
     resetTaskDetailsState();
 
     setSelectedDate(nextDate);
+  }
+
+  async function handleAssistantSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isAssistantLoading) {
+      return;
+    }
+
+    const normalizedQuestion = assistantQuestion.trim();
+
+    if (!normalizedQuestion) {
+      setAssistantErrorMessage("Enter a question for the assistant.");
+      return;
+    }
+
+    if (normalizedQuestion.length > ASSISTANT_QUESTION_MAX_LENGTH) {
+      setAssistantErrorMessage(
+        `Question is too long. Maximum length is ${ASSISTANT_QUESTION_MAX_LENGTH} characters.`
+      );
+      return;
+    }
+
+    if (!authToken) {
+      setAssistantErrorMessage("Authentication is required.");
+      return;
+    }
+
+    const userMessage: AssistantChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: normalizedQuestion,
+      timestamp: new Date().toISOString(),
+    };
+
+    setIsAssistantPanelOpen(true);
+    setAssistantMessages((currentMessages) => [...currentMessages, userMessage]);
+    setAssistantQuestion("");
+    setAssistantErrorMessage(null);
+    setIsAssistantLoading(true);
+
+    try {
+      const reply = await requestAssistantReply(normalizedQuestion, authToken);
+      const assistantMessage: AssistantChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: "assistant",
+        content: reply.answer,
+        timestamp: reply.generatedAt,
+        source: reply.source,
+        usedTaskCount: reply.usedTaskCount,
+        usedCommentCount: reply.usedCommentCount,
+      };
+
+      setAssistantMessages((currentMessages) => [...currentMessages, assistantMessage]);
+
+      if (reply.warning) {
+        setAssistantErrorMessage(reply.warning);
+      }
+    } catch (error) {
+      setAssistantErrorMessage(
+        error instanceof Error ? error.message : "Unable to generate assistant reply."
+      );
+    } finally {
+      setIsAssistantLoading(false);
+    }
   }
 
   function updateTaskFormField(field: keyof TaskFormValues, value: string) {
@@ -2401,6 +2528,17 @@ export function AppShell() {
       return mergedOptions;
     });
   }, [isAuthReady, tasks]);
+
+  useEffect(() => {
+    if (!isAssistantPanelOpen) {
+      return;
+    }
+
+    assistantMessagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [assistantMessages, isAssistantPanelOpen]);
 
   const tasksByStatus = useMemo(() => {
     return {
@@ -3290,6 +3428,114 @@ export function AppShell() {
           </section>
         </div>
       ) : null}
+
+      {isAssistantPanelOpen ? (
+        <section className="fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_24px_65px_-35px_rgba(16,34,48,0.95)] sm:left-auto sm:right-6 sm:w-[390px]">
+          <header className="flex items-center justify-between gap-2 border-b border-line bg-surface-soft px-4 py-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">AI Assistant</p>
+              <p className="text-sm font-semibold text-foreground">All your tasks</p>
+            </div>
+            <button
+              type="button"
+              className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+              onClick={() => setIsAssistantPanelOpen(false)}
+              disabled={isAssistantLoading}
+            >
+              Close
+            </button>
+          </header>
+
+          <div className="flex-1 space-y-2 overflow-y-auto bg-surface-soft/40 px-3 py-3">
+            {assistantMessages.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                Ask anything about your tasks across all dates. Press Enter to send.
+              </p>
+            ) : (
+              <>
+                {assistantMessages.map((message) => (
+                  <article
+                    key={message.id}
+                    className={`max-w-[92%] rounded-2xl px-3 py-2 ${
+                      message.role === "user"
+                        ? "ml-auto border border-accent/25 bg-accent-soft text-foreground"
+                        : "border border-line bg-surface text-foreground/90"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                    <p className="mt-1 text-[11px] text-muted">
+                      {formatDateTime(message.timestamp)}
+                      {message.role === "assistant" && message.source ? ` · ${message.source}` : ""}
+                      {message.role === "assistant" &&
+                      typeof message.usedTaskCount === "number" &&
+                      typeof message.usedCommentCount === "number"
+                        ? ` · ${message.usedTaskCount} tasks, ${message.usedCommentCount} comments`
+                        : ""}
+                    </p>
+                  </article>
+                ))}
+                <div ref={assistantMessagesEndRef} />
+              </>
+            )}
+          </div>
+
+          <div className="border-t border-line bg-surface px-3 py-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {ASSISTANT_PROMPT_SUGGESTIONS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+                  onClick={() => {
+                    setAssistantQuestion(prompt);
+                    setAssistantErrorMessage(null);
+                  }}
+                  disabled={isAssistantLoading}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+
+            <form className="flex items-center gap-2" onSubmit={handleAssistantSubmit}>
+              <input
+                type="text"
+                value={assistantQuestion}
+                onChange={(event) => {
+                  setAssistantQuestion(event.target.value);
+                  setAssistantErrorMessage(null);
+                }}
+                className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55"
+                maxLength={ASSISTANT_QUESTION_MAX_LENGTH}
+                placeholder="Ask anything about your tasks..."
+                disabled={isAssistantLoading}
+              />
+              <button type="submit" className={primaryButtonClass} disabled={isAssistantLoading}>
+                {isAssistantLoading ? "..." : "Send"}
+              </button>
+            </form>
+
+            <p className="mt-2 text-[11px] text-muted">
+              {assistantQuestion.trim().length}/{ASSISTANT_QUESTION_MAX_LENGTH}
+            </p>
+
+            {assistantErrorMessage ? (
+              <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {assistantErrorMessage}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      <button
+        type="button"
+        className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-accent/75 bg-accent text-lg font-semibold text-white shadow-[0_20px_45px_-25px_rgba(16,34,48,0.95)] transition hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        onClick={() => setIsAssistantPanelOpen((isOpen) => !isOpen)}
+        aria-label={isAssistantPanelOpen ? "Close AI assistant" : "Open AI assistant"}
+      >
+        AI
+      </button>
     </div>
   );
 }
