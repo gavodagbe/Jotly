@@ -1,19 +1,28 @@
 # Jotly - Architecture Decisions and Risks
 
-## Current implementation reality check
+## Current implementation reality check (as of 2026-03-07)
 Implemented in the current codebase:
 - backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
 - backend auth/session API (`backend/src/routes/auth.ts`)
+- authenticated ownership boundaries on task-linked routes (tasks/comments/attachments/recurrence)
 - backend comments API (`backend/src/routes/comments.ts`)
 - backend attachments API (`backend/src/routes/attachments.ts`)
 - backend recurrence API (`backend/src/routes/recurrence.ts`)
-- Prisma task model with status and lifecycle timestamps (`backend/prisma/schema.prisma`)
+- Fastify request body limit configured to 8 MB (`backend/src/app.ts`)
+- attachment validation limit of 5 MB per attachment plus URL payload size guard (`backend/src/routes/attachments.ts`)
+- Prisma task model with status, priority, and lifecycle timestamps (`backend/prisma/schema.prisma`)
 - frontend date-driven Kanban board with create/edit/delete dialogs and drag-and-drop status updates (`frontend/src/components/layout/app-shell.tsx`)
+- frontend task details support for comments, recurrence, and file-based attachments converted to `data:` URLs before upload (`frontend/src/components/layout/app-shell.tsx`)
 - Docker Compose local runtime (frontend, backend, postgres)
+- route tests for auth/tasks/comments/attachments/recurrence
 
 Not implemented yet:
 - AI assistant
 - reporting
+- notifications
+- mobile client
+- real-time sync
+- offline-first behavior
 
 ## Key decisions
 
@@ -33,7 +42,7 @@ Jotly uses PostgreSQL as the primary database.
 Reason:
 - stronger foundation for date filtering
 - better fit for reporting and analytics
-- relational consistency for future modules
+- relational consistency for task-linked entities
 - cleaner long-term evolution
 
 ### 3. Prisma as ORM
@@ -72,9 +81,9 @@ Reason:
 - easier service wiring
 - clean path to later VM deployment
 
-### 7. Jira + Confluence MCP only
-Use Atlassian MCP for ticket and context access.
-Do not use GitHub MCP.
+### 7. Jira + Confluence MCP only for planning context
+Use Atlassian MCP for ticket and documentation context.
+Do not depend on GitHub MCP for planning workflow.
 
 Reason:
 - Jira and Confluence provide enough planning context
@@ -94,100 +103,95 @@ The boundaries below reflect current ownership and future evolution points.
 
 ### Comments
 - Relation to tasks: comments are children of tasks.
-- Likely backend module: `backend/src/comments/`.
-- Likely frontend feature area: `frontend/src/features/comments/`.
-- Likely API surface:
+- Current API surface:
   - `GET /api/tasks/:id/comments`
   - `POST /api/tasks/:id/comments`
   - `PATCH /api/tasks/:id/comments/:commentId`
   - `DELETE /api/tasks/:id/comments/:commentId`
-- Current posture: implemented.
+- Current posture: implemented with ownership enforcement.
 
 ### Attachments
 - Relation to tasks: attachments are task-linked assets.
-- Ownership split: metadata in PostgreSQL, binary storage via dedicated storage integration later.
-- Likely backend module: `backend/src/attachments/`.
-- Likely frontend feature area: `frontend/src/features/attachments/`.
-- Likely API surface:
+- Current API surface:
   - `GET /api/tasks/:id/attachments`
   - `POST /api/tasks/:id/attachments`
   - `DELETE /api/tasks/:id/attachments/:attachmentId`
-- Current posture: implemented.
+- Current MVP storage posture:
+  - frontend sends file content as `data:` URL
+  - metadata (`name`, `contentType`, `sizeBytes`) stored with attachment record
+  - backend enforces max size 5 MB per attachment
+  - app-level body limit set to 8 MB
+- Future direction: migrate binary content to dedicated object storage and keep PostgreSQL for metadata only.
 
 ### Recurrence
 - Relation to tasks: recurrence rules generate date-specific task instances.
-- Likely backend module: `backend/src/recurrence/`.
-- Likely frontend feature area: `frontend/src/features/recurrence/`.
-- Likely approach: keep concrete tasks explicit and persist recurrence metadata separately.
+- Current API surface:
+  - `GET /api/tasks/:id/recurrence`
+  - `PUT /api/tasks/:id/recurrence`
+  - `DELETE /api/tasks/:id/recurrence`
 - Current posture: implemented.
+- Evolution rule: keep concrete daily tasks explicit and persist recurrence metadata separately.
 
 ### AI assistant
-- Relation to task history: read-oriented assistant over task history and future contextual modules.
+- Relation to task history: read-oriented assistant over tasks and related entities.
 - Likely backend module: `backend/src/assistant/`.
 - Likely frontend feature area: `frontend/src/features/assistant/`.
-- Expected dependencies: task records first, then comments/attachments signals when available.
-- Sprint 1 posture: postponed.
+- Sprint posture: postponed.
 
 ### Reporting
 - Relation to task history: aggregated analytics over task lifecycle and date dimensions.
 - Likely backend module: `backend/src/reporting/`.
 - Likely frontend feature area: `frontend/src/features/reporting/`.
-- Expected dependencies: task status/date/timestamps first, then recurrence/comments/attachments data when added.
-- Sprint 1 posture: postponed.
+- Sprint posture: postponed.
 
-## Future entities and extension points
+## Entities and extension points
 Existing entities:
+- `Task`
 - `TaskComment`
 - `TaskAttachment`
 - `TaskRecurrenceRule`
 
 Likely future entities:
-- `TaskActivityEvent` (only if event-level reporting is needed later)
+- `TaskActivityEvent` (if event-level analytics becomes required)
 
 Current extension points to preserve:
 - backend route split by domain in `backend/src/routes/`
-- backend task domain module in `backend/src/tasks/`
+- backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, and `backend/src/recurrence/`
 - frontend feature folders in `frontend/src/features/`
 - stable task API contract for frontend/backend integration
-
-## Sprint 1 postponed areas
-These are intentionally not fully implemented in Sprint 1:
-- AI assistant
-- reporting
-- notifications
-- mobile
-- real-time sync
-- offline-first
 
 ## Main risks
 
 ### Risk 1 - Scope creep
-Sprint 1 could become too broad.
+Additional feature requests can blur ticket boundaries.
 
 Mitigation:
-- respect Jira ticket boundaries strictly
+- keep delivery ticket-scoped
+- defer cross-domain expansion unless explicitly ticketed
 
-### Risk 2 - Over-engineering
-Future modules could create premature abstractions.
+### Risk 2 - Attachment storage scalability
+`data:` URL payloads can stress request/body size and database growth.
 
 Mitigation:
-- document boundaries without overbuilding
+- enforce 5 MB per attachment
+- enforce 8 MB request body limit
+- move binary content to object storage in a dedicated follow-up ticket
 
-### Risk 3 - Frontend/backend drift
+### Risk 3 - Frontend/backend contract drift
 Contracts may diverge as features evolve.
 
 Mitigation:
-- keep API explicit and stable
-- update both sides carefully
+- keep APIs explicit and stable
+- update tests on both sides with each contract change
 
 ### Risk 4 - Docs drift
-Planning files may stop matching the repo.
+Planning files can lag behind implementation.
 
 Mitigation:
-- update docs only when architecture, scope, or technical conventions truly change
+- refresh planning docs whenever architecture or conventions change
 
 ### Risk 5 - Reporting blind spots
-Later analytics work can be blocked if lifecycle timestamps and status semantics change unexpectedly.
+Analytics work can be blocked if lifecycle semantics drift.
 
 Mitigation:
-- keep current task lifecycle fields stable unless a dedicated migration ticket updates docs and API together
+- preserve current status and timestamp semantics unless changed via dedicated migration + API ticket

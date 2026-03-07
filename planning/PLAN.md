@@ -1,89 +1,72 @@
-# Jotly - Sprint 1 Plan
+# Jotly - Sprint Plan and Status
 
 ## Objective
-Deliver the first usable MVP foundation of Jotly:
+Deliver a stable MVP foundation for a date-driven task dashboard:
 - runnable local stack
-- PostgreSQL-backed task persistence
-- date-driven Kanban board
-- core task management flows
+- PostgreSQL-backed persistence
+- Kanban workflow by selected date
+- secure task operations per authenticated user
 
-## Phase 1 - Foundation
+## Sprint 1 baseline plan (historical)
+### Phase 1 - Foundation
 - JOT-1 - Initialize monorepo structure
 - JOT-2 - Setup frontend Next.js app
 - JOT-3 - Setup backend Fastify app
 - JOT-4 - Setup PostgreSQL + Docker Compose
 
-Success criteria:
-- repo structure is clean
-- frontend starts
-- backend starts
-- Docker Compose works
-- PostgreSQL is reachable
-
-## Phase 2 - Data and API
+### Phase 2 - Data and API
 - JOT-5 - Create database schema for tasks
 - JOT-6 - Implement task CRUD API
 
-Success criteria:
-- Prisma schema exists
-- migration works
-- seed works
-- task CRUD endpoints work
-- fetch by date works
-- validation and structured errors are in place
-
-## Phase 3 - Product UI
+### Phase 3 - Product UI
 - JOT-7 - Build Kanban board UI for selected date
 - JOT-8 - Implement drag and drop task status changes
 - JOT-9 - Implement create/edit/delete task dialogs
 
-Success criteria:
-- user can select a date
-- tasks render in the correct columns
-- status changes persist
-- create/edit/delete works
-- board remains consistent after refresh
+### Phase 4 - Architecture consolidation
+- JOT-10 - Align architecture and planning documentation
 
-## Phase 4 - Architecture consolidation
-- JOT-10 - Prepare future modules in architecture and documentation
-
-Required documentation deliverables:
-- align planning docs with current implementation reality
-- document future backend module boundaries
-- document future frontend feature boundaries
-- document known future entities and extension points
-- document postponed scope after Sprint 1
-
-Future modules to cover explicitly:
-- comments
-- attachments
-- recurrence
-- AI assistant over task history
-- reporting-oriented features
-
-Out of scope for JOT-10:
+Historical JOT-10 out-of-scope (ticket-level):
 - implementing comments/attachments/recurrence/AI/reporting
 - adding full schema for future modules
 - broad refactors unrelated to documentation clarity
 
-Success criteria:
-- docs match actual implementation
-- future boundaries for comments, attachments, recurrence, AI assistant, and reporting are clear
-- postponed scope is explicit
-- no unnecessary implementation was added
+## Current implementation status (as of 2026-03-07)
+Completed:
+- JOT-1 to JOT-10 baseline deliverables
+- authentication/session flow (`register`, `login`, `me`, `logout`)
+- authenticated ownership boundaries on task domain routes
+- comments module (API + tests)
+- attachments module (API + tests)
+- recurrence module (API + tests)
+- frontend task details integrations for comments/attachments/recurrence
 
-## Execution flow per ticket
+Latest attachment handling conventions:
+- frontend uploads local files from the task details modal
+- payload sent as `data:` URL + `contentType` + `sizeBytes`
+- backend enforces max attachment size of 5 MB per item
+- backend app body limit set to 8 MB for upload payloads
+
+Still not implemented:
+- AI assistant
+- reporting
+- notifications
+- mobile client
+- real-time sync
+- offline-first behavior
+
+## Working rules per ticket
 1. Move Jira ticket to In Progress.
-2. Let the agent read the ticket.
-3. Create local branch.
+2. Let the agent read the ticket context.
+3. Create a local branch.
 4. Implement only ticket scope.
-5. Review the result.
+5. Review and test.
 6. Commit manually.
 
-## Sprint 1 exit criteria
-Sprint 1 is complete when:
-- the local stack runs reliably
+## MVP exit criteria status
+Sprint 1 exit criteria are met:
+- local stack runs reliably
 - task persistence works
-- the board is usable by selected date
+- board is usable by selected date
 - create/edit/delete/move flows work
-- the repo is clean enough for Sprint 2
+- repository is ready for Sprint 2 scope

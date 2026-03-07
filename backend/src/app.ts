@@ -22,8 +22,11 @@ export type BuildAppOptions = {
   authSessionTtlHours?: number;
 };
 
+const APP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({
+    bodyLimit: APP_BODY_LIMIT_BYTES,
     logger: {
       level: options.logLevel
     }

@@ -258,7 +258,7 @@ test("attachments endpoints support create, list, and delete", async (t) => {
     headers: authHeaders(token),
     payload: {
       name: "Spec",
-      url: "https://example.com/spec.pdf",
+      url: "data:text/plain;base64,SGVsbG8gSm90bHk=",
       contentType: "application/pdf",
       sizeBytes: 2048,
     },
@@ -279,7 +279,7 @@ test("attachments endpoints support create, list, and delete", async (t) => {
   const listPayload = parsePayload(listResponse.payload);
   const listedAttachments = listPayload.data as Array<{ id: string; url: string }>;
   assert.equal(listedAttachments.length, 1);
-  assert.equal(listedAttachments[0].url, "https://example.com/spec.pdf");
+  assert.equal(listedAttachments[0].url, "data:text/plain;base64,SGVsbG8gSm90bHk=");
 
   const deleteResponse = await app.inject({
     method: "DELETE",
@@ -299,6 +299,30 @@ test("attachments endpoints support create, list, and delete", async (t) => {
   const listAfterDeletePayload = parsePayload(listAfterDelete.payload);
   const listAfterDeleteData = listAfterDeletePayload.data as Array<unknown>;
   assert.equal(listAfterDeleteData.length, 0);
+});
+
+test("attachments endpoints reject files larger than upload limit", async (t) => {
+  const app = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const taskId = await createTask(app, token);
+
+  const oversizedResponse = await app.inject({
+    method: "POST",
+    url: `/api/tasks/${taskId}/attachments`,
+    headers: authHeaders(token),
+    payload: {
+      name: "Too big",
+      url: "data:text/plain;base64,SGVsbG8=",
+      sizeBytes: 5 * 1024 * 1024 + 1,
+    },
+  });
+
+  assert.equal(oversizedResponse.statusCode, 400);
 });
 
 test("attachments endpoints enforce task ownership boundaries", async (t) => {

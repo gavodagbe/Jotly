@@ -17,6 +17,9 @@ type AttachmentsRouteOptions = {
   authService: AuthService;
 };
 
+const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_ATTACHMENT_URL_LENGTH = 7_100_000;
+
 const taskParamsSchema = z.object({
   id: z.string().trim().min(1, "Task id is required"),
 });
@@ -28,9 +31,20 @@ const attachmentParamsSchema = z.object({
 
 const createAttachmentBodySchema = z.object({
   name: z.string().trim().min(1, "Attachment name is required").max(200, "Attachment name is too long"),
-  url: z.string().trim().url("Attachment URL must be valid"),
+  url: z
+    .string()
+    .trim()
+    .min(1, "Attachment URL must be valid")
+    .max(MAX_ATTACHMENT_URL_LENGTH, "Attachment payload is too large")
+    .url("Attachment URL must be valid"),
   contentType: z.string().trim().max(255, "contentType is too long").optional().nullable(),
-  sizeBytes: z.number().int().nonnegative().optional().nullable(),
+  sizeBytes: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(MAX_ATTACHMENT_SIZE_BYTES, "Attachment exceeds 5 MB limit")
+    .optional()
+    .nullable(),
 });
 
 function normalizeNullableText(value: string | null | undefined): string | null {

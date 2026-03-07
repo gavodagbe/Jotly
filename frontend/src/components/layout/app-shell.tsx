@@ -80,7 +80,7 @@ type TaskRecurrenceMutationInput = {
 
 type TaskAttachmentMutationInput = {
   name: string;
-  url: string;
+  file: File;
 };
 
 type AuthUser = {
@@ -131,6 +131,7 @@ class ApiRequestError extends Error {
 
 const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
+const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 const BOARD_COLUMNS: ReadonlyArray<{
   status: TaskStatus;
@@ -287,6 +288,25 @@ function formatPlannedTime(totalMinutes: number): string {
   }
 
   return `${hours}h ${minutes}m`;
+}
+
+function formatFileSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+
+  const kb = sizeBytes / 1024;
+
+  if (kb < 1024) {
+    return `${kb.toFixed(kb >= 100 ? 0 : 1)} KB`;
+  }
+
+  const mb = kb / 1024;
+  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
+}
+
+function isDataUrl(value: string): boolean {
+  return value.startsWith("data:");
 }
 
 function isTaskStatus(value: string): value is TaskStatus {
@@ -607,6 +627,27 @@ function createAuthHeaders(token: string, includesJsonBody: boolean): HeadersIni
   };
 }
 
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      reject(new Error("Unable to read selected file."));
+    };
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Unable to read selected file."));
+        return;
+      }
+
+      resolve(reader.result);
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
 async function registerUser(values: AuthFormValues): Promise<{ user: AuthUser; token: string }> {
   const response = await fetch("/backend-api/auth/register", {
     method: "POST",
@@ -880,12 +921,16 @@ async function createTaskAttachment(
   input: TaskAttachmentMutationInput,
   token: string
 ): Promise<TaskAttachment> {
+  const fileDataUrl = await readFileAsDataUrl(input.file);
+
   const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/attachments`, {
     method: "POST",
     headers: createAuthHeaders(token, true),
     body: JSON.stringify({
       name: input.name,
-      url: input.url,
+      url: fileDataUrl,
+      contentType: input.file.type || null,
+      sizeBytes: input.file.size,
     }),
   });
 
@@ -1499,6 +1544,7 @@ export function AppShell() {
   const [taskRecurrenceRule, setTaskRecurrenceRule] = useState<TaskRecurrenceRule | null>(null);
   const [isTaskDetailsLoading, setIsTaskDetailsLoading] = useState(false);
   const [taskDetailsErrorMessage, setTaskDetailsErrorMessage] = useState<string | null>(null);
+  const taskDetailsRequestVersionRef = useRef(0);
 
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [taskCommentDraft, setTaskCommentDraft] = useState("");
@@ -1508,7 +1554,8 @@ export function AppShell() {
 
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
   const [taskAttachmentNameDraft, setTaskAttachmentNameDraft] = useState("");
-  const [taskAttachmentUrlDraft, setTaskAttachmentUrlDraft] = useState("");
+  const [taskAttachmentFileDraft, setTaskAttachmentFileDraft] = useState<File | null>(null);
+  const taskAttachmentFileInputRef = useRef<HTMLInputElement | null>(null);
   const [taskAttachmentErrorMessage, setTaskAttachmentErrorMessage] = useState<string | null>(null);
   const [isCreatingTaskAttachment, setIsCreatingTaskAttachment] = useState(false);
   const [pendingAttachmentIds, setPendingAttachmentIds] = useState<string[]>([]);
@@ -1604,7 +1651,10 @@ export function AppShell() {
     setPendingCommentIds([]);
     setTaskAttachments([]);
     setTaskAttachmentNameDraft("");
-    setTaskAttachmentUrlDraft("");
+    setTaskAttachmentFileDraft(null);
+    if (taskAttachmentFileInputRef.current) {
+      taskAttachmentFileInputRef.current.value = "";
+    }
     setTaskAttachmentErrorMessage(null);
     setIsCreatingTaskAttachment(false);
     setPendingAttachmentIds([]);
@@ -1691,6 +1741,7 @@ export function AppShell() {
   }
 
   function resetTaskDetailsState() {
+    taskDetailsRequestVersionRef.current += 1;
     setTaskRecurrenceRule(null);
     setRecurrenceFormValues(getDefaultRecurrenceFormValues());
     setTaskDetailsErrorMessage(null);
@@ -1704,7 +1755,10 @@ export function AppShell() {
 
     setTaskAttachments([]);
     setTaskAttachmentNameDraft("");
-    setTaskAttachmentUrlDraft("");
+    setTaskAttachmentFileDraft(null);
+    if (taskAttachmentFileInputRef.current) {
+      taskAttachmentFileInputRef.current.value = "";
+    }
     setTaskAttachmentErrorMessage(null);
     setIsCreatingTaskAttachment(false);
     setPendingAttachmentIds([]);
@@ -1902,7 +1956,7 @@ export function AppShell() {
   }
 
   async function handleCreateComment() {
-    if (!editingTaskId || isCreatingTaskComment) {
+    if (!editingTaskId || isCreatingTaskComment || isTaskDetailsLoading) {
       return;
     }
 
@@ -1933,7 +1987,7 @@ export function AppShell() {
   }
 
   async function handleDeleteComment(commentId: string) {
-    if (!editingTaskId) {
+    if (!editingTaskId || isTaskDetailsLoading) {
       return;
     }
 
@@ -1958,20 +2012,27 @@ export function AppShell() {
   }
 
   async function handleCreateAttachment() {
-    if (!editingTaskId || isCreatingTaskAttachment) {
+    if (!editingTaskId || isCreatingTaskAttachment || isTaskDetailsLoading) {
       return;
     }
 
-    const name = taskAttachmentNameDraft.trim();
-    const url = taskAttachmentUrlDraft.trim();
+    const file = taskAttachmentFileDraft;
+    const name = taskAttachmentNameDraft.trim() || file?.name?.trim() || "";
 
     if (!name) {
       setTaskAttachmentErrorMessage("Attachment name is required.");
       return;
     }
 
-    if (!url) {
-      setTaskAttachmentErrorMessage("Attachment URL is required.");
+    if (!file) {
+      setTaskAttachmentErrorMessage("Select a file to upload.");
+      return;
+    }
+
+    if (file.size > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      setTaskAttachmentErrorMessage(
+        `Attachment exceeds ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} limit.`
+      );
       return;
     }
 
@@ -1988,13 +2049,16 @@ export function AppShell() {
         editingTaskId,
         {
           name,
-          url,
+          file,
         },
         authToken
       );
       setTaskAttachments((currentAttachments) => [...currentAttachments, attachment]);
       setTaskAttachmentNameDraft("");
-      setTaskAttachmentUrlDraft("");
+      setTaskAttachmentFileDraft(null);
+      if (taskAttachmentFileInputRef.current) {
+        taskAttachmentFileInputRef.current.value = "";
+      }
     } catch (error) {
       setTaskAttachmentErrorMessage(
         error instanceof Error ? error.message : "Unable to create attachment."
@@ -2005,7 +2069,7 @@ export function AppShell() {
   }
 
   async function handleDeleteAttachment(attachmentId: string) {
-    if (!editingTaskId) {
+    if (!editingTaskId || isTaskDetailsLoading) {
       return;
     }
 
@@ -2179,6 +2243,8 @@ export function AppShell() {
 
     let cancelled = false;
     const isGeneratedTask = (editingTask?.recurrenceSourceTaskId ?? null) !== null;
+    const requestVersion = taskDetailsRequestVersionRef.current + 1;
+    taskDetailsRequestVersionRef.current = requestVersion;
 
     setIsTaskDetailsLoading(true);
     setTaskDetailsErrorMessage(null);
@@ -2191,7 +2257,7 @@ export function AppShell() {
       isGeneratedTask ? Promise.resolve(null) : loadTaskRecurrence(editingTaskId, authToken),
     ])
       .then(([comments, attachments, recurrenceRule]) => {
-        if (cancelled) {
+        if (cancelled || requestVersion !== taskDetailsRequestVersionRef.current) {
           return;
         }
 
@@ -2201,7 +2267,7 @@ export function AppShell() {
         setRecurrenceFormValues(getRecurrenceFormValues(recurrenceRule));
       })
       .catch((error: unknown) => {
-        if (cancelled) {
+        if (cancelled || requestVersion !== taskDetailsRequestVersionRef.current) {
           return;
         }
 
@@ -2210,7 +2276,7 @@ export function AppShell() {
         );
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!cancelled && requestVersion === taskDetailsRequestVersionRef.current) {
           setIsTaskDetailsLoading(false);
         }
       });
@@ -2990,7 +3056,11 @@ export function AppShell() {
                                 type="button"
                                 className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
                                 onClick={() => handleDeleteComment(comment.id)}
-                                disabled={isSubmittingTask || pendingCommentIds.includes(comment.id)}
+                                disabled={
+                                  isSubmittingTask ||
+                                  isTaskDetailsLoading ||
+                                  pendingCommentIds.includes(comment.id)
+                                }
                               >
                                 {pendingCommentIds.includes(comment.id) ? "Removing..." : "Remove"}
                               </button>
@@ -3006,7 +3076,7 @@ export function AppShell() {
                         onChange={(event) => setTaskCommentDraft(event.target.value)}
                         className={`${textFieldClass} mt-0 min-h-[76px] resize-y`}
                         placeholder="Add a comment..."
-                        disabled={isSubmittingTask || isCreatingTaskComment}
+                        disabled={isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading}
                       />
                       {taskCommentErrorMessage ? (
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -3017,7 +3087,7 @@ export function AppShell() {
                         type="button"
                         className={controlButtonClass}
                         onClick={handleCreateComment}
-                        disabled={isSubmittingTask || isCreatingTaskComment}
+                        disabled={isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading}
                       >
                         {isCreatingTaskComment ? "Adding..." : "Add comment"}
                       </button>
@@ -3047,15 +3117,32 @@ export function AppShell() {
                                   target="_blank"
                                   rel="noreferrer"
                                   className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                  download={isDataUrl(attachment.url) ? attachment.name : undefined}
                                 >
-                                  {attachment.url}
+                                  {isDataUrl(attachment.url) ? "Open file" : attachment.url}
                                 </a>
+                                {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                  <p className="mt-1 text-[11px] text-muted">
+                                    {[
+                                      attachment.contentType ?? null,
+                                      typeof attachment.sizeBytes === "number"
+                                        ? formatFileSize(attachment.sizeBytes)
+                                        : null,
+                                    ]
+                                      .filter((value): value is string => Boolean(value))
+                                      .join(" · ")}
+                                  </p>
+                                ) : null}
                               </div>
                               <button
                                 type="button"
                                 className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
                                 onClick={() => handleDeleteAttachment(attachment.id)}
-                                disabled={isSubmittingTask || pendingAttachmentIds.includes(attachment.id)}
+                                disabled={
+                                  isSubmittingTask ||
+                                  isTaskDetailsLoading ||
+                                  pendingAttachmentIds.includes(attachment.id)
+                                }
                               >
                                 {pendingAttachmentIds.includes(attachment.id) ? "Removing..." : "Remove"}
                               </button>
@@ -3073,30 +3160,36 @@ export function AppShell() {
                           value={taskAttachmentNameDraft}
                           onChange={(event) => setTaskAttachmentNameDraft(event.target.value)}
                           className={textFieldClass}
-                          disabled={isSubmittingTask || isCreatingTaskAttachment}
+                          disabled={isSubmittingTask || isCreatingTaskAttachment || isTaskDetailsLoading}
                           placeholder="Spec"
                         />
                       </label>
                       <label className="block text-sm font-semibold text-foreground">
-                        URL
+                        File
                         <input
-                          type="url"
-                          value={taskAttachmentUrlDraft}
-                          onChange={(event) => setTaskAttachmentUrlDraft(event.target.value)}
+                          ref={taskAttachmentFileInputRef}
+                          type="file"
+                          onChange={(event) => {
+                            const nextFile = event.target.files?.[0] ?? null;
+                            setTaskAttachmentFileDraft(nextFile);
+                          }}
                           className={textFieldClass}
-                          disabled={isSubmittingTask || isCreatingTaskAttachment}
-                          placeholder="https://example.com/file"
+                          disabled={isSubmittingTask || isCreatingTaskAttachment || isTaskDetailsLoading}
                         />
                       </label>
                       <button
                         type="button"
                         className={controlButtonClass}
                         onClick={handleCreateAttachment}
-                        disabled={isSubmittingTask || isCreatingTaskAttachment}
+                        disabled={isSubmittingTask || isCreatingTaskAttachment || isTaskDetailsLoading}
                       >
-                        {isCreatingTaskAttachment ? "Adding..." : "Add"}
+                        {isCreatingTaskAttachment ? "Uploading..." : "Upload"}
                       </button>
                     </div>
+
+                    <p className="mt-2 text-[11px] text-muted">
+                      Upload up to {formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} per attachment.
+                    </p>
 
                     {taskAttachmentErrorMessage ? (
                       <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
