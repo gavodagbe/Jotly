@@ -10,7 +10,7 @@ export type TaskRecurrenceRuleUpsertInput = {
 };
 
 export type RecurrenceStore = {
-  listForDate(targetDate: Date): Promise<TaskRecurrenceRule[]>;
+  listForDate(targetDate: Date, userId: string): Promise<TaskRecurrenceRule[]>;
   getByTaskId(taskId: string): Promise<TaskRecurrenceRule | null>;
   upsertByTaskId(taskId: string, input: TaskRecurrenceRuleUpsertInput): Promise<TaskRecurrenceRule>;
   removeByTaskId(taskId: string): Promise<TaskRecurrenceRule | null>;
@@ -19,9 +19,12 @@ export type RecurrenceStore = {
 
 export function createPrismaRecurrenceStore(prisma = new PrismaClient()): RecurrenceStore {
   return {
-    async listForDate(targetDate) {
+    async listForDate(targetDate, userId) {
       return prisma.taskRecurrenceRule.findMany({
         where: {
+          task: {
+            userId
+          },
           OR: [{ endsOn: null }, { endsOn: { gte: targetDate } }],
         },
         orderBy: { createdAt: "asc" },

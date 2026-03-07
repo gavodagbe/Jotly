@@ -6,11 +6,11 @@ import { buildApp } from "../app";
 import { TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
 class NoopTaskStore implements TaskStore {
-  async listByDate(_targetDate: Date): Promise<Task[]> {
+  async listByDate(_targetDate: Date, _userId: string): Promise<Task[]> {
     return [];
   }
 
-  async getById(_id: string): Promise<Task | null> {
+  async getById(_id: string, _userId: string): Promise<Task | null> {
     return null;
   }
 
@@ -18,11 +18,11 @@ class NoopTaskStore implements TaskStore {
     throw new Error("Not implemented for auth tests");
   }
 
-  async update(_id: string, _input: TaskUpdateInput): Promise<Task | null> {
+  async update(_id: string, _input: TaskUpdateInput, _userId: string): Promise<Task | null> {
     return null;
   }
 
-  async remove(_id: string): Promise<Task | null> {
+  async remove(_id: string, _userId: string): Promise<Task | null> {
     return null;
   }
 }
@@ -100,6 +100,32 @@ class InMemoryAuthStore implements AuthStore {
   }
 }
 
+class DuplicateOnCreateAuthStore implements AuthStore {
+  async createUser(_input: CreateAuthUserInput): Promise<AuthUser> {
+    throw { code: "P2002" };
+  }
+
+  async findUserByEmail(_email: string): Promise<AuthUser | null> {
+    return null;
+  }
+
+  async findUserById(_id: string): Promise<AuthUser | null> {
+    return null;
+  }
+
+  async createSession(_input: CreateAuthSessionInput): Promise<AuthSession> {
+    throw new Error("Unexpected createSession call");
+  }
+
+  async findSessionByTokenHash(_tokenHash: string): Promise<AuthSession | null> {
+    return null;
+  }
+
+  async revokeSession(_sessionId: string): Promise<void> {}
+
+  async deleteExpiredSessions(_now: Date): Promise<void> {}
+}
+
 function parsePayload(payload: string) {
   return JSON.parse(payload) as Record<string, unknown>;
 }
@@ -167,6 +193,35 @@ test("POST /api/auth/register rejects duplicate email", async (t) => {
   });
 
   await registerAndGetToken(app);
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: {
+      email: "user@example.com",
+      password: "password123"
+    }
+  });
+
+  assert.equal(response.statusCode, 409);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "CONFLICT",
+    message: "Email already in use"
+  });
+});
+
+test("POST /api/auth/register maps storage unique conflicts to 409", async (t) => {
+  const app = buildApp({
+    logLevel: "silent",
+    taskStore: new NoopTaskStore(),
+    authStore: new DuplicateOnCreateAuthStore(),
+    authSessionTtlHours: 24
+  });
+
+  t.after(async () => {
+    await app.close();
+  });
+
   const response = await app.inject({
     method: "POST",
     url: "/api/auth/register",

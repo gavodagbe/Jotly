@@ -140,6 +140,14 @@ function getTimestampsForStatusTransition(task: Task, nextStatus: TaskStatus, no
   };
 }
 
+function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
+  if (!request.authUserId || request.authUserId.trim() === "") {
+    return null;
+  }
+
+  return request.authUserId;
+}
+
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
   const { taskStore, authService, recurrenceStore } = options;
 
@@ -155,9 +163,17 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     if (!authContext) {
       return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
     }
+
+    (request as { authUserId?: string }).authUserId = authContext.user.id;
   });
 
   app.get("/api/tasks", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const queryResult = listTasksQuerySchema.safeParse(request.query);
 
     if (!queryResult.success) {
@@ -184,10 +200,10 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
     try {
       if (recurrenceStore) {
-        await materializeRecurringTasksForDate(targetDate, taskStore, recurrenceStore);
+        await materializeRecurringTasksForDate(targetDate, taskStore, recurrenceStore, authUserId);
       }
 
-      const tasks = await taskStore.listByDate(targetDate);
+      const tasks = await taskStore.listByDate(targetDate, authUserId);
       return reply.send({
         data: tasks.map(serializeTask)
       });
@@ -203,6 +219,12 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
   });
 
   app.post("/api/tasks", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const bodyResult = createTaskBodySchema.safeParse(request.body);
 
     if (!bodyResult.success) {
@@ -232,6 +254,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
     try {
       const task = await taskStore.create({
+        userId: authUserId,
         title: bodyResult.data.title,
         description: normalizeNullableText(bodyResult.data.description) ?? null,
         status,
@@ -257,6 +280,12 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
   });
 
   app.get("/api/tasks/:id", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskIdParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -271,7 +300,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     }
 
     try {
-      const task = await taskStore.getById(paramsResult.data.id);
+      const task = await taskStore.getById(paramsResult.data.id, authUserId);
 
       if (!task) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -292,6 +321,12 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
   });
 
   app.patch("/api/tasks/:id", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskIdParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -321,7 +356,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     const updateBody = bodyResult.data;
 
     try {
-      const existingTask = await taskStore.getById(paramsResult.data.id);
+      const existingTask = await taskStore.getById(paramsResult.data.id, authUserId);
 
       if (!existingTask) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -372,7 +407,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
       updateInput.completedAt = timestamps.completedAt;
       updateInput.cancelledAt = timestamps.cancelledAt;
 
-      const updatedTask = await taskStore.update(paramsResult.data.id, updateInput);
+      const updatedTask = await taskStore.update(paramsResult.data.id, updateInput, authUserId);
 
       if (!updatedTask) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -393,6 +428,12 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
   });
 
   app.delete("/api/tasks/:id", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskIdParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -407,7 +448,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     }
 
     try {
-      const deletedTask = await taskStore.remove(paramsResult.data.id);
+      const deletedTask = await taskStore.remove(paramsResult.data.id, authUserId);
 
       if (!deletedTask) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");

@@ -12,22 +12,24 @@ class InMemoryTaskStore implements TaskStore {
   private readonly tasks = new Map<string, Task>();
   private idCounter = 1;
 
-  async listByDate(targetDate: Date): Promise<Task[]> {
+  async listByDate(targetDate: Date, userId: string): Promise<Task[]> {
     const selectedDate = formatDateOnly(targetDate);
     const matches = [...this.tasks.values()].filter(
-      (task) => formatDateOnly(task.targetDate) === selectedDate
+      (task) => task.userId === userId && formatDateOnly(task.targetDate) === selectedDate
     );
     return matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
-  async getById(id: string): Promise<Task | null> {
-    return this.tasks.get(id) ?? null;
+  async getById(id: string, userId: string): Promise<Task | null> {
+    const task = this.tasks.get(id) ?? null;
+    return task && task.userId === userId ? task : null;
   }
 
   async create(input: TaskCreateInput): Promise<Task> {
     const now = new Date();
     const task: Task = {
       id: `task-${this.idCounter++}`,
+      userId: input.userId,
       title: input.title,
       description: input.description,
       status: input.status,
@@ -47,10 +49,10 @@ class InMemoryTaskStore implements TaskStore {
     return task;
   }
 
-  async update(id: string, input: TaskUpdateInput): Promise<Task | null> {
+  async update(id: string, input: TaskUpdateInput, userId: string): Promise<Task | null> {
     const existing = this.tasks.get(id);
 
-    if (!existing) {
+    if (!existing || existing.userId !== userId) {
       return null;
     }
 
@@ -64,10 +66,10 @@ class InMemoryTaskStore implements TaskStore {
     return updated;
   }
 
-  async remove(id: string): Promise<Task | null> {
+  async remove(id: string, userId: string): Promise<Task | null> {
     const existing = this.tasks.get(id);
 
-    if (!existing) {
+    if (!existing || existing.userId !== userId) {
       return null;
     }
 
@@ -76,11 +78,25 @@ class InMemoryTaskStore implements TaskStore {
   }
 }
 
+class DuplicateGeneratedTaskStore extends InMemoryTaskStore {
+  private hasSimulatedConflict = false;
+
+  async create(input: TaskCreateInput): Promise<Task> {
+    if (input.recurrenceSourceTaskId && !this.hasSimulatedConflict) {
+      this.hasSimulatedConflict = true;
+      await super.create(input);
+      throw { code: "P2002" };
+    }
+
+    return super.create(input);
+  }
+}
+
 class InMemoryRecurrenceStore implements RecurrenceStore {
   private readonly rules = new Map<string, TaskRecurrenceRule>();
   private idCounter = 1;
 
-  async listForDate(targetDate: Date): Promise<TaskRecurrenceRule[]> {
+  async listForDate(targetDate: Date, _userId: string): Promise<TaskRecurrenceRule[]> {
     return [...this.rules.values()].filter((rule) => {
       if (!rule.endsOn) {
         return true;
@@ -226,6 +242,15 @@ function createAppForTest() {
   return buildApp({
     logLevel: "silent",
     taskStore: new InMemoryTaskStore(),
+    recurrenceStore: new InMemoryRecurrenceStore(),
+    authStore: new InMemoryAuthStore(),
+  });
+}
+
+function createAppForDuplicateGenerationTest() {
+  return buildApp({
+    logLevel: "silent",
+    taskStore: new DuplicateGeneratedTaskStore(),
     recurrenceStore: new InMemoryRecurrenceStore(),
     authStore: new InMemoryAuthStore(),
   });
@@ -377,4 +402,71 @@ test("recurrence cannot be configured on generated task instances", async (t) =>
     code: "CONFLICT",
     message: "Recurrence can only be configured on source tasks.",
   });
+});
+
+test("recurrence task generation tolerates duplicate-occurrence conflicts", async (t) => {
+  const app = createAppForDuplicateGenerationTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const taskId = await createTask(app, token);
+
+  const upsertResponse = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${taskId}/recurrence`,
+    headers: authHeaders(token),
+    payload: {
+      frequency: "daily" satisfies RecurrenceFrequency,
+      interval: 1,
+    },
+  });
+
+  assert.equal(upsertResponse.statusCode, 200);
+
+  const listFutureResponse = await app.inject({
+    method: "GET",
+    url: "/api/tasks?date=2026-03-07",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(listFutureResponse.statusCode, 200);
+  const listFuturePayload = parsePayload(listFutureResponse.payload);
+  const futureTasks = listFuturePayload.data as Array<{ recurrenceSourceTaskId: string | null }>;
+  assert.equal(futureTasks.length, 1);
+  assert.equal(futureTasks[0].recurrenceSourceTaskId, taskId);
+});
+
+test("recurrence endpoints enforce task ownership boundaries", async (t) => {
+  const app = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const ownerToken = await registerAndGetToken(app);
+  const otherUserToken = await registerAndGetToken(app);
+  const taskId = await createTask(app, ownerToken);
+
+  const getResponse = await app.inject({
+    method: "GET",
+    url: `/api/tasks/${taskId}/recurrence`,
+    headers: authHeaders(otherUserToken),
+  });
+
+  assert.equal(getResponse.statusCode, 404);
+
+  const putResponse = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${taskId}/recurrence`,
+    headers: authHeaders(otherUserToken),
+    payload: {
+      frequency: "daily" satisfies RecurrenceFrequency,
+      interval: 1,
+    },
+  });
+
+  assert.equal(putResponse.statusCode, 404);
 });

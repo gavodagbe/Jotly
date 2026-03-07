@@ -1,6 +1,7 @@
-import { Prisma, PrismaClient, Task, TaskPriority, TaskStatus } from "@prisma/client";
+import { PrismaClient, Task, TaskPriority, TaskStatus } from "@prisma/client";
 
 export type TaskCreateInput = {
+  userId: string;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -14,14 +15,14 @@ export type TaskCreateInput = {
   cancelledAt: Date | null;
 };
 
-export type TaskUpdateInput = Partial<TaskCreateInput>;
+export type TaskUpdateInput = Partial<Omit<TaskCreateInput, "userId">>;
 
 export type TaskStore = {
-  listByDate(targetDate: Date): Promise<Task[]>;
-  getById(id: string): Promise<Task | null>;
+  listByDate(targetDate: Date, userId: string): Promise<Task[]>;
+  getById(id: string, userId: string): Promise<Task | null>;
   create(input: TaskCreateInput): Promise<Task>;
-  update(id: string, input: TaskUpdateInput): Promise<Task | null>;
-  remove(id: string): Promise<Task | null>;
+  update(id: string, input: TaskUpdateInput, userId: string): Promise<Task | null>;
+  remove(id: string, userId: string): Promise<Task | null>;
   close?: () => Promise<void>;
 };
 
@@ -55,20 +56,14 @@ function getDateRange(date: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-function isNotFoundPrismaError(error: unknown): boolean {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2025"
-  );
-}
-
 export function createPrismaTaskStore(prisma = new PrismaClient()): TaskStore {
   return {
-    async listByDate(targetDate) {
+    async listByDate(targetDate, userId) {
       const { start, end } = getDateRange(targetDate);
 
       return prisma.task.findMany({
         where: {
+          userId,
           targetDate: {
             gte: start,
             lt: end
@@ -80,9 +75,9 @@ export function createPrismaTaskStore(prisma = new PrismaClient()): TaskStore {
       });
     },
 
-    async getById(id) {
-      return prisma.task.findUnique({
-        where: { id }
+    async getById(id, userId) {
+      return prisma.task.findFirst({
+        where: { id, userId }
       });
     },
 
@@ -92,33 +87,33 @@ export function createPrismaTaskStore(prisma = new PrismaClient()): TaskStore {
       });
     },
 
-    async update(id, input) {
-      try {
-        return await prisma.task.update({
-          where: { id },
-          data: input
-        });
-      } catch (error) {
-        if (isNotFoundPrismaError(error)) {
-          return null;
-        }
+    async update(id, input, userId) {
+      const existing = await prisma.task.findFirst({
+        where: { id, userId }
+      });
 
-        throw error;
+      if (!existing) {
+        return null;
       }
+
+      return prisma.task.update({
+        where: { id },
+        data: input
+      });
     },
 
-    async remove(id) {
-      try {
-        return await prisma.task.delete({
-          where: { id }
-        });
-      } catch (error) {
-        if (isNotFoundPrismaError(error)) {
-          return null;
-        }
+    async remove(id, userId) {
+      const existing = await prisma.task.findFirst({
+        where: { id, userId }
+      });
 
-        throw error;
+      if (!existing) {
+        return null;
       }
+
+      return prisma.task.delete({
+        where: { id }
+      });
     },
 
     async close() {

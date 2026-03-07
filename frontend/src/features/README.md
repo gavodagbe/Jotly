@@ -1,3 +1,4 @@
 # Features
 
-Feature modules for product functionality (Kanban board, task dialogs, etc.) will be added in later Jira tickets.
+Feature modules are currently implemented in `src/components/layout/app-shell.tsx`.
+Future refactors can extract dedicated feature folders under `src/features/` as the codebase grows.

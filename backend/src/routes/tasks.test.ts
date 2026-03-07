@@ -9,22 +9,24 @@ class InMemoryTaskStore implements TaskStore {
   private readonly tasks = new Map<string, Task>();
   private idCounter = 1;
 
-  async listByDate(targetDate: Date): Promise<Task[]> {
+  async listByDate(targetDate: Date, userId: string): Promise<Task[]> {
     const selectedDate = formatDateOnly(targetDate);
     const matches = [...this.tasks.values()].filter(
-      (task) => formatDateOnly(task.targetDate) === selectedDate
+      (task) => task.userId === userId && formatDateOnly(task.targetDate) === selectedDate
     );
     return matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
-  async getById(id: string): Promise<Task | null> {
-    return this.tasks.get(id) ?? null;
+  async getById(id: string, userId: string): Promise<Task | null> {
+    const task = this.tasks.get(id) ?? null;
+    return task && task.userId === userId ? task : null;
   }
 
   async create(input: TaskCreateInput): Promise<Task> {
     const now = new Date();
     const task: Task = {
       id: `task-${this.idCounter++}`,
+      userId: input.userId,
       title: input.title,
       description: input.description,
       status: input.status,
@@ -44,9 +46,9 @@ class InMemoryTaskStore implements TaskStore {
     return task;
   }
 
-  async update(id: string, input: TaskUpdateInput): Promise<Task | null> {
+  async update(id: string, input: TaskUpdateInput, userId: string): Promise<Task | null> {
     const existing = this.tasks.get(id);
-    if (!existing) {
+    if (!existing || existing.userId !== userId) {
       return null;
     }
 
@@ -60,9 +62,9 @@ class InMemoryTaskStore implements TaskStore {
     return updated;
   }
 
-  async remove(id: string): Promise<Task | null> {
+  async remove(id: string, userId: string): Promise<Task | null> {
     const existing = this.tasks.get(id);
-    if (!existing) {
+    if (!existing || existing.userId !== userId) {
       return null;
     }
 
@@ -245,6 +247,60 @@ test("GET /api/tasks filters tasks by selected date", async (t) => {
 
   assert.equal(data.length, 1);
   assert.equal(data[0].title, "Task for selected date");
+});
+
+test("task endpoints isolate data by authenticated user", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const ownerToken = await registerAndGetToken(app);
+  const otherUserToken = await registerAndGetToken(app);
+
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(ownerToken),
+    payload: {
+      title: "Owner only task",
+      targetDate: "2026-03-06"
+    }
+  });
+
+  assert.equal(created.statusCode, 201);
+  const createdBody = parsePayload(created.payload);
+  const taskId = (createdBody.data as Record<string, unknown>).id as string;
+
+  const otherUserList = await app.inject({
+    method: "GET",
+    url: "/api/tasks?date=2026-03-06",
+    headers: authHeaders(otherUserToken)
+  });
+
+  assert.equal(otherUserList.statusCode, 200);
+  const listPayload = parsePayload(otherUserList.payload);
+  const listData = listPayload.data as Array<unknown>;
+  assert.equal(listData.length, 0);
+
+  const otherUserGet = await app.inject({
+    method: "GET",
+    url: `/api/tasks/${taskId}`,
+    headers: authHeaders(otherUserToken)
+  });
+
+  assert.equal(otherUserGet.statusCode, 404);
+
+  const otherUserPatch = await app.inject({
+    method: "PATCH",
+    url: `/api/tasks/${taskId}`,
+    headers: authHeaders(otherUserToken),
+    payload: {
+      title: "Should fail"
+    }
+  });
+
+  assert.equal(otherUserPatch.statusCode, 404);
 });
 
 test("PATCH /api/tasks manages status timestamps consistently", async (t) => {

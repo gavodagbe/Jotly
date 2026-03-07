@@ -32,13 +32,17 @@ This section reflects the current repository implementation.
 - Zod request validation
 - Prisma ORM
 - Task CRUD and date filtering in `backend/src/routes/tasks.ts`
+- Auth/session endpoints in `backend/src/routes/auth.ts`
+- Comments endpoints in `backend/src/routes/comments.ts`
+- Attachments endpoints in `backend/src/routes/attachments.ts`
+- Recurrence endpoints in `backend/src/routes/recurrence.ts`
 
 ### Database
 - PostgreSQL
 - Prisma `Task` model with status, priority, date, and lifecycle timestamps
 
 ### Testing
-- Node test runner tests for task routes in `backend/src/routes/tasks.test.ts`
+- Node test runner tests for auth/tasks/comments/attachments/recurrence routes
 
 ### Infrastructure
 - Docker
@@ -75,11 +79,25 @@ Allowed statuses:
 ## API baseline (implemented)
 Implemented endpoints:
 - `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
 - `GET /api/tasks?date=YYYY-MM-DD`
 - `POST /api/tasks`
 - `GET /api/tasks/:id`
 - `PATCH /api/tasks/:id`
 - `DELETE /api/tasks/:id`
+- `GET /api/tasks/:id/comments`
+- `POST /api/tasks/:id/comments`
+- `PATCH /api/tasks/:id/comments/:commentId`
+- `DELETE /api/tasks/:id/comments/:commentId`
+- `GET /api/tasks/:id/attachments`
+- `POST /api/tasks/:id/attachments`
+- `DELETE /api/tasks/:id/attachments/:attachmentId`
+- `GET /api/tasks/:id/recurrence`
+- `PUT /api/tasks/:id/recurrence`
+- `DELETE /api/tasks/:id/recurrence`
 
 Rules:
 - JSON-only API
@@ -116,13 +134,8 @@ UI principles:
 
 ## Sprint 1 postponed modules
 The following modules are explicitly postponed after Sprint 1 implementation:
-- comments
-- attachments
-- recurrence
 - AI assistant
 - reporting
-- auth
-- multi-user
 - notifications
 - mobile app
 - real-time sync
@@ -138,7 +151,7 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely backend ownership: `backend/src/comments/`.
 - Likely frontend entry points: task detail dialog and task card "activity/comment" affordance in `frontend/src/features/comments/`.
 - Likely API surface: `GET/POST /api/tasks/:id/comments`, `PATCH/DELETE /api/tasks/:id/comments/:commentId`.
-- Sprint 1 status: postponed.
+- Current status: implemented.
 
 ### Attachments
 - Relation to tasks: one task can have many attachments.
@@ -146,14 +159,14 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely backend ownership: `backend/src/attachments/`.
 - Likely frontend entry points: task dialog attachment section in `frontend/src/features/attachments/`.
 - Likely API surface: `GET/POST /api/tasks/:id/attachments`, `DELETE /api/tasks/:id/attachments/:attachmentId`.
-- Sprint 1 status: postponed.
+- Current status: implemented.
 
 ### Recurrence
 - Relation to tasks: recurrence defines future task instances; each generated task still owns an explicit `targetDate`.
 - Likely model shape: recurrence rule + task template reference, generated instances remain regular tasks.
 - Likely backend ownership: `backend/src/recurrence/`.
 - Likely frontend entry points: recurrence controls in task create/edit flow under `frontend/src/features/recurrence/`.
-- Sprint 1 status: postponed.
+- Current status: implemented.
 
 ### AI assistant
 - Relation to task history: read-oriented assistant over tasks, status transitions, and dates.
@@ -169,11 +182,13 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely frontend entry points: analytics dashboards under `frontend/src/features/reporting/`.
 - Sprint 1 status: postponed.
 
-## Known future entities and extension points (not implemented)
-Potential future entities:
+## Known entities and extension points
+Existing entities:
 - `TaskComment`
 - `TaskAttachment`
 - `TaskRecurrenceRule`
+
+Potential future entities:
 - `TaskActivityEvent` (optional, if reporting granularity requires event-level history)
 
 Current extension points to preserve:

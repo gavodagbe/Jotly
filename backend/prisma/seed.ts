@@ -1,10 +1,12 @@
 import { PrismaClient, TaskPriority, TaskStatus } from "@prisma/client";
 
 const prisma = new PrismaClient();
+const seedUserId = "seed-user-1";
 
 const seedTasks = [
   {
     id: "seed-task-1",
+    userId: seedUserId,
     title: "Plan weekly priorities",
     description: "Define the top three goals for the selected date.",
     status: TaskStatus.todo,
@@ -17,6 +19,7 @@ const seedTasks = [
   },
   {
     id: "seed-task-2",
+    userId: seedUserId,
     title: "Implement API validation",
     description: "Add Zod validation for task payloads.",
     status: TaskStatus.in_progress,
@@ -29,6 +32,7 @@ const seedTasks = [
   },
   {
     id: "seed-task-3",
+    userId: seedUserId,
     title: "Review completed work",
     description: "Check tasks moved to done and capture outcomes.",
     status: TaskStatus.done,
@@ -41,6 +45,7 @@ const seedTasks = [
   },
   {
     id: "seed-task-4",
+    userId: seedUserId,
     title: "Archive outdated checklist",
     description: "Remove stale planning checklist from active board.",
     status: TaskStatus.cancelled,
@@ -54,6 +59,20 @@ const seedTasks = [
 ];
 
 async function main() {
+  await prisma.user.upsert({
+    where: { id: seedUserId },
+    create: {
+      id: seedUserId,
+      email: "seed-user@jotly.local",
+      passwordHash: "seed-user-password-hash",
+      displayName: "Seed User"
+    },
+    update: {
+      email: "seed-user@jotly.local",
+      displayName: "Seed User"
+    }
+  });
+
   for (const task of seedTasks) {
     await prisma.task.upsert({
       where: { id: task.id },

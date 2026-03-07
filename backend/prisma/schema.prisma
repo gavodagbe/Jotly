@@ -32,6 +32,7 @@ model User {
   passwordHash String
   displayName  String?
   sessions     Session[]
+  tasks        Task[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -51,6 +52,7 @@ model Session {
 
 model Task {
   id                       String              @id @default(cuid())
+  userId                   String
   title                    String
   description              String?
   status                   TaskStatus
@@ -67,9 +69,12 @@ model Task {
   comments                 TaskComment[]
   attachments              TaskAttachment[]
   recurrenceRule           TaskRecurrenceRule?
+  user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceTask               Task?               @relation("TaskRecurrenceInstances", fields: [recurrenceSourceTaskId], references: [id], onDelete: SetNull)
   recurrenceInstances      Task[]              @relation("TaskRecurrenceInstances")
 
+  @@index([userId, targetDate])
+  @@index([userId, status])
   @@index([targetDate])
   @@index([status])
   @@index([updatedAt])

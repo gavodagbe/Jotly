@@ -96,6 +96,15 @@ function createSessionToken(): string {
   return randomBytes(SESSION_TOKEN_BYTES).toString("base64url");
 }
 
+function isEmailUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
+
 function toAuthenticatedUser(user: AuthUser): AuthenticatedUser {
   return {
     id: user.id,
@@ -139,11 +148,21 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
       }
 
       const passwordHash = await hashPassword(input.password);
-      const user = await authStore.createUser({
-        email,
-        passwordHash,
-        displayName
-      });
+      let user: AuthUser;
+
+      try {
+        user = await authStore.createUser({
+          email,
+          passwordHash,
+          displayName
+        });
+      } catch (error) {
+        if (isEmailUniqueConstraintError(error)) {
+          throw new AuthError("Email already in use", "EMAIL_IN_USE");
+        }
+
+        throw error;
+      }
 
       await authStore.deleteExpiredSessions(new Date());
       const { token } = await createSessionForUser(authStore, sessionTtlMs, user.id);

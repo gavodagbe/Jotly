@@ -90,6 +90,14 @@ function normalizeWeekdays(frequency: RecurrenceFrequency, weekdays: number[] | 
   return [...weekdays].sort((left, right) => left - right);
 }
 
+function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
+  if (!request.authUserId || request.authUserId.trim() === "") {
+    return null;
+  }
+
+  return request.authUserId;
+}
+
 const recurrenceRoutes: FastifyPluginAsync<RecurrenceRouteOptions> = async (app, options) => {
   const { taskStore, recurrenceStore, authService } = options;
 
@@ -105,9 +113,17 @@ const recurrenceRoutes: FastifyPluginAsync<RecurrenceRouteOptions> = async (app,
     if (!authContext) {
       return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
     }
+
+    (request as { authUserId?: string }).authUserId = authContext.user.id;
   });
 
   app.get("/api/tasks/:id/recurrence", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -116,7 +132,7 @@ const recurrenceRoutes: FastifyPluginAsync<RecurrenceRouteOptions> = async (app,
     }
 
     try {
-      const task = await taskStore.getById(paramsResult.data.id);
+      const task = await taskStore.getById(paramsResult.data.id, authUserId);
 
       if (!task) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -139,6 +155,12 @@ const recurrenceRoutes: FastifyPluginAsync<RecurrenceRouteOptions> = async (app,
   });
 
   app.put("/api/tasks/:id/recurrence", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -164,7 +186,7 @@ const recurrenceRoutes: FastifyPluginAsync<RecurrenceRouteOptions> = async (app,
     }
 
     try {
-      const task = await taskStore.getById(paramsResult.data.id);
+      const task = await taskStore.getById(paramsResult.data.id, authUserId);
 
       if (!task) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -201,6 +223,12 @@ const recurrenceRoutes: FastifyPluginAsync<RecurrenceRouteOptions> = async (app,
   });
 
   app.delete("/api/tasks/:id/recurrence", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -209,7 +237,7 @@ const recurrenceRoutes: FastifyPluginAsync<RecurrenceRouteOptions> = async (app,
     }
 
     try {
-      const task = await taskStore.getById(paramsResult.data.id);
+      const task = await taskStore.getById(paramsResult.data.id, authUserId);
 
       if (!task) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");

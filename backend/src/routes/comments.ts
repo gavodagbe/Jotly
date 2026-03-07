@@ -46,9 +46,17 @@ function isStorageMissingError(error: unknown): boolean {
   return isStorageNotInitializedPrismaError(error);
 }
 
-async function ensureTaskExists(taskStore: TaskStore, taskId: string): Promise<boolean> {
-  const task = await taskStore.getById(taskId);
+async function ensureTaskExists(taskStore: TaskStore, taskId: string, userId: string): Promise<boolean> {
+  const task = await taskStore.getById(taskId, userId);
   return task !== null;
+}
+
+function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
+  if (!request.authUserId || request.authUserId.trim() === "") {
+    return null;
+  }
+
+  return request.authUserId;
 }
 
 const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, options) => {
@@ -66,9 +74,17 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
     if (!authContext) {
       return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
     }
+
+    (request as { authUserId?: string }).authUserId = authContext.user.id;
   });
 
   app.get("/api/tasks/:id/comments", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -77,7 +93,7 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
     }
 
     try {
-      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id);
+      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id, authUserId);
 
       if (!taskExists) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -100,6 +116,12 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
   });
 
   app.post("/api/tasks/:id/comments", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = taskParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -115,7 +137,7 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
     }
 
     try {
-      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id);
+      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id, authUserId);
 
       if (!taskExists) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -141,6 +163,12 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
   });
 
   app.patch("/api/tasks/:id/comments/:commentId", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = commentParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -156,7 +184,7 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
     }
 
     try {
-      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id);
+      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id, authUserId);
 
       if (!taskExists) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
@@ -191,6 +219,12 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
   });
 
   app.delete("/api/tasks/:id/comments/:commentId", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
     const paramsResult = commentParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -199,7 +233,7 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
     }
 
     try {
-      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id);
+      const taskExists = await ensureTaskExists(taskStore, paramsResult.data.id, authUserId);
 
       if (!taskExists) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");

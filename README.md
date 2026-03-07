@@ -109,3 +109,14 @@ Reference static HTTPS config for this domain:
 ./scripts/start-prod.sh
 ./scripts/stop-prod.sh
 ```
+
+### 6. Task ownership backfill verification (staging/prod)
+
+After applying the migration that adds `Task.userId`, run:
+
+```bash
+cd backend
+npm run prisma:verify-task-ownership
+```
+
+This reports task ownership counts by user and fails if any orphaned tasks are detected.

@@ -119,6 +119,16 @@ type RecurrenceFormValues = {
 type TaskDialogMode = "create" | "edit";
 type ApiErrorPayload = { error?: { message?: string } } | null;
 
+class ApiRequestError extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
 
@@ -664,7 +674,10 @@ async function loadCurrentUser(token: string): Promise<AuthUser> {
     | null;
 
   if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to validate session"));
+    throw new ApiRequestError(
+      response.status,
+      getApiErrorMessage(response.status, payload, "Unable to validate session")
+    );
   }
 
   if (!payload?.data?.user) {
@@ -2237,10 +2250,17 @@ export function AppShell() {
           setAuthErrorMessage(null);
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
-          clearAuthSession();
-          setAuthErrorMessage("Your session expired. Please sign in again.");
+          if (error instanceof ApiRequestError && error.statusCode === 401) {
+            clearAuthSession();
+            setAuthErrorMessage("Your session expired. Please sign in again.");
+            return;
+          }
+
+          setAuthErrorMessage(
+            error instanceof Error ? error.message : "Unable to validate your session right now."
+          );
         }
       });
 

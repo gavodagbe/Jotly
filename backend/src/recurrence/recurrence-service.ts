@@ -90,6 +90,7 @@ function getStatusForGeneratedInstance(): TaskStatus {
 
 function buildGeneratedTaskInput(task: Task, occurrenceDate: Date): TaskCreateInput {
   return {
+    userId: task.userId,
     title: task.title,
     description: task.description,
     status: getStatusForGeneratedInstance(),
@@ -104,13 +105,23 @@ function buildGeneratedTaskInput(task: Task, occurrenceDate: Date): TaskCreateIn
   };
 }
 
+function isDuplicateTaskOccurrenceError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
+
 export async function materializeRecurringTasksForDate(
   targetDate: Date,
   taskStore: TaskStore,
-  recurrenceStore: RecurrenceStore
+  recurrenceStore: RecurrenceStore,
+  userId: string
 ): Promise<void> {
   const normalizedDate = toUtcDateOnly(targetDate);
-  const existingTasks = await taskStore.listByDate(normalizedDate);
+  const existingTasks = await taskStore.listByDate(normalizedDate, userId);
 
   const existingRecurrenceSources = new Set(
     existingTasks
@@ -118,10 +129,10 @@ export async function materializeRecurringTasksForDate(
       .filter((sourceTaskId): sourceTaskId is string => typeof sourceTaskId === "string" && sourceTaskId.length > 0)
   );
 
-  const rules = await recurrenceStore.listForDate(normalizedDate);
+  const rules = await recurrenceStore.listForDate(normalizedDate, userId);
 
   for (const rule of rules) {
-    const templateTask = await taskStore.getById(rule.taskId);
+    const templateTask = await taskStore.getById(rule.taskId, userId);
 
     if (!templateTask || templateTask.recurrenceSourceTaskId) {
       continue;
@@ -135,7 +146,17 @@ export async function materializeRecurringTasksForDate(
       continue;
     }
 
-    await taskStore.create(buildGeneratedTaskInput(templateTask, normalizedDate));
+    try {
+      await taskStore.create(buildGeneratedTaskInput(templateTask, normalizedDate));
+    } catch (error) {
+      if (isDuplicateTaskOccurrenceError(error)) {
+        existingRecurrenceSources.add(templateTask.id);
+        continue;
+      }
+
+      throw error;
+    }
+
     existingRecurrenceSources.add(templateTask.id);
   }
 }

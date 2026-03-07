@@ -3,14 +3,15 @@
 ## Current implementation reality check
 Implemented in the current codebase:
 - backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
+- backend auth/session API (`backend/src/routes/auth.ts`)
+- backend comments API (`backend/src/routes/comments.ts`)
+- backend attachments API (`backend/src/routes/attachments.ts`)
+- backend recurrence API (`backend/src/routes/recurrence.ts`)
 - Prisma task model with status and lifecycle timestamps (`backend/prisma/schema.prisma`)
 - frontend date-driven Kanban board with create/edit/delete dialogs and drag-and-drop status updates (`frontend/src/components/layout/app-shell.tsx`)
 - Docker Compose local runtime (frontend, backend, postgres)
 
 Not implemented yet:
-- comments
-- attachments
-- recurrence
 - AI assistant
 - reporting
 
@@ -88,8 +89,8 @@ Reason:
 - cleaner Git history
 - safer delivery workflow
 
-## Future module boundary map
-The boundaries below are for preparation only; no feature implementation is part of Sprint 1.
+## Module boundary map
+The boundaries below reflect current ownership and future evolution points.
 
 ### Comments
 - Relation to tasks: comments are children of tasks.
@@ -100,7 +101,7 @@ The boundaries below are for preparation only; no feature implementation is part
   - `POST /api/tasks/:id/comments`
   - `PATCH /api/tasks/:id/comments/:commentId`
   - `DELETE /api/tasks/:id/comments/:commentId`
-- Sprint 1 posture: postponed.
+- Current posture: implemented.
 
 ### Attachments
 - Relation to tasks: attachments are task-linked assets.
@@ -111,14 +112,14 @@ The boundaries below are for preparation only; no feature implementation is part
   - `GET /api/tasks/:id/attachments`
   - `POST /api/tasks/:id/attachments`
   - `DELETE /api/tasks/:id/attachments/:attachmentId`
-- Sprint 1 posture: postponed.
+- Current posture: implemented.
 
 ### Recurrence
 - Relation to tasks: recurrence rules generate date-specific task instances.
 - Likely backend module: `backend/src/recurrence/`.
 - Likely frontend feature area: `frontend/src/features/recurrence/`.
 - Likely approach: keep concrete tasks explicit and persist recurrence metadata separately.
-- Sprint 1 posture: postponed.
+- Current posture: implemented.
 
 ### AI assistant
 - Relation to task history: read-oriented assistant over task history and future contextual modules.
@@ -135,10 +136,12 @@ The boundaries below are for preparation only; no feature implementation is part
 - Sprint 1 posture: postponed.
 
 ## Future entities and extension points
-Likely future entities (documentation only):
+Existing entities:
 - `TaskComment`
 - `TaskAttachment`
 - `TaskRecurrenceRule`
+
+Likely future entities:
 - `TaskActivityEvent` (only if event-level reporting is needed later)
 
 Current extension points to preserve:
@@ -149,13 +152,8 @@ Current extension points to preserve:
 
 ## Sprint 1 postponed areas
 These are intentionally not fully implemented in Sprint 1:
-- comments
-- attachments
-- recurrence
 - AI assistant
 - reporting
-- auth
-- multi-user
 - notifications
 - mobile
 - real-time sync
