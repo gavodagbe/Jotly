@@ -24,12 +24,15 @@ Implemented in the current codebase:
 - daily completion percentage includes day affirmation completion (`frontend/src/components/layout/app-shell.tsx`)
 - frontend AI assistant chatbot (FAB) with global user task context (`frontend/src/components/layout/app-shell.tsx`)
 - frontend profile/settings modal with language/timezone preferences (`frontend/src/components/layout/app-shell.tsx`)
+- gaming track phase 1 summary card (`frontend/src/components/layout/app-shell.tsx`) backed by `/api/gaming-track/summary`
+- gaming track phase 2 updates: weekly missions + personal bests (`frontend/src/components/layout/app-shell.tsx`)
+- gaming track phase 3 updates: levels/badges, streak protection, and historical trends (`frontend/src/components/layout/app-shell.tsx`)
 - Docker Compose local runtime (frontend, backend, postgres)
-- route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile
+- route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile/gaming-track
 
 Not implemented yet:
 - reporting
-- gaming track
+- gaming track phase 4+ (deeper engagement loops)
 - notifications
 - mobile client
 - real-time sync
@@ -204,20 +207,31 @@ The boundaries below reflect current ownership and future evolution points.
 
 ### Gaming Track
 - Relation to user engagement: transforms daily execution and reflection activity into retention loops.
-- Planned metric windows: day, week, month, year.
-- Planned metric families:
+- Implemented Phase 1-3:
+  - metric windows: day, week, month, year (period-to-date)
+  - summary endpoint + dashboard card
+  - tasks/affirmation/bilan completion metrics
+  - streak metrics and trend deltas
+  - weekly missions
+  - personal bests
+  - level progression (XP, rank, progress to next level)
+  - badge progression and unlock states
+  - streak protection signals
+  - historical trends (daily/weekly/monthly points)
+- Metric families (next depth):
   - task achievement metrics (completion rate, throughput, carry-over trend)
   - day affirmation completion metrics
   - day bilan completion metrics
-  - streak and consistency metrics
-- Planned scoring outputs:
+  - advanced streak and consistency metrics
+  - social loops and collaborative challenges
+- Scoring outputs in Phase 1:
   - execution score
   - reflection score
   - consistency score
   - momentum score
 - Likely backend module: `backend/src/gaming-track/`.
 - Likely frontend feature area: `frontend/src/features/gaming-track/`.
-- Sprint posture: planned, not implemented.
+- Sprint posture: Phase 1-3 implemented; phase 4+ deeper engagement layer remains planned.
 
 ## Entities and extension points
 Existing entities:
@@ -233,7 +247,7 @@ Likely future entities:
 
 Current extension points to preserve:
 - backend route split by domain in `backend/src/routes/`
-- backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, `backend/src/recurrence/`, `backend/src/day-affirmation/`, `backend/src/day-bilan/`, and `backend/src/assistant/`
+- backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, `backend/src/recurrence/`, `backend/src/day-affirmation/`, `backend/src/day-bilan/`, `backend/src/assistant/`, and `backend/src/gaming-track/`
 - frontend feature folders in `frontend/src/features/`
 - stable task API contract for frontend/backend integration
 

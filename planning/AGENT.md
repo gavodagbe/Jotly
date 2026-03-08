@@ -156,7 +156,7 @@ UI principles:
 ## Sprint 1 postponed modules
 The following modules are explicitly postponed after Sprint 1 implementation:
 - reporting
-- gaming track
+- gaming track phase 4+
 - notifications
 - mobile app
 - real-time sync
@@ -250,12 +250,23 @@ The modules below define intended boundaries without pre-building abstractions.
 ### Gaming Track
 - Relation to retention: converts user activity into progress loops and consistency feedback.
 - Core period views: day / week / month / year.
-- Planned dimensions:
+- Implemented in Phase 1-3:
+  - backend summary endpoint: `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
+  - top-of-dashboard score card with period switch
+  - task/affirmation/bilan completion metrics + streaks + trend deltas
+  - weekly missions
+  - personal bests
+  - level progression (`xp`, `level`, `rank`, progress to next level)
+  - badge progression (`badges`)
+  - streak protection signals (`streakProtection`)
+  - historical trend views (`historicalTrends.daily|weekly|monthly`)
+- Next dimensions:
   - task achievement (completion rate, throughput, carry-over trend)
   - day affirmation completion rate
   - day bilan completion rate
-  - streak and consistency indicators
-- Planned scoring model:
+  - deeper streak and consistency indicators
+  - social and competitive engagement loops
+- Current scoring model:
   - execution score (tasks)
   - reflection score (affirmation + bilan)
   - consistency score (habit continuity)
@@ -264,7 +275,7 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely frontend entry points:
   - top-of-dashboard score card and trend chips
   - dedicated stats screen under `frontend/src/features/gaming-track/`
-- Status: planned, not implemented.
+- Status: Phase 1-3 implemented; phase 4+ deeper engagement layer remains planned.
 
 ## Known entities and extension points
 Existing entities:
@@ -281,7 +292,7 @@ Potential future entities:
 
 Current extension points to preserve:
 - task route module boundaries in `backend/src/routes/`
-- store/service boundaries in `backend/src/tasks/`, `backend/src/day-affirmation/`, and `backend/src/day-bilan/`
+- store/service boundaries in `backend/src/tasks/`, `backend/src/day-affirmation/`, `backend/src/day-bilan/`, and `backend/src/gaming-track/`
 - feature-first frontend folders under `frontend/src/features/`
 - explicit task API contract as the integration backbone
 

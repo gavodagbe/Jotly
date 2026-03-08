@@ -48,6 +48,9 @@ Completed:
 - user profile/preferences module (display name + preferred locale + preferred timezone)
 - assistant request locale now defaults from user profile preference
 - frontend internationalization for core UX (`en`/`fr`) using profile locale with browser fallback
+- gaming track phase 1 (backend summary API + frontend score card with `D/W/M/Y` period selector)
+- gaming track phase 2 (weekly missions + personal bests in summary API and dashboard)
+- gaming track phase 3 (levels/badges, streak protection, and historical trend views)
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal
@@ -73,22 +76,24 @@ Latest AI assistant conventions:
 - provider modes: `heuristic` (default) or `openai`
 - automatic fallback to heuristic when OpenAI is unavailable
 
-Gaming Track planning scope (next module):
-- periodized stats for task achievement: day, week, month, year
-- periodized stats for day affirmation completion
-- periodized stats for day bilan completion
-- engagement metrics: streaks, personal bests, weekly missions
-- composite scoring model:
-  - execution score (task completion quality)
-  - reflection score (affirmation + bilan completion)
-  - consistency score (streak stability)
-  - momentum score (overall trend)
-- whoop-inspired UX principle:
-  - compare short-term behavior to personal baseline and show trend direction
+Gaming Track status:
+- Phase 1-3 implemented:
+  - `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
+  - tasks + affirmation + bilan completion analytics
+  - streak and scoring outputs (execution, reflection, consistency, momentum, overall)
+  - top-of-dashboard score card with period switch
+  - weekly missions
+  - personal bests
+  - level progression (XP, rank, next-level progress)
+  - badges progression and unlock states
+  - streak protection signals
+  - historical trend points (daily, weekly, monthly)
+- Next phases:
+  - deeper retention loops and social mechanics
 
 Still not implemented:
 - reporting
-- gaming track analytics and engagement layer
+- gaming track phase 4+ engagement layer
 - notifications
 - mobile client
 - real-time sync

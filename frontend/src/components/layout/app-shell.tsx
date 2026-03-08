@@ -142,6 +142,135 @@ type DayBilanMutationInput = {
   tomorrowTop3: string | null;
 };
 
+type GamingTrackPeriod = "day" | "week" | "month" | "year";
+
+type GamingTrackSummary = {
+  period: GamingTrackPeriod;
+  anchorDate: string;
+  rangeStart: string;
+  rangeEnd: string;
+  trackedDays: number;
+  tasks: {
+    total: number;
+    done: number;
+    actionable: number;
+    cancelled: number;
+    carriedOver: number;
+    completionRate: number;
+  };
+  affirmations: {
+    completedDays: number;
+    totalDays: number;
+    completionRate: number;
+  };
+  bilans: {
+    completedDays: number;
+    totalDays: number;
+    completionRate: number;
+  };
+  streaks: {
+    executionBest: number;
+    executionActive: number;
+    reflectionBest: number;
+    reflectionActive: number;
+  };
+  scores: {
+    execution: number;
+    reflection: number;
+    consistency: number;
+    momentum: number;
+    overall: number;
+  };
+  trend: {
+    executionDelta: number;
+    reflectionDelta: number;
+    consistencyDelta: number;
+    overallDelta: number;
+  };
+  weeklyMissionWindow: {
+    rangeStart: string;
+    rangeEnd: string;
+    trackedDays: number;
+  };
+  missions: Array<{
+    id: "done_tasks" | "affirmation_days" | "bilan_days" | "execution_streak";
+    target: number;
+    progress: number;
+    completed: boolean;
+  }>;
+  personalBests: {
+    dailyDoneTasks: number;
+    dailyDoneTasksDate: string | null;
+    executionBestStreak: number;
+    reflectionBestStreak: number;
+  };
+  level: {
+    xp: number;
+    level: number;
+    rank: "rookie" | "builder" | "operator" | "strategist" | "master";
+    currentLevelXp: number;
+    nextLevelXp: number;
+    progressToNextLevel: number;
+  };
+  badges: Array<{
+    id:
+      | "first_task_done"
+      | "task_finisher_50"
+      | "execution_streak_7"
+      | "reflection_streak_5"
+      | "mission_week_4"
+      | "carryover_recovery_10";
+    tier: "bronze" | "silver" | "gold";
+    progress: number;
+    target: number;
+    unlocked: boolean;
+  }>;
+  streakProtection: {
+    availableCharges: number;
+    maxCharges: number;
+    earnedCharges: number;
+    atRisk: boolean;
+    recommended: boolean;
+    projectedExecutionStreak: number;
+    projectedReflectionStreak: number;
+  };
+  historicalTrends: {
+    daily: Array<{
+      label: string;
+      rangeStart: string;
+      rangeEnd: string;
+      trackedDays: number;
+      tasksDone: number;
+      taskCompletionRate: number;
+      affirmationCompletionRate: number;
+      bilanCompletionRate: number;
+      overallScore: number;
+    }>;
+    weekly: Array<{
+      label: string;
+      rangeStart: string;
+      rangeEnd: string;
+      trackedDays: number;
+      tasksDone: number;
+      taskCompletionRate: number;
+      affirmationCompletionRate: number;
+      bilanCompletionRate: number;
+      overallScore: number;
+    }>;
+    monthly: Array<{
+      label: string;
+      rangeStart: string;
+      rangeEnd: string;
+      trackedDays: number;
+      tasksDone: number;
+      taskCompletionRate: number;
+      affirmationCompletionRate: number;
+      bilanCompletionRate: number;
+      overallScore: number;
+    }>;
+  };
+};
+
 type CarryOverYesterdayPayload = {
   copiedCount: number;
   skippedCount: number;
@@ -329,6 +458,24 @@ const WEEKDAY_OPTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<{ value: numbe
   ],
 };
 
+const GAMING_TRACK_PERIOD_OPTIONS_BY_LOCALE: Record<
+  UserLocale,
+  ReadonlyArray<{ value: GamingTrackPeriod; label: string }>
+> = {
+  en: [
+    { value: "day", label: "D" },
+    { value: "week", label: "W" },
+    { value: "month", label: "M" },
+    { value: "year", label: "Y" },
+  ],
+  fr: [
+    { value: "day", label: "J" },
+    { value: "week", label: "S" },
+    { value: "month", label: "M" },
+    { value: "year", label: "A" },
+  ],
+};
+
 const BOARD_COLUMN_STATUSES = new Set<TaskStatus>(["todo", "in_progress", "done", "cancelled"]);
 const PRIORITY_VALUES = new Set<TaskPriority>(["low", "medium", "high"]);
 const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>(["daily", "weekly", "monthly"]);
@@ -446,6 +593,12 @@ function getWeekdayOptions(locale: UserLocale): ReadonlyArray<{ value: number; l
   return WEEKDAY_OPTIONS_BY_LOCALE[locale];
 }
 
+function getGamingTrackPeriodOptions(
+  locale: UserLocale
+): ReadonlyArray<{ value: GamingTrackPeriod; label: string }> {
+  return GAMING_TRACK_PERIOD_OPTIONS_BY_LOCALE[locale];
+}
+
 function isValidIanaTimeZone(value: string): boolean {
   try {
     Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
@@ -491,6 +644,204 @@ function formatDateTime(value: string, locale: UserLocale, timeZone: string | nu
     minute: "2-digit",
     ...(timeZone ? { timeZone } : {}),
   }).format(parsed);
+}
+
+function formatDateOnlyForLocale(value: string, locale: UserLocale): string {
+  return new Intl.DateTimeFormat(getLocaleForFormatting(locale), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parseDateInput(value));
+}
+
+function formatSignedDelta(value: number): string {
+  if (value > 0) {
+    return `+${value}`;
+  }
+
+  if (value < 0) {
+    return `${value}`;
+  }
+
+  return "0";
+}
+
+function formatGamingTrackPeriod(period: GamingTrackPeriod, locale: UserLocale): string {
+  if (locale === "fr") {
+    if (period === "day") {
+      return "Jour";
+    }
+    if (period === "week") {
+      return "Semaine";
+    }
+    if (period === "month") {
+      return "Mois";
+    }
+    return "Annee";
+  }
+
+  if (period === "day") {
+    return "Day";
+  }
+  if (period === "week") {
+    return "Week";
+  }
+  if (period === "month") {
+    return "Month";
+  }
+  return "Year";
+}
+
+function formatGamingTrackMissionLabel(
+  missionId: GamingTrackSummary["missions"][number]["id"],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (missionId === "done_tasks") {
+      return "Taches terminees";
+    }
+    if (missionId === "affirmation_days") {
+      return "Jours avec affirmation";
+    }
+    if (missionId === "bilan_days") {
+      return "Jours avec bilan";
+    }
+    return "Serie d'execution";
+  }
+
+  if (missionId === "done_tasks") {
+    return "Tasks done";
+  }
+  if (missionId === "affirmation_days") {
+    return "Affirmation days";
+  }
+  if (missionId === "bilan_days") {
+    return "Bilan days";
+  }
+  return "Execution streak";
+}
+
+function formatGamingTrackBadgeLabel(
+  badgeId: GamingTrackSummary["badges"][number]["id"],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (badgeId === "first_task_done") {
+      return "Premier succes";
+    }
+    if (badgeId === "task_finisher_50") {
+      return "50 taches terminees";
+    }
+    if (badgeId === "execution_streak_7") {
+      return "Serie execution 7";
+    }
+    if (badgeId === "reflection_streak_5") {
+      return "Serie reflection 5";
+    }
+    if (badgeId === "mission_week_4") {
+      return "4 semaines mission";
+    }
+    return "Recuperation reprise x10";
+  }
+
+  if (badgeId === "first_task_done") {
+    return "First win";
+  }
+  if (badgeId === "task_finisher_50") {
+    return "50 tasks done";
+  }
+  if (badgeId === "execution_streak_7") {
+    return "7-day execution streak";
+  }
+  if (badgeId === "reflection_streak_5") {
+    return "5-day reflection streak";
+  }
+  if (badgeId === "mission_week_4") {
+    return "4 mission weeks";
+  }
+  return "Carry-over recovery x10";
+}
+
+function formatGamingTrackRank(
+  rank: GamingTrackSummary["level"]["rank"],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (rank === "rookie") {
+      return "Debutant";
+    }
+    if (rank === "builder") {
+      return "Constructeur";
+    }
+    if (rank === "operator") {
+      return "Operateur";
+    }
+    if (rank === "strategist") {
+      return "Strategiste";
+    }
+    return "Maitre";
+  }
+
+  if (rank === "rookie") {
+    return "Rookie";
+  }
+  if (rank === "builder") {
+    return "Builder";
+  }
+  if (rank === "operator") {
+    return "Operator";
+  }
+  if (rank === "strategist") {
+    return "Strategist";
+  }
+  return "Master";
+}
+
+function getBadgeTierClass(tier: GamingTrackSummary["badges"][number]["tier"], unlocked: boolean): string {
+  if (!unlocked) {
+    return "border-line bg-surface text-muted";
+  }
+
+  if (tier === "gold") {
+    return "border-amber-300 bg-amber-50 text-amber-800";
+  }
+
+  if (tier === "silver") {
+    return "border-slate-300 bg-slate-100 text-slate-700";
+  }
+
+  return "border-orange-300 bg-orange-50 text-orange-800";
+}
+
+function getHistoricalTrendPointsForPeriod(summary: GamingTrackSummary, period: GamingTrackPeriod) {
+  if (period === "day") {
+    return summary.historicalTrends.daily;
+  }
+
+  if (period === "week") {
+    return summary.historicalTrends.weekly;
+  }
+
+  return summary.historicalTrends.monthly;
+}
+
+function formatHistoricalTrendLabel(
+  point: GamingTrackSummary["historicalTrends"]["daily"][number],
+  period: GamingTrackPeriod,
+  locale: UserLocale
+): string {
+  if (period === "day") {
+    return formatDateOnlyForLocale(point.rangeStart, locale);
+  }
+
+  if (period === "week") {
+    return formatDateOnlyForLocale(point.rangeStart, locale);
+  }
+
+  return new Intl.DateTimeFormat(getLocaleForFormatting(locale), {
+    month: "short",
+    year: "2-digit",
+  }).format(parseDateInput(point.rangeStart));
 }
 
 function formatPriority(priority: TaskPriority, locale: UserLocale): string {
@@ -1557,6 +1908,37 @@ async function upsertDayBilan(input: DayBilanMutationInput, token: string): Prom
   return payload.data;
 }
 
+async function loadGamingTrackSummary(
+  date: string,
+  period: GamingTrackPeriod,
+  token: string,
+  signal?: AbortSignal
+): Promise<GamingTrackSummary> {
+  const response = await fetch(
+    `/backend-api/gaming-track/summary?date=${encodeURIComponent(date)}&period=${encodeURIComponent(period)}`,
+    {
+      method: "GET",
+      headers: createAuthHeaders(token, false),
+      signal,
+      cache: "no-store",
+    }
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: GamingTrackSummary; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load gaming track summary"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to load gaming track summary.");
+  }
+
+  return payload.data;
+}
+
 type AppNavbarProps = {
   locale: UserLocale;
   user: AuthUser | null;
@@ -2158,6 +2540,10 @@ export function AppShell() {
   const [isDayBilanSaving, setIsDayBilanSaving] = useState(false);
   const [dayBilanErrorMessage, setDayBilanErrorMessage] = useState<string | null>(null);
   const [dayBilanSuccessMessage, setDayBilanSuccessMessage] = useState<string | null>(null);
+  const [gamingTrackPeriod, setGamingTrackPeriod] = useState<GamingTrackPeriod>("week");
+  const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
+  const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
+  const [gamingTrackErrorMessage, setGamingTrackErrorMessage] = useState<string | null>(null);
   const [isAssistantPanelOpen, setIsAssistantPanelOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([]);
@@ -2229,6 +2615,7 @@ export function AppShell() {
   const priorityOptions = getPriorityOptions(activeLocale);
   const recurrenceFrequencyOptions = getRecurrenceFrequencyOptions(activeLocale);
   const weekdayOptions = getWeekdayOptions(activeLocale);
+  const gamingTrackPeriodOptions = getGamingTrackPeriodOptions(activeLocale);
   const assistantPromptSuggestions = getAssistantPromptSuggestions(activeLocale);
   const userLocaleOptions = getUserLocaleOptions(activeLocale);
   const activeTimeZone = authUser?.preferredTimeZone ?? null;
@@ -2305,6 +2692,10 @@ export function AppShell() {
     setIsDayBilanSaving(false);
     setDayBilanErrorMessage(null);
     setDayBilanSuccessMessage(null);
+    setGamingTrackPeriod("week");
+    setGamingTrackSummary(null);
+    setIsGamingTrackLoading(false);
+    setGamingTrackErrorMessage(null);
     setIsAssistantPanelOpen(false);
     setAssistantQuestion("");
     setAssistantMessages([]);
@@ -2590,6 +2981,7 @@ export function AppShell() {
     setDayBilanFormValues(getDefaultDayBilanFormValues());
     setDayBilanErrorMessage(null);
     setDayBilanSuccessMessage(null);
+    setGamingTrackErrorMessage(null);
     setAssistantErrorMessage(null);
     setActiveTaskId(null);
     setPendingTaskIds([]);
@@ -3451,6 +3843,53 @@ export function AppShell() {
     }
 
     if (!authToken || !authUser) {
+      setGamingTrackSummary(null);
+      setGamingTrackErrorMessage(null);
+      setIsGamingTrackLoading(false);
+      return;
+    }
+
+    setIsGamingTrackLoading(true);
+    setGamingTrackErrorMessage(null);
+    const controller = new AbortController();
+
+    loadGamingTrackSummary(selectedDate, gamingTrackPeriod, authToken, controller.signal)
+      .then((summary) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setGamingTrackSummary(summary);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setGamingTrackSummary(null);
+        setGamingTrackErrorMessage(
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger le gaming track."
+            : "Unable to load gaming track."
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsGamingTrackLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, dayAffirmation, dayBilan, gamingTrackPeriod, isAuthReady, isFrench, selectedDate, tasks]);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken || !authUser) {
       setDayAffirmation(null);
       setDayAffirmationDraft(getDefaultAffirmationText(selectedDate, activeLocale));
       setIsDayAffirmationLoading(false);
@@ -3628,6 +4067,31 @@ export function AppShell() {
   const completedItemCount = tasksByStatus.done.length + (isAffirmationCompleted ? 1 : 0);
   const completionRate =
     completionItemCount === 0 ? 0 : Math.round((completedItemCount / completionItemCount) * 100);
+  const gamingTrackPeriodLabel = formatGamingTrackPeriod(gamingTrackPeriod, activeLocale);
+  const gamingTrackRangeLabel = gamingTrackSummary
+    ? gamingTrackSummary.rangeStart === gamingTrackSummary.rangeEnd
+      ? formatDateOnlyForLocale(gamingTrackSummary.rangeStart, activeLocale)
+      : `${formatDateOnlyForLocale(gamingTrackSummary.rangeStart, activeLocale)} - ${formatDateOnlyForLocale(
+          gamingTrackSummary.rangeEnd,
+          activeLocale
+        )}`
+    : null;
+  const gamingMissionWindowLabel = gamingTrackSummary
+    ? gamingTrackSummary.weeklyMissionWindow.rangeStart === gamingTrackSummary.weeklyMissionWindow.rangeEnd
+      ? formatDateOnlyForLocale(gamingTrackSummary.weeklyMissionWindow.rangeStart, activeLocale)
+      : `${formatDateOnlyForLocale(
+          gamingTrackSummary.weeklyMissionWindow.rangeStart,
+          activeLocale
+        )} - ${formatDateOnlyForLocale(gamingTrackSummary.weeklyMissionWindow.rangeEnd, activeLocale)}`
+    : null;
+  const gamingTrackOverallDelta = gamingTrackSummary?.trend.overallDelta ?? 0;
+  const gamingTrackHistoryPoints = gamingTrackSummary
+    ? getHistoricalTrendPointsForPeriod(gamingTrackSummary, gamingTrackPeriod)
+    : [];
+  const gamingTrackHistoryMaxOverall = gamingTrackHistoryPoints.reduce(
+    (maxValue, point) => Math.max(maxValue, point.overallScore),
+    0
+  );
 
   function handleDragStart(event: DragStartEvent) {
     if (isLoading || pendingTaskIds.length > 0 || isTaskDialogOpen || isMutationPending) {
@@ -3772,6 +4236,320 @@ export function AppShell() {
           </div>
         </div>
       </header>
+
+      <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">Gaming Track</p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">
+              {isFrench ? "Progression et regularite" : "Progress and consistency"}
+            </h2>
+            <p className="text-sm text-muted">
+              {gamingTrackRangeLabel
+                ? `${gamingTrackPeriodLabel} · ${gamingTrackRangeLabel}`
+                : isFrench
+                ? "Suivi periodique de vos resultats."
+                : "Periodized tracking of your results."}
+            </p>
+          </div>
+
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-line bg-surface-soft p-1.5">
+            {gamingTrackPeriodOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`${controlButtonClass} ${
+                  gamingTrackPeriod === option.value ? "border-accent bg-accent-soft/60 text-accent" : ""
+                }`}
+                onClick={() => {
+                  setGamingTrackPeriod(option.value);
+                }}
+                disabled={isGamingTrackLoading}
+                aria-pressed={gamingTrackPeriod === option.value}
+                title={formatGamingTrackPeriod(option.value, activeLocale)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {isGamingTrackLoading ? (
+          <p className="mt-4 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
+            {isFrench ? "Chargement du gaming track..." : "Loading gaming track..."}
+          </p>
+        ) : null}
+
+        {gamingTrackSummary ? (
+          <>
+            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+              <div className="rounded-2xl border border-accent/25 bg-accent-soft/30 px-4 py-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                  {isFrench ? "Score global" : "Overall score"}
+                </p>
+                <p className="mt-1 text-3xl font-semibold text-foreground">
+                  {gamingTrackSummary.scores.overall}
+                  <span className="ml-1 text-sm text-muted">/100</span>
+                </p>
+                <p className="mt-1 text-xs font-medium text-muted">
+                  {isFrench ? "Tendance" : "Trend"} {formatSignedDelta(gamingTrackOverallDelta)}
+                  {isFrench ? " pts" : " pts"}
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                    {isFrench ? "Execution" : "Execution"}
+                  </p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.execution}</p>
+                </div>
+                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                    {isFrench ? "Reflection" : "Reflection"}
+                  </p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.reflection}</p>
+                </div>
+                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                    {isFrench ? "Consistance" : "Consistency"}
+                  </p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.consistency}</p>
+                </div>
+                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                    {isFrench ? "Momentum" : "Momentum"}
+                  </p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.momentum}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3 text-sm">
+                <p className="font-semibold text-foreground">
+                  {isFrench ? "Taches terminees" : "Tasks completed"}{" "}
+                  {gamingTrackSummary.tasks.done}/{gamingTrackSummary.tasks.total}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {isFrench ? "Completion" : "Completion"} {gamingTrackSummary.tasks.completionRate}%
+                  {" · "}
+                  {isFrench ? "Reprises" : "Carry over"} {gamingTrackSummary.tasks.carriedOver}
+                </p>
+              </div>
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3 text-sm">
+                <p className="font-semibold text-foreground">
+                  {isFrench ? "Affirmations" : "Affirmations"}{" "}
+                  {gamingTrackSummary.affirmations.completedDays}/{gamingTrackSummary.affirmations.totalDays}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {isFrench ? "Taux de completion" : "Completion rate"}{" "}
+                  {gamingTrackSummary.affirmations.completionRate}%
+                </p>
+              </div>
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3 text-sm">
+                <p className="font-semibold text-foreground">
+                  {isFrench ? "Bilans" : "Bilans"} {gamingTrackSummary.bilans.completedDays}/
+                  {gamingTrackSummary.bilans.totalDays}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {isFrench ? "Taux de completion" : "Completion rate"} {gamingTrackSummary.bilans.completionRate}%
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                  {isFrench ? "Missions hebdo" : "Weekly missions"}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {gamingMissionWindowLabel
+                    ? `${isFrench ? "Fenetre" : "Window"}: ${gamingMissionWindowLabel}`
+                    : null}
+                </p>
+                <div className="mt-2 grid gap-2">
+                  {gamingTrackSummary.missions.map((mission) => (
+                    <div key={mission.id} className="rounded-lg border border-line bg-surface px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-foreground">
+                          {formatGamingTrackMissionLabel(mission.id, activeLocale)}
+                        </p>
+                        <p className="text-xs font-semibold text-muted">
+                          {mission.progress}/{mission.target}
+                        </p>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-surface-soft">
+                        <div
+                          className={`h-full rounded-full ${mission.completed ? "bg-emerald-500" : "bg-accent"}`}
+                          style={{ width: `${Math.min(100, Math.round((mission.progress / mission.target) * 100))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                  {isFrench ? "Records personnels" : "Personal bests"}
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg border border-line bg-surface px-2.5 py-2">
+                    <p className="text-[11px] text-muted">{isFrench ? "Max taches/jour" : "Best day throughput"}</p>
+                    <p className="mt-1 text-base font-semibold text-foreground">
+                      {gamingTrackSummary.personalBests.dailyDoneTasks}
+                    </p>
+                    {gamingTrackSummary.personalBests.dailyDoneTasksDate ? (
+                      <p className="text-[11px] text-muted">
+                        {formatDateOnlyForLocale(gamingTrackSummary.personalBests.dailyDoneTasksDate, activeLocale)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="rounded-lg border border-line bg-surface px-2.5 py-2">
+                    <p className="text-[11px] text-muted">{isFrench ? "Serie execution" : "Execution streak"}</p>
+                    <p className="mt-1 text-base font-semibold text-foreground">
+                      {gamingTrackSummary.personalBests.executionBestStreak}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-line bg-surface px-2.5 py-2">
+                    <p className="text-[11px] text-muted">{isFrench ? "Serie reflection" : "Reflection streak"}</p>
+                    <p className="mt-1 text-base font-semibold text-foreground">
+                      {gamingTrackSummary.personalBests.reflectionBestStreak}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                  {isFrench ? "Niveau et badges" : "Level and badges"}
+                </p>
+                <div className="mt-2 rounded-lg border border-line bg-surface px-2.5 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {isFrench ? "Niveau" : "Level"} {gamingTrackSummary.level.level}
+                    </p>
+                    <p className="text-xs font-semibold text-muted">
+                      {formatGamingTrackRank(gamingTrackSummary.level.rank, activeLocale)}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    XP {gamingTrackSummary.level.currentLevelXp}/{gamingTrackSummary.level.nextLevelXp}
+                    {" · "}
+                    {gamingTrackSummary.level.xp} XP total
+                  </p>
+                  <div className="mt-2 h-1.5 rounded-full bg-surface-soft">
+                    <div
+                      className="h-full rounded-full bg-accent"
+                      style={{ width: `${gamingTrackSummary.level.progressToNextLevel}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {gamingTrackSummary.badges.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className={`rounded-lg border px-2.5 py-2 ${getBadgeTierClass(badge.tier, badge.unlocked)}`}
+                    >
+                      <p className="text-xs font-semibold">{formatGamingTrackBadgeLabel(badge.id, activeLocale)}</p>
+                      <p className="mt-1 text-[11px]">
+                        {badge.progress}/{badge.target}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                  {isFrench ? "Protection de serie" : "Streak protection"}
+                </p>
+                <div className="mt-2 rounded-lg border border-line bg-surface px-2.5 py-2.5 text-sm">
+                  <p className="font-semibold text-foreground">
+                    {isFrench ? "Charges disponibles" : "Charges available"}{" "}
+                    {gamingTrackSummary.streakProtection.availableCharges}/{gamingTrackSummary.streakProtection.maxCharges}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {isFrench ? "Total gagnees" : "Earned total"}: {gamingTrackSummary.streakProtection.earnedCharges}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {gamingTrackSummary.streakProtection.atRisk
+                      ? isFrench
+                        ? "Serie en risque aujourd'hui."
+                        : "A streak is at risk today."
+                      : isFrench
+                      ? "Aucune serie en risque."
+                      : "No streak currently at risk."}
+                  </p>
+                  {gamingTrackSummary.streakProtection.recommended ? (
+                    <p className="mt-1 text-xs font-semibold text-amber-700">
+                      {isFrench
+                        ? "Utiliser une protection est recommande pour conserver la serie."
+                        : "Using protection is recommended to preserve the streak."}
+                    </p>
+                  ) : null}
+                  {(gamingTrackSummary.streakProtection.projectedExecutionStreak > 0 ||
+                    gamingTrackSummary.streakProtection.projectedReflectionStreak > 0) ? (
+                    <p className="mt-1 text-xs text-muted">
+                      {isFrench ? "Serie projetee" : "Projected streak"}:{" "}
+                      {isFrench ? "Execution" : "Execution"} {gamingTrackSummary.streakProtection.projectedExecutionStreak}
+                      {" · "}
+                      {isFrench ? "Reflection" : "Reflection"} {gamingTrackSummary.streakProtection.projectedReflectionStreak}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-line bg-surface-soft px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                {isFrench ? "Tendances historiques" : "Historical trends"}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {isFrench ? "Vue" : "View"}: {gamingTrackPeriodLabel}
+              </p>
+              <div className="mt-2 grid gap-2">
+                {gamingTrackHistoryPoints.slice(-8).map((point) => {
+                  const normalizedWidth =
+                    gamingTrackHistoryMaxOverall === 0
+                      ? 0
+                      : Math.round((point.overallScore / gamingTrackHistoryMaxOverall) * 100);
+
+                  return (
+                    <div key={`${point.label}-${point.rangeStart}`} className="rounded-lg border border-line bg-surface px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-foreground">
+                          {formatHistoricalTrendLabel(point, gamingTrackPeriod, activeLocale)}
+                        </p>
+                        <p className="text-xs font-semibold text-muted">
+                          {isFrench ? "Score" : "Score"} {point.overallScore}
+                        </p>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-surface-soft">
+                        <div className="h-full rounded-full bg-accent" style={{ width: `${normalizedWidth}%` }} />
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted">
+                        {isFrench ? "Taches" : "Tasks"} {point.tasksDone}
+                        {" · "}
+                        {isFrench ? "Completion" : "Completion"} {point.taskCompletionRate}%
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {gamingTrackErrorMessage ? (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {gamingTrackErrorMessage}
+          </p>
+        ) : null}
+      </section>
 
       <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">

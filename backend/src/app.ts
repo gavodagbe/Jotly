@@ -9,6 +9,8 @@ import { createPrismaAuthStore, AuthStore } from "./auth/auth-store";
 import { createPrismaCommentStore, CommentStore } from "./comments/comment-store";
 import { createPrismaDayAffirmationStore, DayAffirmationStore } from "./day-affirmation/day-affirmation-store";
 import { createPrismaDayBilanStore, DayBilanStore } from "./day-bilan/day-bilan-store";
+import { createPrismaGamingTrackStore, GamingTrackStore } from "./gaming-track/gaming-track-store";
+import { createGamingTrackService, GamingTrackService } from "./gaming-track/gaming-track-service";
 import { createPrismaProfileStore, ProfileStore } from "./profile/profile-store";
 import healthRoutes from "./routes/health";
 import authRoutes from "./routes/auth";
@@ -17,6 +19,7 @@ import assistantRoutes from "./routes/assistant";
 import commentsRoutes from "./routes/comments";
 import dayAffirmationRoutes from "./routes/day-affirmation";
 import dayBilanRoutes from "./routes/day-bilan";
+import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
 import tasksRoutes from "./routes/tasks";
@@ -32,6 +35,8 @@ export type BuildAppOptions = {
   recurrenceStore?: RecurrenceStore;
   dayAffirmationStore?: DayAffirmationStore;
   dayBilanStore?: DayBilanStore;
+  gamingTrackStore?: GamingTrackStore;
+  gamingTrackService?: GamingTrackService;
   profileStore?: ProfileStore;
   assistantService?: AssistantService;
   assistantProvider?: "openai" | "heuristic";
@@ -69,6 +74,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const dayBilanStore =
     options.dayBilanStore ??
     (options.taskStore ? undefined : createPrismaDayBilanStore());
+  const gamingTrackStore =
+    options.gamingTrackStore ??
+    (options.taskStore ? undefined : createPrismaGamingTrackStore());
+  const gamingTrackService =
+    options.gamingTrackService ??
+    (gamingTrackStore ? createGamingTrackService(gamingTrackStore) : undefined);
   const profileStore =
     options.profileStore ??
     (options.authStore ? undefined : createPrismaProfileStore());
@@ -108,6 +119,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }
   if (dayBilanStore) {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
+  }
+  if (gamingTrackService) {
+    app.register(gamingTrackRoutes, { gamingTrackService, authService });
   }
   app.register(assistantRoutes, { taskStore, commentStore, authService, assistantService });
 
@@ -163,6 +177,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (dayBilanStore?.close) {
       await dayBilanStore.close();
+    }
+
+    if (gamingTrackStore?.close) {
+      await gamingTrackStore.close();
     }
 
     if (profileStore?.close) {

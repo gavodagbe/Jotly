@@ -81,26 +81,33 @@ Relevant backend env vars:
 - `OPENAI_API_BASE_URL` (default: `https://api.openai.com/v1`)
 - `AI_ASSISTANT_TIMEOUT_MS` (default: `10000`)
 
-## Gaming Track (planned)
+## Gaming Track (Phase 1-3 implemented)
 
-The next product module is **Gaming Track** to improve retention with structured progress stats and engagement loops.
+Gaming Track now includes a first production slice focused on periodized progress scoring.
 
-Scope (planned):
-- stats by period: day / week / month / year
-- task achievement tracking (completion rate, throughput, carry-over trend)
-- affirmation completion tracking
-- day bilan completion tracking
-- composite scoring:
-  - execution score (tasks)
-  - reflection score (affirmations + bilan)
-  - consistency score (streak reliability)
-  - momentum score (combined trend)
-- streaks, personal bests, and weekly missions
+Delivered:
+- backend endpoint: `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
+- authenticated aggregation across user-owned:
+  - tasks (completion, actionable, cancelled, carry-over count)
+  - day affirmation completion
+  - day bilan completion
+- computed scores:
+  - execution
+  - reflection
+  - consistency
+  - momentum
+  - overall
+- trend deltas versus previous same-length window
+- frontend dashboard card with `D/W/M/Y` switcher and localized labels (`en`/`fr`)
+- weekly missions (task, affirmation, bilan, and execution streak targets)
+- personal bests (best daily throughput and best streaks)
+- progression level system (XP, level rank, next-level progress)
+- milestone badges (unlock/progress states)
+- streak protection signals (earned charges + at-risk detection)
+- historical trend views (daily, weekly, monthly points)
 
-Planned UX direction:
-- top-of-dashboard score card
-- dedicated stats view with period switch (`D`, `W`, `M`, `Y`)
-- trend-first visuals (whoop-inspired: baseline vs recent trend)
+Still planned for next phases:
+- deeper analytics screens and social/competitive loops
 
 ## Production Deployment (Hostinger VM + Nginx)
 
