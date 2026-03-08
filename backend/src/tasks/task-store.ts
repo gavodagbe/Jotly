@@ -2,6 +2,7 @@ import { PrismaClient, Task, TaskPriority, TaskStatus } from "@prisma/client";
 
 export type TaskCreateInput = {
   userId: string;
+  rolledFromTaskId?: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;

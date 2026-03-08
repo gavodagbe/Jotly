@@ -1,6 +1,6 @@
 # Jotly - Architecture Decisions and Risks
 
-## Current implementation reality check (as of 2026-03-07)
+## Current implementation reality check (as of 2026-03-08)
 Implemented in the current codebase:
 - backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
 - backend auth/session API (`backend/src/routes/auth.ts`)
@@ -9,14 +9,21 @@ Implemented in the current codebase:
 - backend comments API (`backend/src/routes/comments.ts`)
 - backend attachments API (`backend/src/routes/attachments.ts`)
 - backend recurrence API (`backend/src/routes/recurrence.ts`)
+- backend day affirmation API (`backend/src/routes/day-affirmation.ts`)
+- backend day bilan API (`backend/src/routes/day-bilan.ts`)
+- backend carry-over endpoint for yesterday non-completed tasks (`backend/src/routes/tasks.ts`)
 - Fastify request body limit configured to 8 MB (`backend/src/app.ts`)
 - attachment validation limit of 5 MB per attachment plus URL payload size guard (`backend/src/routes/attachments.ts`)
-- Prisma task model with status, priority, and lifecycle timestamps (`backend/prisma/schema.prisma`)
+- Prisma task model with status, priority, lifecycle timestamps, and carry-over linkage (`backend/prisma/schema.prisma`)
+- Prisma `DayAffirmation` and `DayBilan` models (`backend/prisma/schema.prisma`)
 - frontend date-driven Kanban board with create/edit/delete dialogs and drag-and-drop status updates (`frontend/src/components/layout/app-shell.tsx`)
 - frontend task details support for comments, recurrence, and file-based attachments converted to `data:` URLs before upload (`frontend/src/components/layout/app-shell.tsx`)
+- frontend day affirmation panel and day bilan panel (`frontend/src/components/layout/app-shell.tsx`)
+- frontend carry-over CTA in date controls (`frontend/src/components/layout/app-shell.tsx`)
+- daily completion percentage includes day affirmation completion (`frontend/src/components/layout/app-shell.tsx`)
 - frontend AI assistant chatbot (FAB) with global user task context (`frontend/src/components/layout/app-shell.tsx`)
 - Docker Compose local runtime (frontend, backend, postgres)
-- route tests for auth/tasks/comments/attachments/recurrence/assistant
+- route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan
 
 Not implemented yet:
 - reporting
@@ -133,6 +140,35 @@ The boundaries below reflect current ownership and future evolution points.
 - Current posture: implemented.
 - Evolution rule: keep concrete daily tasks explicit and persist recurrence metadata separately.
 
+### Day affirmation
+- Relation to date workflow: one affirmation row per user per selected date.
+- Current API surface:
+  - `GET /api/day-affirmation?date=YYYY-MM-DD`
+  - `PUT /api/day-affirmation`
+- Current posture: implemented.
+- Completion semantics:
+  - daily completion includes affirmation completion as an additional completion item.
+
+### Carry-over
+- Relation to tasks: copies actionable tasks from yesterday into selected date.
+- Current API surface:
+  - `POST /api/tasks/carry-over-yesterday`
+- Current posture: implemented.
+- Idempotency posture:
+  - enforced by `(rolledFromTaskId, targetDate)` unique key.
+- Copy rules:
+  - copy only `todo` and `in_progress`
+  - skip recurrence-generated tasks
+
+### Day bilan
+- Relation to date workflow: one end-of-day review row per user per selected date.
+- Current API surface:
+  - `GET /api/day-bilan?date=YYYY-MM-DD`
+  - `PUT /api/day-bilan`
+- Current fields:
+  - `mood`, `wins`, `blockers`, `lessonsLearned`, `tomorrowTop3`
+- Current posture: implemented.
+
 ### AI assistant
 - Relation to task history: read-oriented assistant over tasks and related entities.
 - Current backend module: `backend/src/assistant/`.
@@ -156,13 +192,15 @@ Existing entities:
 - `TaskComment`
 - `TaskAttachment`
 - `TaskRecurrenceRule`
+- `DayAffirmation`
+- `DayBilan`
 
 Likely future entities:
 - `TaskActivityEvent` (if event-level analytics becomes required)
 
 Current extension points to preserve:
 - backend route split by domain in `backend/src/routes/`
-- backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, `backend/src/recurrence/`, and `backend/src/assistant/`
+- backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, `backend/src/recurrence/`, `backend/src/day-affirmation/`, `backend/src/day-bilan/`, and `backend/src/assistant/`
 - frontend feature folders in `frontend/src/features/`
 - stable task API contract for frontend/backend integration
 
@@ -208,3 +246,11 @@ External AI provider calls can fail or time out.
 Mitigation:
 - keep heuristic provider as default-safe mode
 - keep OpenAI integration optional and environment-controlled
+
+### Risk 7 - Carry-over duplication and workflow noise
+Repeated carry-over actions can create duplicated task rows without a clear dedupe strategy.
+
+Mitigation:
+- enforce uniqueness by source-task/date pair
+- keep carry-over response explicit (`copiedCount`, `skippedCount`)
+- keep copy rules narrow to actionable statuses only

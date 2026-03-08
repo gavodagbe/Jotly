@@ -28,6 +28,18 @@ class InMemoryTaskStore implements TaskStore {
   }
 
   async create(input: TaskCreateInput): Promise<Task> {
+    if (input.rolledFromTaskId) {
+      const duplicate = [...this.tasks.values()].find(
+        (task) =>
+          task.rolledFromTaskId === input.rolledFromTaskId &&
+          formatDateOnly(task.targetDate) === formatDateOnly(input.targetDate)
+      );
+
+      if (duplicate) {
+        throw { code: "P2002" };
+      }
+    }
+
     const now = new Date();
     const task: Task = {
       id: `task-${this.idCounter++}`,
@@ -39,6 +51,7 @@ class InMemoryTaskStore implements TaskStore {
       priority: input.priority,
       project: input.project,
       plannedTime: input.plannedTime,
+      rolledFromTaskId: input.rolledFromTaskId ?? null,
       recurrenceSourceTaskId: input.recurrenceSourceTaskId ?? null,
       recurrenceOccurrenceDate: input.recurrenceOccurrenceDate ?? null,
       createdAt: now,
@@ -419,6 +432,147 @@ test("DELETE /api/tasks removes a task", async (t) => {
     code: "NOT_FOUND",
     message: "Task not found"
   });
+});
+
+test("POST /api/tasks/carry-over-yesterday copies only actionable tasks from previous day", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  const yesterday = "2026-03-07";
+  const targetDate = "2026-03-08";
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Todo task",
+      targetDate: yesterday,
+      status: "todo",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "In progress task",
+      targetDate: yesterday,
+      status: "in_progress",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Done task",
+      targetDate: yesterday,
+      status: "done",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Cancelled task",
+      targetDate: yesterday,
+      status: "cancelled",
+    },
+  });
+
+  const copyResponse = await app.inject({
+    method: "POST",
+    url: "/api/tasks/carry-over-yesterday",
+    headers: authHeaders(token),
+    payload: {
+      targetDate,
+    },
+  });
+
+  assert.equal(copyResponse.statusCode, 200);
+  const copyPayload = parsePayload(copyResponse.payload);
+  const copyData = copyPayload.data as {
+    copiedCount: number;
+    skippedCount: number;
+    tasks: Array<{ title: string; rolledFromTaskId: string | null }>;
+  };
+
+  assert.equal(copyData.copiedCount, 2);
+  assert.equal(copyData.skippedCount, 0);
+  assert.equal(copyData.tasks.length, 2);
+  assert.deepEqual(
+    copyData.tasks.map((task) => task.title).sort(),
+    ["In progress task", "Todo task"]
+  );
+  assert.equal(copyData.tasks.every((task) => Boolean(task.rolledFromTaskId)), true);
+
+  const targetListResponse = await app.inject({
+    method: "GET",
+    url: `/api/tasks?date=${targetDate}`,
+    headers: authHeaders(token),
+  });
+
+  assert.equal(targetListResponse.statusCode, 200);
+  const targetListPayload = parsePayload(targetListResponse.payload);
+  const targetTasks = targetListPayload.data as Array<{ title: string }>;
+  assert.equal(targetTasks.length, 2);
+});
+
+test("POST /api/tasks/carry-over-yesterday is idempotent for the same target date", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Task to carry",
+      targetDate: "2026-03-07",
+      status: "todo",
+    },
+  });
+
+  const firstCopyResponse = await app.inject({
+    method: "POST",
+    url: "/api/tasks/carry-over-yesterday",
+    headers: authHeaders(token),
+    payload: {
+      targetDate: "2026-03-08",
+    },
+  });
+
+  assert.equal(firstCopyResponse.statusCode, 200);
+  const firstCopyPayload = parsePayload(firstCopyResponse.payload);
+  const firstCopyData = firstCopyPayload.data as { copiedCount: number; skippedCount: number };
+  assert.equal(firstCopyData.copiedCount, 1);
+  assert.equal(firstCopyData.skippedCount, 0);
+
+  const secondCopyResponse = await app.inject({
+    method: "POST",
+    url: "/api/tasks/carry-over-yesterday",
+    headers: authHeaders(token),
+    payload: {
+      targetDate: "2026-03-08",
+    },
+  });
+
+  assert.equal(secondCopyResponse.statusCode, 200);
+  const secondCopyPayload = parsePayload(secondCopyResponse.payload);
+  const secondCopyData = secondCopyPayload.data as { copiedCount: number; skippedCount: number };
+  assert.equal(secondCopyData.copiedCount, 0);
+  assert.equal(secondCopyData.skippedCount, 1);
 });
 
 test("validation errors return structured JSON shape", async (t) => {

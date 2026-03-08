@@ -60,8 +60,21 @@ const listTasksQuerySchema = z.object({
   date: targetDateSchema
 });
 
+const carryOverYesterdayBodySchema = z.object({
+  targetDate: targetDateSchema,
+});
+
 function isTaskTableMissingError(error: unknown): boolean {
   return isStorageNotInitializedPrismaError(error);
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }
 
 function sendTaskStorageNotInitializedError(
@@ -84,6 +97,7 @@ function serializeTask(task: Task) {
     priority: task.priority,
     project: task.project,
     plannedTime: task.plannedTime,
+    rolledFromTaskId: task.rolledFromTaskId ?? null,
     recurrenceSourceTaskId: task.recurrenceSourceTaskId ?? null,
     recurrenceOccurrenceDate: task.recurrenceOccurrenceDate
       ? formatDateOnly(task.recurrenceOccurrenceDate)
@@ -138,6 +152,19 @@ function getTimestampsForStatusTransition(task: Task, nextStatus: TaskStatus, no
     completedAt: null,
     cancelledAt: null
   };
+}
+
+function getPreviousDate(date: Date): Date {
+  const previousDate = new Date(date);
+  previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+  return previousDate;
+}
+
+function shouldCarryOverTask(task: Task): boolean {
+  return (
+    (task.status === "todo" || task.status === "in_progress") &&
+    task.recurrenceSourceTaskId === null
+  );
 }
 
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
@@ -276,6 +303,92 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       request.log.error(error, "Failed to create task");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to create task");
+    }
+  });
+
+  app.post("/api/tasks/carry-over-yesterday", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const bodyResult = carryOverYesterdayBodySchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      const details = zodIssuesToStrings(bodyResult.error);
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        details[0] ?? "Invalid request body",
+        details
+      );
+    }
+
+    const targetDate = parseDateOnly(bodyResult.data.targetDate);
+
+    if (!targetDate) {
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        "targetDate must be a valid date in YYYY-MM-DD format"
+      );
+    }
+
+    const yesterdayDate = getPreviousDate(targetDate);
+
+    try {
+      const yesterdayTasks = await taskStore.listByDate(yesterdayDate, authUserId);
+      const carryOverCandidates = yesterdayTasks.filter(shouldCarryOverTask);
+      const createdTasks: Task[] = [];
+      let skippedCount = 0;
+
+      for (const sourceTask of carryOverCandidates) {
+        try {
+          const createdTask = await taskStore.create({
+            userId: authUserId,
+            rolledFromTaskId: sourceTask.id,
+            title: sourceTask.title,
+            description: sourceTask.description,
+            status: sourceTask.status,
+            targetDate,
+            priority: sourceTask.priority,
+            project: sourceTask.project,
+            plannedTime: sourceTask.plannedTime,
+            recurrenceSourceTaskId: null,
+            recurrenceOccurrenceDate: null,
+            completedAt: null,
+            cancelledAt: null,
+          });
+
+          createdTasks.push(createdTask);
+        } catch (error) {
+          if (isUniqueConstraintError(error)) {
+            skippedCount += 1;
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      return reply.send({
+        data: {
+          copiedCount: createdTasks.length,
+          skippedCount,
+          tasks: createdTasks.map(serializeTask),
+        },
+      });
+    } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
+      request.log.error(error, "Failed to carry over tasks from yesterday");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to carry over yesterday tasks");
     }
   });
 

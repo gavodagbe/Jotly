@@ -36,14 +36,17 @@ This section reflects the current repository implementation.
 - Comments endpoints in `backend/src/routes/comments.ts`
 - Attachments endpoints in `backend/src/routes/attachments.ts`
 - Recurrence endpoints in `backend/src/routes/recurrence.ts`
+- Day affirmation endpoints in `backend/src/routes/day-affirmation.ts`
+- Day bilan endpoints in `backend/src/routes/day-bilan.ts`
 - AI assistant endpoint in `backend/src/routes/assistant.ts`
 
 ### Database
 - PostgreSQL
-- Prisma `Task` model with status, priority, date, and lifecycle timestamps
+- Prisma `Task` model with status, priority, date, lifecycle timestamps, and carry-over linkage
+- Prisma `DayAffirmation` and `DayBilan` models (one row per user per date)
 
 ### Testing
-- Node test runner tests for auth/tasks/comments/attachments/recurrence/assistant routes
+- Node test runner tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan routes
 
 ### Infrastructure
 - Docker
@@ -59,6 +62,7 @@ This section reflects the current repository implementation.
 ## Current task model
 Current task fields:
 - `id`
+- `rolledFromTaskId` (optional)
 - `title`
 - `description`
 - `status`
@@ -86,6 +90,7 @@ Implemented endpoints:
 - `POST /api/auth/logout`
 - `GET /api/tasks?date=YYYY-MM-DD`
 - `POST /api/tasks`
+- `POST /api/tasks/carry-over-yesterday`
 - `GET /api/tasks/:id`
 - `PATCH /api/tasks/:id`
 - `DELETE /api/tasks/:id`
@@ -99,6 +104,10 @@ Implemented endpoints:
 - `GET /api/tasks/:id/recurrence`
 - `PUT /api/tasks/:id/recurrence`
 - `DELETE /api/tasks/:id/recurrence`
+- `GET /api/day-affirmation?date=YYYY-MM-DD`
+- `PUT /api/day-affirmation`
+- `GET /api/day-bilan?date=YYYY-MM-DD`
+- `PUT /api/day-bilan`
 - `POST /api/assistant/reply`
 
 Rules:
@@ -123,10 +132,14 @@ Main UI currently includes:
 - date selector
 - previous / today / next navigation
 - 4-column Kanban board
+- day affirmation panel
+- carry-over action for yesterday non-completed tasks
+- day bilan panel
 - AI assistant chatbot (FAB) using global user task context
 - create/edit task dialog
 - delete confirmation dialog
 - empty states and API error states
+- completion percentage includes day affirmation completion
 
 UI principles:
 - elegant
@@ -170,6 +183,36 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely frontend entry points: recurrence controls in task create/edit flow under `frontend/src/features/recurrence/`.
 - Current status: implemented.
 
+### Day affirmation
+- Relation to date workflow: one affirmation per user per selected date.
+- Current backend ownership: `backend/src/day-affirmation/`.
+- Current API surface:
+  - `GET /api/day-affirmation?date=YYYY-MM-DD`
+  - `PUT /api/day-affirmation`
+- Current behavior:
+  - affirmation completion is included in daily completion percentage
+- Current status: implemented.
+
+### Carry-over
+- Relation to tasks: duplicates actionable tasks from yesterday to selected date.
+- Current backend ownership: `backend/src/routes/tasks.ts`.
+- Current API surface:
+  - `POST /api/tasks/carry-over-yesterday`
+- Current behavior:
+  - copies only `todo` and `in_progress` from yesterday
+  - skips recurrence instances
+  - idempotent for the same source task and target date via unique carry-over key
+- Current status: implemented.
+
+### Day bilan
+- Relation to date workflow: one day-end reflection record per user per selected date.
+- Current backend ownership: `backend/src/day-bilan/`.
+- Current API surface:
+  - `GET /api/day-bilan?date=YYYY-MM-DD`
+  - `PUT /api/day-bilan`
+- Current fields: `mood`, `wins`, `blockers`, `lessonsLearned`, `tomorrowTop3`.
+- Current status: implemented.
+
 ### AI assistant
 - Relation to task history: read-oriented assistant over tasks, status transitions, and dates.
 - Current backend ownership: `backend/src/assistant/`.
@@ -189,16 +232,19 @@ The modules below define intended boundaries without pre-building abstractions.
 
 ## Known entities and extension points
 Existing entities:
+- `Task`
 - `TaskComment`
 - `TaskAttachment`
 - `TaskRecurrenceRule`
+- `DayAffirmation`
+- `DayBilan`
 
 Potential future entities:
 - `TaskActivityEvent` (optional, if reporting granularity requires event-level history)
 
 Current extension points to preserve:
 - task route module boundaries in `backend/src/routes/`
-- store/service boundaries in `backend/src/tasks/`
+- store/service boundaries in `backend/src/tasks/`, `backend/src/day-affirmation/`, and `backend/src/day-bilan/`
 - feature-first frontend folders under `frontend/src/features/`
 - explicit task API contract as the integration backbone
 

@@ -7,11 +7,15 @@ import { createPrismaAttachmentStore, AttachmentStore } from "./attachments/atta
 import { createAuthService } from "./auth/auth-service";
 import { createPrismaAuthStore, AuthStore } from "./auth/auth-store";
 import { createPrismaCommentStore, CommentStore } from "./comments/comment-store";
+import { createPrismaDayAffirmationStore, DayAffirmationStore } from "./day-affirmation/day-affirmation-store";
+import { createPrismaDayBilanStore, DayBilanStore } from "./day-bilan/day-bilan-store";
 import healthRoutes from "./routes/health";
 import authRoutes from "./routes/auth";
 import attachmentsRoutes from "./routes/attachments";
 import assistantRoutes from "./routes/assistant";
 import commentsRoutes from "./routes/comments";
+import dayAffirmationRoutes from "./routes/day-affirmation";
+import dayBilanRoutes from "./routes/day-bilan";
 import recurrenceRoutes from "./routes/recurrence";
 import tasksRoutes from "./routes/tasks";
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
@@ -24,6 +28,8 @@ export type BuildAppOptions = {
   commentStore?: CommentStore;
   attachmentStore?: AttachmentStore;
   recurrenceStore?: RecurrenceStore;
+  dayAffirmationStore?: DayAffirmationStore;
+  dayBilanStore?: DayBilanStore;
   assistantService?: AssistantService;
   assistantProvider?: "openai" | "heuristic";
   openAiApiKey?: string;
@@ -54,6 +60,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const recurrenceStore =
     options.recurrenceStore ??
     (options.taskStore ? undefined : createPrismaRecurrenceStore());
+  const dayAffirmationStore =
+    options.dayAffirmationStore ??
+    (options.taskStore ? undefined : createPrismaDayAffirmationStore());
+  const dayBilanStore =
+    options.dayBilanStore ??
+    (options.taskStore ? undefined : createPrismaDayBilanStore());
   const assistantService =
     options.assistantService ??
     createAssistantService({
@@ -81,6 +93,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   if (recurrenceStore) {
     app.register(recurrenceRoutes, { taskStore, recurrenceStore, authService });
+  }
+  if (dayAffirmationStore) {
+    app.register(dayAffirmationRoutes, { dayAffirmationStore, authService });
+  }
+  if (dayBilanStore) {
+    app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
   app.register(assistantRoutes, { taskStore, commentStore, authService, assistantService });
 
@@ -128,6 +146,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (recurrenceStore?.close) {
       await recurrenceStore.close();
+    }
+
+    if (dayAffirmationStore?.close) {
+      await dayAffirmationStore.close();
+    }
+
+    if (dayBilanStore?.close) {
+      await dayBilanStore.close();
     }
   });
 

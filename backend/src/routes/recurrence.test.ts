@@ -42,6 +42,7 @@ class InMemoryTaskStore implements TaskStore {
       priority: input.priority,
       project: input.project,
       plannedTime: input.plannedTime,
+      rolledFromTaskId: input.rolledFromTaskId ?? null,
       recurrenceSourceTaskId: input.recurrenceSourceTaskId ?? null,
       recurrenceOccurrenceDate: input.recurrenceOccurrenceDate ?? null,
       createdAt: now,

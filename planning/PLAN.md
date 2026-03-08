@@ -31,7 +31,7 @@ Historical JOT-10 out-of-scope (ticket-level):
 - adding full schema for future modules
 - broad refactors unrelated to documentation clarity
 
-## Current implementation status (as of 2026-03-07)
+## Current implementation status (as of 2026-03-08)
 Completed:
 - JOT-1 to JOT-10 baseline deliverables
 - authentication/session flow (`register`, `login`, `me`, `logout`)
@@ -41,12 +41,28 @@ Completed:
 - recurrence module (API + tests)
 - frontend task details integrations for comments/attachments/recurrence
 - AI assistant module (backend route + frontend panel)
+- day affirmation module (API + frontend panel)
+- yesterday carry-over action for non-completed tasks (API + frontend action)
+- day bilan module (API + frontend panel)
+- completion percentage now includes day affirmation completion
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal
 - payload sent as `data:` URL + `contentType` + `sizeBytes`
 - backend enforces max attachment size of 5 MB per item
 - backend app body limit set to 8 MB for upload payloads
+
+Latest daily workflow conventions:
+- day affirmation endpoints:
+  - `GET /api/day-affirmation?date=YYYY-MM-DD`
+  - `PUT /api/day-affirmation`
+- carry-over endpoint:
+  - `POST /api/tasks/carry-over-yesterday`
+  - copies only yesterday `todo` and `in_progress` tasks
+  - skips recurrence instances and duplicate carry-over rows
+- day bilan endpoints:
+  - `GET /api/day-bilan?date=YYYY-MM-DD`
+  - `PUT /api/day-bilan`
 
 Latest AI assistant conventions:
 - endpoint: `POST /api/assistant/reply`

@@ -6,7 +6,25 @@ This repository currently contains the MVP foundation:
 - `frontend/` Next.js app shell
 - `backend/` Fastify API foundation
 - Docker Compose local stack with PostgreSQL
-- Authenticated task board with comments, attachments, recurrence, and AI assistant
+- Authenticated task board with comments, attachments, recurrence, AI assistant, day affirmations, carry-over, and day bilan
+
+## Daily Workflow APIs
+
+Authenticated endpoints for the daily workflow layer:
+- `GET /api/day-affirmation?date=YYYY-MM-DD`
+- `PUT /api/day-affirmation`
+- `POST /api/tasks/carry-over-yesterday`
+- `GET /api/day-bilan?date=YYYY-MM-DD`
+- `PUT /api/day-bilan`
+
+Request body examples:
+- `PUT /api/day-affirmation`
+  - `{ "date": "2026-03-08", "text": "I choose focus and execution.", "isCompleted": true }`
+- `POST /api/tasks/carry-over-yesterday`
+  - `{ "targetDate": "2026-03-08" }`
+  - response includes `{ copiedCount, skippedCount, tasks }`
+- `PUT /api/day-bilan`
+  - `{ "date": "2026-03-08", "mood": 4, "wins": "...", "blockers": "...", "lessonsLearned": "...", "tomorrowTop3": "..." }`
 
 ## Repository Layout
 - `frontend/` - frontend application workspace

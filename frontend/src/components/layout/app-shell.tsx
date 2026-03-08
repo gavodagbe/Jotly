@@ -28,6 +28,7 @@ type Task = {
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;
+  rolledFromTaskId: string | null;
   recurrenceSourceTaskId: string | null;
   recurrenceOccurrenceDate: string | null;
 };
@@ -102,6 +103,51 @@ type TaskAttachmentMutationInput = {
   file: File;
 };
 
+type DayAffirmation = {
+  id: string;
+  targetDate: string;
+  text: string;
+  isCompleted: boolean;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type DayBilan = {
+  id: string;
+  targetDate: string;
+  mood: number | null;
+  wins: string | null;
+  blockers: string | null;
+  lessonsLearned: string | null;
+  tomorrowTop3: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type DayBilanFormValues = {
+  mood: string;
+  wins: string;
+  blockers: string;
+  lessonsLearned: string;
+  tomorrowTop3: string;
+};
+
+type DayBilanMutationInput = {
+  date: string;
+  mood: number | null;
+  wins: string | null;
+  blockers: string | null;
+  lessonsLearned: string | null;
+  tomorrowTop3: string | null;
+};
+
+type CarryOverYesterdayPayload = {
+  copiedCount: number;
+  skippedCount: number;
+  tasks: Task[];
+};
+
 type AuthUser = {
   id: string;
   email: string;
@@ -152,11 +198,21 @@ const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
 const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
+const DAY_AFFIRMATION_MAX_LENGTH = 5000;
+const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
 
 const ASSISTANT_PROMPT_SUGGESTIONS: ReadonlyArray<string> = [
   "What should I prioritize across all my tasks?",
   "Create a realistic order for my open tasks this week.",
   "Which tasks look blocked and what should I unblock first?",
+];
+
+const DAILY_AFFIRMATION_SUGGESTIONS: ReadonlyArray<string> = [
+  "I choose focus, discipline, and calm execution today.",
+  "I finish what matters most before I move to new work.",
+  "I am consistent, capable, and committed to meaningful progress.",
+  "I protect deep work and handle distractions with intention.",
+  "I act with clarity, energy, and confidence in every task.",
 ];
 
 const BOARD_COLUMNS: ReadonlyArray<{
@@ -285,6 +341,13 @@ function shiftDate(value: string, offsetDays: number): string {
 
 function getDateHeading(value: string): string {
   return dateHeadingFormatter.format(parseDateInput(value));
+}
+
+function getDefaultAffirmationText(targetDate: string): string {
+  const segments = targetDate.split("-").map((segment) => Number(segment));
+  const seed = segments.reduce((total, current) => total + (Number.isNaN(current) ? 0 : current), 0);
+  const index = seed % DAILY_AFFIRMATION_SUGGESTIONS.length;
+  return DAILY_AFFIRMATION_SUGGESTIONS[index];
 }
 
 function formatDateTime(value: string): string {
@@ -525,6 +588,68 @@ function getDefaultRecurrenceFormValues(): RecurrenceFormValues {
     interval: "1",
     weekdays: [],
     endsOn: "",
+  };
+}
+
+function getDefaultDayBilanFormValues(): DayBilanFormValues {
+  return {
+    mood: "",
+    wins: "",
+    blockers: "",
+    lessonsLearned: "",
+    tomorrowTop3: "",
+  };
+}
+
+function getDayBilanFormValues(bilan: DayBilan | null): DayBilanFormValues {
+  if (!bilan) {
+    return getDefaultDayBilanFormValues();
+  }
+
+  return {
+    mood: typeof bilan.mood === "number" ? String(bilan.mood) : "",
+    wins: bilan.wins ?? "",
+    blockers: bilan.blockers ?? "",
+    lessonsLearned: bilan.lessonsLearned ?? "",
+    tomorrowTop3: bilan.tomorrowTop3 ?? "",
+  };
+}
+
+function normalizeOptionalLongTextInput(value: string): string | null {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function buildDayBilanMutationInput(
+  values: DayBilanFormValues,
+  date: string
+): { data?: DayBilanMutationInput; error?: string } {
+  if (!isDateOnly(date)) {
+    return { error: "Date must be in YYYY-MM-DD format." };
+  }
+
+  let mood: number | null = null;
+  const moodValue = values.mood.trim();
+
+  if (moodValue.length > 0) {
+    const parsedMood = Number(moodValue);
+
+    if (!Number.isInteger(parsedMood) || parsedMood < 1 || parsedMood > 5) {
+      return { error: "Mood must be a value between 1 and 5." };
+    }
+
+    mood = parsedMood;
+  }
+
+  return {
+    data: {
+      date,
+      mood,
+      wins: normalizeOptionalLongTextInput(values.wins),
+      blockers: normalizeOptionalLongTextInput(values.blockers),
+      lessonsLearned: normalizeOptionalLongTextInput(values.lessonsLearned),
+      tomorrowTop3: normalizeOptionalLongTextInput(values.tomorrowTop3),
+    },
   };
 }
 
@@ -1076,6 +1201,123 @@ async function requestAssistantReply(question: string, token: string): Promise<A
   return payload.data;
 }
 
+async function loadDayAffirmation(
+  date: string,
+  token: string,
+  signal?: AbortSignal
+): Promise<DayAffirmation | null> {
+  const response = await fetch(`/backend-api/day-affirmation?date=${encodeURIComponent(date)}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: DayAffirmation | null; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load day affirmation"));
+  }
+
+  return payload?.data ?? null;
+}
+
+async function upsertDayAffirmation(
+  input: { date: string; text: string; isCompleted: boolean },
+  token: string
+): Promise<DayAffirmation> {
+  const response = await fetch("/backend-api/day-affirmation", {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: DayAffirmation; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save day affirmation"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to save day affirmation.");
+  }
+
+  return payload.data;
+}
+
+async function carryOverYesterdayTasks(targetDate: string, token: string): Promise<CarryOverYesterdayPayload> {
+  const response = await fetch("/backend-api/tasks/carry-over-yesterday", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      targetDate,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: CarryOverYesterdayPayload; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to carry over yesterday tasks"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to carry over yesterday tasks.");
+  }
+
+  return payload.data;
+}
+
+async function loadDayBilan(
+  date: string,
+  token: string,
+  signal?: AbortSignal
+): Promise<DayBilan | null> {
+  const response = await fetch(`/backend-api/day-bilan?date=${encodeURIComponent(date)}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: DayBilan | null; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load day bilan"));
+  }
+
+  return payload?.data ?? null;
+}
+
+async function upsertDayBilan(input: DayBilanMutationInput, token: string): Promise<DayBilan> {
+  const response = await fetch("/backend-api/day-bilan", {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: DayBilan; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save day bilan"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to save day bilan.");
+  }
+
+  return payload.data;
+}
+
 type AppNavbarProps = {
   user: AuthUser | null;
   onLogout?: () => void;
@@ -1580,6 +1822,24 @@ export function AppShell() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dragErrorMessage, setDragErrorMessage] = useState<string | null>(null);
+  const [isCarryingOverYesterday, setIsCarryingOverYesterday] = useState(false);
+  const [carryOverMessage, setCarryOverMessage] = useState<string | null>(null);
+  const [carryOverErrorMessage, setCarryOverErrorMessage] = useState<string | null>(null);
+  const [dayAffirmation, setDayAffirmation] = useState<DayAffirmation | null>(null);
+  const [dayAffirmationDraft, setDayAffirmationDraft] = useState(() =>
+    getDefaultAffirmationText(toDateInputValue(new Date()))
+  );
+  const [isDayAffirmationLoading, setIsDayAffirmationLoading] = useState(false);
+  const [isDayAffirmationSaving, setIsDayAffirmationSaving] = useState(false);
+  const [dayAffirmationErrorMessage, setDayAffirmationErrorMessage] = useState<string | null>(null);
+  const [dayBilan, setDayBilan] = useState<DayBilan | null>(null);
+  const [dayBilanFormValues, setDayBilanFormValues] = useState<DayBilanFormValues>(
+    getDefaultDayBilanFormValues
+  );
+  const [isDayBilanLoading, setIsDayBilanLoading] = useState(false);
+  const [isDayBilanSaving, setIsDayBilanSaving] = useState(false);
+  const [dayBilanErrorMessage, setDayBilanErrorMessage] = useState<string | null>(null);
+  const [dayBilanSuccessMessage, setDayBilanSuccessMessage] = useState<string | null>(null);
   const [isAssistantPanelOpen, setIsAssistantPanelOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([]);
@@ -1644,7 +1904,7 @@ export function AppShell() {
   }, [editingTaskId, tasks]);
 
   const isTaskDialogOpen = taskDialogMode !== null;
-  const isMutationPending = isSubmittingTask || isDeletingTask;
+  const isMutationPending = isSubmittingTask || isDeletingTask || isCarryingOverYesterday;
   const isEditingGeneratedTask =
     taskDialogMode === "edit" && (editingTask?.recurrenceSourceTaskId ?? null) !== null;
   const normalizedSelectedProject = normalizeProjectName(taskFormValues.project);
@@ -1691,6 +1951,20 @@ export function AppShell() {
     setTasks([]);
     setErrorMessage(null);
     setDragErrorMessage(null);
+    setIsCarryingOverYesterday(false);
+    setCarryOverMessage(null);
+    setCarryOverErrorMessage(null);
+    setDayAffirmation(null);
+    setDayAffirmationDraft(getDefaultAffirmationText(toDateInputValue(new Date())));
+    setIsDayAffirmationLoading(false);
+    setIsDayAffirmationSaving(false);
+    setDayAffirmationErrorMessage(null);
+    setDayBilan(null);
+    setDayBilanFormValues(getDefaultDayBilanFormValues());
+    setIsDayBilanLoading(false);
+    setIsDayBilanSaving(false);
+    setDayBilanErrorMessage(null);
+    setDayBilanSuccessMessage(null);
     setIsAssistantPanelOpen(false);
     setAssistantQuestion("");
     setAssistantMessages([]);
@@ -1887,6 +2161,15 @@ export function AppShell() {
     setIsLoading(true);
     setErrorMessage(null);
     setDragErrorMessage(null);
+    setCarryOverMessage(null);
+    setCarryOverErrorMessage(null);
+    setDayAffirmation(null);
+    setDayAffirmationDraft(getDefaultAffirmationText(nextDate));
+    setDayAffirmationErrorMessage(null);
+    setDayBilan(null);
+    setDayBilanFormValues(getDefaultDayBilanFormValues());
+    setDayBilanErrorMessage(null);
+    setDayBilanSuccessMessage(null);
     setAssistantErrorMessage(null);
     setActiveTaskId(null);
     setPendingTaskIds([]);
@@ -1965,6 +2248,135 @@ export function AppShell() {
       );
     } finally {
       setIsAssistantLoading(false);
+    }
+  }
+
+  async function handleCarryOverYesterday() {
+    if (isCarryingOverYesterday) {
+      return;
+    }
+
+    if (!authToken) {
+      setCarryOverErrorMessage("Authentication is required.");
+      return;
+    }
+
+    setCarryOverMessage(null);
+    setCarryOverErrorMessage(null);
+    setIsCarryingOverYesterday(true);
+
+    try {
+      const result = await carryOverYesterdayTasks(selectedDate, authToken);
+
+      setTasks((currentTasks) => {
+        const mergedById = new Map(currentTasks.map((task) => [task.id, task]));
+        for (const task of result.tasks) {
+          mergedById.set(task.id, task);
+        }
+
+        return [...mergedById.values()];
+      });
+
+      if (result.copiedCount === 0 && result.skippedCount === 0) {
+        setCarryOverMessage("No actionable tasks found yesterday.");
+      } else {
+        setCarryOverMessage(
+          `Carry-over complete: ${result.copiedCount} copied, ${result.skippedCount} skipped.`
+        );
+      }
+    } catch (error) {
+      setCarryOverErrorMessage(
+        error instanceof Error ? error.message : "Unable to carry over yesterday tasks."
+      );
+    } finally {
+      setIsCarryingOverYesterday(false);
+    }
+  }
+
+  async function saveDayAffirmation(options?: { text?: string; isCompleted?: boolean }) {
+    if (isDayAffirmationSaving || isDayAffirmationLoading) {
+      return;
+    }
+
+    if (!authToken) {
+      setDayAffirmationErrorMessage("Authentication is required.");
+      return;
+    }
+
+    const fallbackText = getDefaultAffirmationText(selectedDate);
+    const nextTextCandidate = options?.text ?? dayAffirmationDraft;
+    const normalizedText = nextTextCandidate.trim().length > 0 ? nextTextCandidate.trim() : fallbackText;
+    const nextCompletion = options?.isCompleted ?? dayAffirmation?.isCompleted ?? false;
+
+    if (normalizedText.length > DAY_AFFIRMATION_MAX_LENGTH) {
+      setDayAffirmationErrorMessage(
+        `Affirmation is too long. Maximum length is ${DAY_AFFIRMATION_MAX_LENGTH} characters.`
+      );
+      return;
+    }
+
+    setDayAffirmationErrorMessage(null);
+    setIsDayAffirmationSaving(true);
+
+    try {
+      const savedAffirmation = await upsertDayAffirmation(
+        {
+          date: selectedDate,
+          text: normalizedText,
+          isCompleted: nextCompletion,
+        },
+        authToken
+      );
+
+      setDayAffirmation(savedAffirmation);
+      setDayAffirmationDraft(savedAffirmation.text);
+    } catch (error) {
+      setDayAffirmationErrorMessage(
+        error instanceof Error ? error.message : "Unable to save day affirmation."
+      );
+    } finally {
+      setIsDayAffirmationSaving(false);
+    }
+  }
+
+  function updateDayBilanField(field: keyof DayBilanFormValues, value: string) {
+    setDayBilanFormValues((currentValues) => ({
+      ...currentValues,
+      [field]: value,
+    }));
+    setDayBilanErrorMessage(null);
+    setDayBilanSuccessMessage(null);
+  }
+
+  async function handleSaveDayBilan() {
+    if (isDayBilanSaving || isDayBilanLoading) {
+      return;
+    }
+
+    if (!authToken) {
+      setDayBilanErrorMessage("Authentication is required.");
+      return;
+    }
+
+    const inputResult = buildDayBilanMutationInput(dayBilanFormValues, selectedDate);
+    if (!inputResult.data) {
+      setDayBilanErrorMessage(inputResult.error ?? "Invalid day bilan.");
+      return;
+    }
+
+    setDayBilanErrorMessage(null);
+    setDayBilanSuccessMessage(null);
+    setIsDayBilanSaving(true);
+
+    try {
+      const savedBilan = await upsertDayBilan(inputResult.data, authToken);
+      setDayBilan(savedBilan);
+      setDayBilanFormValues(getDayBilanFormValues(savedBilan));
+      setDayBilanSuccessMessage("Day bilan saved.");
+    } catch (error) {
+      setDayBilanErrorMessage(error instanceof Error ? error.message : "Unable to save day bilan.");
+    } finally {
+      setIsDayBilanSaving(false);
     }
   }
 
@@ -2503,6 +2915,95 @@ export function AppShell() {
       return;
     }
 
+    if (!authToken || !authUser) {
+      setDayAffirmation(null);
+      setDayAffirmationDraft(getDefaultAffirmationText(selectedDate));
+      setIsDayAffirmationLoading(false);
+      return;
+    }
+
+    setIsDayAffirmationLoading(true);
+    setDayAffirmationErrorMessage(null);
+    const controller = new AbortController();
+
+    loadDayAffirmation(selectedDate, authToken, controller.signal)
+      .then((nextAffirmation) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setDayAffirmation(nextAffirmation);
+        setDayAffirmationDraft(nextAffirmation?.text ?? getDefaultAffirmationText(selectedDate));
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setDayAffirmation(null);
+        setDayAffirmationDraft(getDefaultAffirmationText(selectedDate));
+        setDayAffirmationErrorMessage(
+          error instanceof Error ? error.message : "Unable to load day affirmation."
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsDayAffirmationLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, selectedDate]);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken || !authUser) {
+      setDayBilan(null);
+      setDayBilanFormValues(getDefaultDayBilanFormValues());
+      setIsDayBilanLoading(false);
+      return;
+    }
+
+    setIsDayBilanLoading(true);
+    setDayBilanErrorMessage(null);
+    setDayBilanSuccessMessage(null);
+    const controller = new AbortController();
+
+    loadDayBilan(selectedDate, authToken, controller.signal)
+      .then((nextBilan) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setDayBilan(nextBilan);
+        setDayBilanFormValues(getDayBilanFormValues(nextBilan));
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setDayBilan(null);
+        setDayBilanFormValues(getDefaultDayBilanFormValues());
+        setDayBilanErrorMessage(error instanceof Error ? error.message : "Unable to load day bilan.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsDayBilanLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, selectedDate]);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
     const projectsFromTasks = getUniqueSortedProjectNames(
       tasks.map((task) => task.project ?? "")
     );
@@ -2561,7 +3062,11 @@ export function AppShell() {
       : "Save changes";
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
-  const completionRate = tasks.length === 0 ? 0 : Math.round((tasksByStatus.done.length / tasks.length) * 100);
+  const isAffirmationCompleted = dayAffirmation?.isCompleted ?? false;
+  const completionItemCount = tasks.length + 1;
+  const completedItemCount = tasksByStatus.done.length + (isAffirmationCompleted ? 1 : 0);
+  const completionRate =
+    completionItemCount === 0 ? 0 : Math.round((completedItemCount / completionItemCount) * 100);
 
   function handleDragStart(event: DragStartEvent) {
     if (isLoading || pendingTaskIds.length > 0 || isTaskDialogOpen || isMutationPending) {
@@ -2715,14 +3220,24 @@ export function AppShell() {
             </button>
           </div>
 
-          <button
-            type="button"
-            className={primaryButtonClass}
-            onClick={() => openCreateTaskDialog()}
-            disabled={isMutationPending}
-          >
-            New Task
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={controlButtonClass}
+              onClick={handleCarryOverYesterday}
+              disabled={isMutationPending || isLoading || isDayAffirmationSaving}
+            >
+              {isCarryingOverYesterday ? "Carrying..." : "Carry Over Yesterday"}
+            </button>
+            <button
+              type="button"
+              className={primaryButtonClass}
+              onClick={() => openCreateTaskDialog()}
+              disabled={isMutationPending}
+            >
+              New Task
+            </button>
+          </div>
 
           <label className="flex min-w-[210px] flex-col gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
             Selected Date
@@ -2751,6 +3266,80 @@ export function AppShell() {
             Completion {completionRate}%
           </p>
         </div>
+      </section>
+
+      {carryOverMessage ? (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+          {carryOverMessage}
+        </section>
+      ) : null}
+
+      {carryOverErrorMessage ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          {carryOverErrorMessage}
+        </section>
+      ) : null}
+
+      <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">Miracle Morning</p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">Day Affirmation</h2>
+            <p className="text-sm text-muted">
+              One intentional statement for the day. Mark it done to include it in completion.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm font-semibold text-foreground">
+            <input
+              type="checkbox"
+              checked={isAffirmationCompleted}
+              onChange={(event) => {
+                void saveDayAffirmation({ isCompleted: event.target.checked });
+              }}
+              disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+            />
+            Affirmation completed
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className="block text-sm font-semibold text-foreground">
+            Today statement
+            <textarea
+              value={dayAffirmationDraft}
+              onChange={(event) => {
+                setDayAffirmationDraft(event.target.value);
+                setDayAffirmationErrorMessage(null);
+              }}
+              className={`${textFieldClass} mt-1 min-h-[94px] resize-y`}
+              maxLength={DAY_AFFIRMATION_MAX_LENGTH}
+              disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+            />
+          </label>
+          <button
+            type="button"
+            className={primaryButtonClass}
+            onClick={() => {
+              void saveDayAffirmation({ text: dayAffirmationDraft });
+            }}
+            disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+          >
+            {isDayAffirmationSaving ? "Saving..." : "Save affirmation"}
+          </button>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+          <p>
+            {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
+          </p>
+          {dayAffirmation?.updatedAt ? <p>Last update: {formatDateTime(dayAffirmation.updatedAt)}</p> : null}
+        </div>
+
+        {dayAffirmationErrorMessage ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {dayAffirmationErrorMessage}
+          </p>
+        ) : null}
       </section>
 
       {errorMessage ? (
@@ -2844,6 +3433,130 @@ export function AppShell() {
           })}
         </main>
       </DndContext>
+
+      <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">End Of Day</p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">Day Bilan</h2>
+            <p className="text-sm text-muted">Capture wins, blockers, and your top 3 for tomorrow.</p>
+          </div>
+          <button
+            type="button"
+            className={primaryButtonClass}
+            onClick={handleSaveDayBilan}
+            disabled={isDayBilanLoading || isDayBilanSaving}
+          >
+            {isDayBilanSaving ? "Saving..." : "Save bilan"}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Done Tasks</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.done.length}</p>
+          </div>
+          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Actionable</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{actionableTaskCount}</p>
+          </div>
+          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Cancelled</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.cancelled.length}</p>
+          </div>
+          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Affirmation</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">
+              {isAffirmationCompleted ? "Done" : "Pending"}
+            </p>
+          </div>
+        </div>
+
+        {isDayBilanLoading ? (
+          <p className="mt-4 text-sm text-muted">Loading day bilan...</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <label className="block text-sm font-semibold text-foreground">
+              Mood (1-5)
+              <select
+                value={dayBilanFormValues.mood}
+                onChange={(event) => updateDayBilanField("mood", event.target.value)}
+                className={textFieldClass}
+                disabled={isDayBilanSaving}
+              >
+                <option value="">Not set</option>
+                <option value="1">1 - Very hard day</option>
+                <option value="2">2 - Hard day</option>
+                <option value="3">3 - Neutral day</option>
+                <option value="4">4 - Good day</option>
+                <option value="5">5 - Excellent day</option>
+              </select>
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block text-sm font-semibold text-foreground">
+                Wins
+                <textarea
+                  value={dayBilanFormValues.wins}
+                  onChange={(event) => updateDayBilanField("wins", event.target.value)}
+                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                  disabled={isDayBilanSaving}
+                />
+              </label>
+              <label className="block text-sm font-semibold text-foreground">
+                Blockers
+                <textarea
+                  value={dayBilanFormValues.blockers}
+                  onChange={(event) => updateDayBilanField("blockers", event.target.value)}
+                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                  disabled={isDayBilanSaving}
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block text-sm font-semibold text-foreground">
+                Lessons learned
+                <textarea
+                  value={dayBilanFormValues.lessonsLearned}
+                  onChange={(event) => updateDayBilanField("lessonsLearned", event.target.value)}
+                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                  disabled={isDayBilanSaving}
+                />
+              </label>
+              <label className="block text-sm font-semibold text-foreground">
+                Tomorrow top 3
+                <textarea
+                  value={dayBilanFormValues.tomorrowTop3}
+                  onChange={(event) => updateDayBilanField("tomorrowTop3", event.target.value)}
+                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                  disabled={isDayBilanSaving}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+
+        {dayBilan?.updatedAt ? (
+          <p className="mt-3 text-xs text-muted">Last update: {formatDateTime(dayBilan.updatedAt)}</p>
+        ) : null}
+
+        {dayBilanErrorMessage ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {dayBilanErrorMessage}
+          </p>
+        ) : null}
+
+        {dayBilanSuccessMessage ? (
+          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            {dayBilanSuccessMessage}
+          </p>
+        ) : null}
+      </section>
 
       {isTaskDialogOpen ? (
         <div

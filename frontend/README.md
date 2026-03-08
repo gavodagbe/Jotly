@@ -37,6 +37,9 @@ src/
 Current frontend includes:
 - authenticated dashboard flow
 - date-driven Kanban board
+- day affirmation panel (counts in daily completion)
+- carry-over action for non-completed tasks from yesterday
+- day bilan panel (wins/blockers/lessons/top 3)
 - create/edit/delete task dialog
 - drag-and-drop status updates
 - task comments, attachments, and recurrence controls
