@@ -156,7 +156,7 @@ UI principles:
 ## Sprint 1 postponed modules
 The following modules are explicitly postponed after Sprint 1 implementation:
 - reporting
-- gaming track phase 4+
+- gaming track phase 5+
 - notifications
 - mobile app
 - real-time sync
@@ -250,7 +250,7 @@ The modules below define intended boundaries without pre-building abstractions.
 ### Gaming Track
 - Relation to retention: converts user activity into progress loops and consistency feedback.
 - Core period views: day / week / month / year.
-- Implemented in Phase 1-3:
+- Implemented in Phase 1-4:
   - backend summary endpoint: `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
   - top-of-dashboard score card with period switch
   - task/affirmation/bilan completion metrics + streaks + trend deltas
@@ -260,12 +260,15 @@ The modules below define intended boundaries without pre-building abstractions.
   - badge progression (`badges`)
   - streak protection signals (`streakProtection`)
   - historical trend views (`historicalTrends.daily|weekly|monthly`)
+  - dynamic weekly challenge (`engagement.challenge`)
+  - personal weekly leaderboard (`engagement.leaderboard`)
+  - weekly recap and nudges (`engagement.recap`, `engagement.nudges`)
 - Next dimensions:
   - task achievement (completion rate, throughput, carry-over trend)
   - day affirmation completion rate
   - day bilan completion rate
   - deeper streak and consistency indicators
-  - social and competitive engagement loops
+  - social and collaborative engagement loops
 - Current scoring model:
   - execution score (tasks)
   - reflection score (affirmation + bilan)
@@ -275,7 +278,7 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely frontend entry points:
   - top-of-dashboard score card and trend chips
   - dedicated stats screen under `frontend/src/features/gaming-track/`
-- Status: Phase 1-3 implemented; phase 4+ deeper engagement layer remains planned.
+- Status: Phase 1-4 implemented; phase 5+ deeper engagement layer remains planned.
 
 ## Known entities and extension points
 Existing entities:

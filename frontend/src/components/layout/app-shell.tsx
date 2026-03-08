@@ -269,6 +269,51 @@ type GamingTrackSummary = {
       overallScore: number;
     }>;
   };
+  engagement: {
+    challenge: {
+      id: "finish_10_tasks" | "complete_reflection_4_days" | "hit_consistency_60" | "close_carryover_3";
+      target: number;
+      progress: number;
+      completed: boolean;
+      rewardXp: number;
+      expiresOn: string;
+    };
+    leaderboard: {
+      rank: number;
+      total: number;
+      percentile: number;
+      currentScore: number;
+      topScore: number;
+      entries: Array<{
+        label: string;
+        rangeStart: string;
+        rangeEnd: string;
+        score: number;
+        tasksDone: number;
+        reflectionDays: number;
+        isCurrent: boolean;
+      }>;
+    };
+    recap: {
+      periodStart: string;
+      periodEnd: string;
+      headline: "strong_uptrend" | "steady_progress" | "downtrend_alert";
+      highlights: Array<{
+        id: "tasks_done" | "reflection_days" | "overall_score" | "execution_streak";
+        value: number;
+        delta: number | null;
+      }>;
+      focus: Array<
+        "protect_streak" | "reduce_carryover" | "increase_reflection" | "increase_throughput" | "increase_consistency"
+      >;
+      generatedOn: string;
+    };
+    nudges: Array<{
+      id: "streak_risk" | "carryover_pressure" | "momentum_positive" | "consistency_low" | "challenge_almost_done";
+      severity: "info" | "warning" | "success";
+      metric: number;
+    }>;
+  };
 };
 
 type CarryOverYesterdayPayload = {
@@ -842,6 +887,171 @@ function formatHistoricalTrendLabel(
     month: "short",
     year: "2-digit",
   }).format(parseDateInput(point.rangeStart));
+}
+
+function formatGamingTrackChallengeLabel(
+  challengeId: GamingTrackSummary["engagement"]["challenge"]["id"],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (challengeId === "finish_10_tasks") {
+      return "Terminer 10 taches";
+    }
+    if (challengeId === "complete_reflection_4_days") {
+      return "Reflection 4 jours";
+    }
+    if (challengeId === "hit_consistency_60") {
+      return "Consistance 60";
+    }
+    return "Clore 3 reprises";
+  }
+
+  if (challengeId === "finish_10_tasks") {
+    return "Finish 10 tasks";
+  }
+  if (challengeId === "complete_reflection_4_days") {
+    return "4 reflection days";
+  }
+  if (challengeId === "hit_consistency_60") {
+    return "Reach consistency 60";
+  }
+  return "Close 3 carry-overs";
+}
+
+function formatGamingTrackRecapHeadline(
+  headline: GamingTrackSummary["engagement"]["recap"]["headline"],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (headline === "strong_uptrend") {
+      return "Progression forte cette semaine";
+    }
+    if (headline === "downtrend_alert") {
+      return "Ralentissement a corriger";
+    }
+    return "Progression stable";
+  }
+
+  if (headline === "strong_uptrend") {
+    return "Strong upward trend this week";
+  }
+  if (headline === "downtrend_alert") {
+    return "Downtrend to recover quickly";
+  }
+  return "Stable progress";
+}
+
+function formatGamingTrackRecapFocus(
+  focusId: GamingTrackSummary["engagement"]["recap"]["focus"][number],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (focusId === "protect_streak") {
+      return "Proteger la serie";
+    }
+    if (focusId === "reduce_carryover") {
+      return "Reduire les reprises";
+    }
+    if (focusId === "increase_reflection") {
+      return "Renforcer la reflection";
+    }
+    if (focusId === "increase_consistency") {
+      return "Ameliorer la consistance";
+    }
+    return "Augmenter le volume execute";
+  }
+
+  if (focusId === "protect_streak") {
+    return "Protect your streak";
+  }
+  if (focusId === "reduce_carryover") {
+    return "Reduce carry-over";
+  }
+  if (focusId === "increase_reflection") {
+    return "Increase reflection days";
+  }
+  if (focusId === "increase_consistency") {
+    return "Increase consistency";
+  }
+  return "Increase throughput";
+}
+
+function formatGamingTrackRecapHighlightLabel(
+  highlightId: GamingTrackSummary["engagement"]["recap"]["highlights"][number]["id"],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (highlightId === "tasks_done") {
+      return "Taches terminees";
+    }
+    if (highlightId === "reflection_days") {
+      return "Jours reflection";
+    }
+    if (highlightId === "overall_score") {
+      return "Score global";
+    }
+    return "Serie execution";
+  }
+
+  if (highlightId === "tasks_done") {
+    return "Tasks done";
+  }
+  if (highlightId === "reflection_days") {
+    return "Reflection days";
+  }
+  if (highlightId === "overall_score") {
+    return "Overall score";
+  }
+  return "Execution streak";
+}
+
+function formatGamingTrackNudgeLabel(
+  nudgeId: GamingTrackSummary["engagement"]["nudges"][number]["id"],
+  locale: UserLocale
+): string {
+  if (locale === "fr") {
+    if (nudgeId === "streak_risk") {
+      return "Serie en risque";
+    }
+    if (nudgeId === "carryover_pressure") {
+      return "Pression de reprises";
+    }
+    if (nudgeId === "consistency_low") {
+      return "Consistance faible";
+    }
+    if (nudgeId === "challenge_almost_done") {
+      return "Challenge presque fini";
+    }
+    return "Momentum positif";
+  }
+
+  if (nudgeId === "streak_risk") {
+    return "Streak at risk";
+  }
+  if (nudgeId === "carryover_pressure") {
+    return "Carry-over pressure";
+  }
+  if (nudgeId === "consistency_low") {
+    return "Consistency is low";
+  }
+  if (nudgeId === "challenge_almost_done") {
+    return "Challenge almost done";
+  }
+  return "Positive momentum";
+}
+
+function getGamingTrackNudgeClass(
+  severity: GamingTrackSummary["engagement"]["nudges"][number]["severity"]
+): string {
+  if (severity === "warning") {
+    return "border-amber-300 bg-amber-50 text-amber-800";
+  }
+
+  if (severity === "success") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  }
+
+  return "border-line bg-surface text-muted";
 }
 
 function formatPriority(priority: TaskPriority, locale: UserLocale): string {
@@ -4539,6 +4749,139 @@ export function AppShell() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                  {isFrench ? "Challenge hebdo et classement" : "Weekly challenge and leaderboard"}
+                </p>
+                <div className="mt-2 rounded-lg border border-line bg-surface px-2.5 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {formatGamingTrackChallengeLabel(gamingTrackSummary.engagement.challenge.id, activeLocale)}
+                    </p>
+                    <p className="text-xs font-semibold text-muted">+{gamingTrackSummary.engagement.challenge.rewardXp} XP</p>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {gamingTrackSummary.engagement.challenge.progress}/{gamingTrackSummary.engagement.challenge.target}
+                    {" · "}
+                    {isFrench ? "Expire le" : "Expires"}{" "}
+                    {formatDateOnlyForLocale(gamingTrackSummary.engagement.challenge.expiresOn, activeLocale)}
+                  </p>
+                  <div className="mt-2 h-1.5 rounded-full bg-surface-soft">
+                    <div
+                      className={`h-full rounded-full ${
+                        gamingTrackSummary.engagement.challenge.completed ? "bg-emerald-500" : "bg-accent"
+                      }`}
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round(
+                            (gamingTrackSummary.engagement.challenge.progress /
+                              Math.max(1, gamingTrackSummary.engagement.challenge.target)) *
+                              100
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-2 rounded-lg border border-line bg-surface px-2.5 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-foreground">
+                      {isFrench ? "Rang personnel" : "Personal rank"} {gamingTrackSummary.engagement.leaderboard.rank}/
+                      {gamingTrackSummary.engagement.leaderboard.total}
+                    </p>
+                    <p className="text-xs font-semibold text-muted">
+                      {isFrench ? "Percentile" : "Percentile"} {gamingTrackSummary.engagement.leaderboard.percentile}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted">
+                    {isFrench ? "Score courant" : "Current score"} {gamingTrackSummary.engagement.leaderboard.currentScore}
+                    {" · "}
+                    {isFrench ? "Top" : "Top"} {gamingTrackSummary.engagement.leaderboard.topScore}
+                  </p>
+
+                  <div className="mt-2 grid gap-1.5">
+                    {gamingTrackSummary.engagement.leaderboard.entries.map((entry) => (
+                      <div
+                        key={`${entry.label}-${entry.rangeStart}`}
+                        className={`rounded-md border px-2 py-1.5 ${
+                          entry.isCurrent ? "border-accent/45 bg-accent-soft/30" : "border-line bg-surface-soft"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold text-foreground">
+                            {formatDateOnlyForLocale(entry.rangeStart, activeLocale)}
+                          </p>
+                          <p className="text-[11px] font-semibold text-muted">
+                            {isFrench ? "Score" : "Score"} {entry.score}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                  {isFrench ? "Recap et nudges" : "Recap and nudges"}
+                </p>
+                <div className="mt-2 rounded-lg border border-line bg-surface px-2.5 py-2.5">
+                  <p className="text-sm font-semibold text-foreground">
+                    {formatGamingTrackRecapHeadline(gamingTrackSummary.engagement.recap.headline, activeLocale)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted">
+                    {formatDateOnlyForLocale(gamingTrackSummary.engagement.recap.periodStart, activeLocale)}
+                    {" - "}
+                    {formatDateOnlyForLocale(gamingTrackSummary.engagement.recap.periodEnd, activeLocale)}
+                  </p>
+
+                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                    {gamingTrackSummary.engagement.recap.highlights.map((highlight) => (
+                      <div key={highlight.id} className="rounded-md border border-line bg-surface-soft px-2 py-1.5">
+                        <p className="text-[11px] text-muted">
+                          {formatGamingTrackRecapHighlightLabel(highlight.id, activeLocale)}
+                        </p>
+                        <p className="text-xs font-semibold text-foreground">
+                          {highlight.value}
+                          {highlight.delta !== null ? ` (${formatSignedDelta(highlight.delta)})` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {gamingTrackSummary.engagement.recap.focus.map((focusId) => (
+                      <span
+                        key={focusId}
+                        className="inline-flex items-center rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[11px] text-foreground/85"
+                      >
+                        {formatGamingTrackRecapFocus(focusId, activeLocale)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-2 rounded-lg border border-line bg-surface px-2.5 py-2.5">
+                  <p className="text-xs font-semibold text-foreground">{isFrench ? "Nudges actifs" : "Active nudges"}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {gamingTrackSummary.engagement.nudges.map((nudge, index) => (
+                      <span
+                        key={`${nudge.id}-${index}`}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getGamingTrackNudgeClass(
+                          nudge.severity
+                        )}`}
+                      >
+                        {formatGamingTrackNudgeLabel(nudge.id, activeLocale)}: {nudge.metric}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </>

@@ -51,6 +51,7 @@ Completed:
 - gaming track phase 1 (backend summary API + frontend score card with `D/W/M/Y` period selector)
 - gaming track phase 2 (weekly missions + personal bests in summary API and dashboard)
 - gaming track phase 3 (levels/badges, streak protection, and historical trend views)
+- gaming track phase 4 (weekly challenge, personal leaderboard, recap, and nudges)
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal
@@ -77,7 +78,7 @@ Latest AI assistant conventions:
 - automatic fallback to heuristic when OpenAI is unavailable
 
 Gaming Track status:
-- Phase 1-3 implemented:
+- Phase 1-4 implemented:
   - `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
   - tasks + affirmation + bilan completion analytics
   - streak and scoring outputs (execution, reflection, consistency, momentum, overall)
@@ -88,12 +89,15 @@ Gaming Track status:
   - badges progression and unlock states
   - streak protection signals
   - historical trend points (daily, weekly, monthly)
+  - dynamic weekly challenge
+  - personal weekly leaderboard
+  - weekly recap and engagement nudges
 - Next phases:
-  - deeper retention loops and social mechanics
+  - deeper social loops and collaborative mechanics
 
 Still not implemented:
 - reporting
-- gaming track phase 4+ engagement layer
+- gaming track phase 5+ engagement layer
 - notifications
 - mobile client
 - real-time sync

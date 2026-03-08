@@ -27,12 +27,13 @@ Implemented in the current codebase:
 - gaming track phase 1 summary card (`frontend/src/components/layout/app-shell.tsx`) backed by `/api/gaming-track/summary`
 - gaming track phase 2 updates: weekly missions + personal bests (`frontend/src/components/layout/app-shell.tsx`)
 - gaming track phase 3 updates: levels/badges, streak protection, and historical trends (`frontend/src/components/layout/app-shell.tsx`)
+- gaming track phase 4 updates: weekly challenge, personal leaderboard, recap, and nudges (`frontend/src/components/layout/app-shell.tsx`)
 - Docker Compose local runtime (frontend, backend, postgres)
 - route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile/gaming-track
 
 Not implemented yet:
 - reporting
-- gaming track phase 4+ (deeper engagement loops)
+- gaming track phase 5+ (deeper engagement loops)
 - notifications
 - mobile client
 - real-time sync
@@ -207,7 +208,7 @@ The boundaries below reflect current ownership and future evolution points.
 
 ### Gaming Track
 - Relation to user engagement: transforms daily execution and reflection activity into retention loops.
-- Implemented Phase 1-3:
+- Implemented Phase 1-4:
   - metric windows: day, week, month, year (period-to-date)
   - summary endpoint + dashboard card
   - tasks/affirmation/bilan completion metrics
@@ -218,6 +219,9 @@ The boundaries below reflect current ownership and future evolution points.
   - badge progression and unlock states
   - streak protection signals
   - historical trends (daily/weekly/monthly points)
+  - weekly challenge loop
+  - personal leaderboard loop
+  - weekly recap and nudge loop
 - Metric families (next depth):
   - task achievement metrics (completion rate, throughput, carry-over trend)
   - day affirmation completion metrics
@@ -231,7 +235,7 @@ The boundaries below reflect current ownership and future evolution points.
   - momentum score
 - Likely backend module: `backend/src/gaming-track/`.
 - Likely frontend feature area: `frontend/src/features/gaming-track/`.
-- Sprint posture: Phase 1-3 implemented; phase 4+ deeper engagement layer remains planned.
+- Sprint posture: Phase 1-4 implemented; phase 5+ deeper engagement layer remains planned.
 
 ## Entities and extension points
 Existing entities:

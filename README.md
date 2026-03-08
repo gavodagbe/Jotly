@@ -81,7 +81,7 @@ Relevant backend env vars:
 - `OPENAI_API_BASE_URL` (default: `https://api.openai.com/v1`)
 - `AI_ASSISTANT_TIMEOUT_MS` (default: `10000`)
 
-## Gaming Track (Phase 1-3 implemented)
+## Gaming Track (Phase 1-4 implemented)
 
 Gaming Track now includes a first production slice focused on periodized progress scoring.
 
@@ -105,9 +105,13 @@ Delivered:
 - milestone badges (unlock/progress states)
 - streak protection signals (earned charges + at-risk detection)
 - historical trend views (daily, weekly, monthly points)
+- dynamic weekly challenge (reward XP + expiry)
+- personal weekly leaderboard (rank vs recent weekly baselines)
+- weekly recap block (highlights + focus actions)
+- engagement nudges (streak risk, carry-over pressure, momentum signals)
 
 Still planned for next phases:
-- deeper analytics screens and social/competitive loops
+- deeper analytics screens and social collaborative loops
 
 ## Production Deployment (Hostinger VM + Nginx)
 

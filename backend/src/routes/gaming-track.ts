@@ -84,6 +84,27 @@ function serializeSummary(summary: GamingTrackSummary) {
       weekly: summary.historicalTrends.weekly.map(serializeHistoricalPoint),
       monthly: summary.historicalTrends.monthly.map(serializeHistoricalPoint),
     },
+    engagement: {
+      challenge: {
+        ...summary.engagement.challenge,
+        expiresOn: formatDateOnly(summary.engagement.challenge.expiresOn),
+      },
+      leaderboard: {
+        ...summary.engagement.leaderboard,
+        entries: summary.engagement.leaderboard.entries.map((entry) => ({
+          ...entry,
+          rangeStart: formatDateOnly(entry.rangeStart),
+          rangeEnd: formatDateOnly(entry.rangeEnd),
+        })),
+      },
+      recap: {
+        ...summary.engagement.recap,
+        periodStart: formatDateOnly(summary.engagement.recap.periodStart),
+        periodEnd: formatDateOnly(summary.engagement.recap.periodEnd),
+        generatedOn: formatDateOnly(summary.engagement.recap.generatedOn),
+      },
+      nudges: summary.engagement.nudges,
+    },
   };
 }
 

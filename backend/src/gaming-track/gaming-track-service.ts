@@ -57,6 +57,30 @@ export type GamingTrackHistoricalPoint = {
   overallScore: number;
 };
 
+export type GamingTrackChallengeId =
+  | "finish_10_tasks"
+  | "complete_reflection_4_days"
+  | "hit_consistency_60"
+  | "close_carryover_3";
+
+export type GamingTrackRecapHeadlineId = "strong_uptrend" | "steady_progress" | "downtrend_alert";
+
+export type GamingTrackRecapFocusId =
+  | "protect_streak"
+  | "reduce_carryover"
+  | "increase_reflection"
+  | "increase_throughput"
+  | "increase_consistency";
+
+export type GamingTrackNudgeId =
+  | "streak_risk"
+  | "carryover_pressure"
+  | "momentum_positive"
+  | "consistency_low"
+  | "challenge_almost_done";
+
+export type GamingTrackNudgeSeverity = "info" | "warning" | "success";
+
 export type GamingTrackSummary = {
   period: GamingTrackPeriod;
   anchorDate: Date;
@@ -134,6 +158,49 @@ export type GamingTrackSummary = {
     daily: GamingTrackHistoricalPoint[];
     weekly: GamingTrackHistoricalPoint[];
     monthly: GamingTrackHistoricalPoint[];
+  };
+  engagement: {
+    challenge: {
+      id: GamingTrackChallengeId;
+      target: number;
+      progress: number;
+      completed: boolean;
+      rewardXp: number;
+      expiresOn: Date;
+    };
+    leaderboard: {
+      rank: number;
+      total: number;
+      percentile: number;
+      currentScore: number;
+      topScore: number;
+      entries: Array<{
+        label: string;
+        rangeStart: Date;
+        rangeEnd: Date;
+        score: number;
+        tasksDone: number;
+        reflectionDays: number;
+        isCurrent: boolean;
+      }>;
+    };
+    recap: {
+      periodStart: Date;
+      periodEnd: Date;
+      headline: GamingTrackRecapHeadlineId;
+      highlights: Array<{
+        id: "tasks_done" | "reflection_days" | "overall_score" | "execution_streak";
+        value: number;
+        delta: number | null;
+      }>;
+      focus: GamingTrackRecapFocusId[];
+      generatedOn: Date;
+    };
+    nudges: Array<{
+      id: GamingTrackNudgeId;
+      severity: GamingTrackNudgeSeverity;
+      metric: number;
+    }>;
   };
 };
 
@@ -857,6 +924,295 @@ function buildHistoricalTrends(window: GamingTrackWindowData, anchorDate: Date):
   };
 }
 
+function getReflectionDayCountInRange(window: GamingTrackWindowData, start: Date, endExclusive: Date): number {
+  const completedAffirmationDays = getCompletedAffirmationDays(window.affirmations);
+  const completedBilanDays = getCompletedBilanDays(window.bilans);
+
+  let reflectionDayCount = 0;
+  const dateKeys = getDateKeysInRange(start, endExclusive);
+
+  for (const dateKey of dateKeys) {
+    if (completedAffirmationDays.has(dateKey) && completedBilanDays.has(dateKey)) {
+      reflectionDayCount += 1;
+    }
+  }
+
+  return reflectionDayCount;
+}
+
+function buildWeeklyChallenge(
+  weeklyWindow: GamingTrackWindowData,
+  weeklyMetrics: ComputedWindow,
+  weeklyRange: { start: Date; endExclusive: Date }
+): GamingTrackSummary["engagement"]["challenge"] {
+  const weeklyReflectionDays = getReflectionDayCountInRange(weeklyWindow, weeklyRange.start, weeklyRange.endExclusive);
+  const recoveredCarryOverCount = weeklyWindow.tasks.filter(
+    (task) => task.rolledFromTaskId !== null && task.status === "done"
+  ).length;
+
+  const candidates: Array<{
+    id: GamingTrackChallengeId;
+    target: number;
+    progress: number;
+    rewardXp: number;
+  }> = [
+    {
+      id: "finish_10_tasks",
+      target: 10,
+      progress: weeklyMetrics.tasks.done,
+      rewardXp: 60,
+    },
+    {
+      id: "complete_reflection_4_days",
+      target: 4,
+      progress: weeklyReflectionDays,
+      rewardXp: 55,
+    },
+    {
+      id: "hit_consistency_60",
+      target: 60,
+      progress: weeklyMetrics.scores.consistency,
+      rewardXp: 50,
+    },
+    {
+      id: "close_carryover_3",
+      target: 3,
+      progress: recoveredCarryOverCount,
+      rewardXp: 45,
+    },
+  ];
+
+  const incomplete = candidates
+    .filter((candidate) => candidate.progress < candidate.target)
+    .sort((left, right) => {
+      const leftRatio = left.progress / left.target;
+      const rightRatio = right.progress / right.target;
+
+      if (rightRatio !== leftRatio) {
+        return rightRatio - leftRatio;
+      }
+
+      return right.rewardXp - left.rewardXp;
+    });
+
+  const selected = incomplete[0] ?? candidates[0];
+
+  return {
+    id: selected.id,
+    target: selected.target,
+    progress: selected.progress,
+    completed: selected.progress >= selected.target,
+    rewardXp: selected.rewardXp,
+    expiresOn: addDays(weeklyRange.endExclusive, -1),
+  };
+}
+
+function sortLeaderboardEntries(
+  left: GamingTrackSummary["engagement"]["leaderboard"]["entries"][number],
+  right: GamingTrackSummary["engagement"]["leaderboard"]["entries"][number]
+): number {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+
+  if (right.tasksDone !== left.tasksDone) {
+    return right.tasksDone - left.tasksDone;
+  }
+
+  if (right.reflectionDays !== left.reflectionDays) {
+    return right.reflectionDays - left.reflectionDays;
+  }
+
+  return right.rangeStart.getTime() - left.rangeStart.getTime();
+}
+
+function buildWeeklyLeaderboard(
+  lifetimeWindow: GamingTrackWindowData,
+  anchorDate: Date
+): GamingTrackSummary["engagement"]["leaderboard"] {
+  const normalizedAnchorDate = startOfUtcDay(anchorDate);
+  const currentWeekStart = getWeekStart(normalizedAnchorDate);
+  const daysIntoWeek = (normalizedAnchorDate.getUTCDay() + 6) % 7;
+  const trackedDays = daysIntoWeek + 1;
+
+  const entries: GamingTrackSummary["engagement"]["leaderboard"]["entries"] = [];
+
+  for (let offset = 0; offset < 8; offset += 1) {
+    const weekStart = addDays(currentWeekStart, -7 * offset);
+    const weekEndExclusive = addDays(weekStart, trackedDays);
+    const weekWindow = getWindowSlice(lifetimeWindow, weekStart, weekEndExclusive);
+    const weekMetrics = computeWindowMetrics(weekWindow, weekStart, weekEndExclusive);
+    const reflectionDays = getReflectionDayCountInRange(weekWindow, weekStart, weekEndExclusive);
+
+    entries.push({
+      label: formatDateOnly(weekStart),
+      rangeStart: weekStart,
+      rangeEnd: addDays(weekEndExclusive, -1),
+      score: weekMetrics.scores.overall,
+      tasksDone: weekMetrics.tasks.done,
+      reflectionDays,
+      isCurrent: offset === 0,
+    });
+  }
+
+  const sortedEntries = [...entries].sort(sortLeaderboardEntries);
+  const currentIndex = sortedEntries.findIndex((entry) => entry.isCurrent);
+  const rank = currentIndex === -1 ? sortedEntries.length : currentIndex + 1;
+  const total = sortedEntries.length;
+  const percentile = total <= 1 ? 100 : clampScore(((total - rank) / (total - 1)) * 100);
+
+  const topEntries = sortedEntries.slice(0, 5);
+  if (!topEntries.some((entry) => entry.isCurrent)) {
+    const currentEntry = sortedEntries.find((entry) => entry.isCurrent);
+    if (currentEntry && topEntries.length > 0) {
+      topEntries[topEntries.length - 1] = currentEntry;
+      topEntries.sort(sortLeaderboardEntries);
+    }
+  }
+
+  return {
+    rank,
+    total,
+    percentile,
+    currentScore: sortedEntries.find((entry) => entry.isCurrent)?.score ?? 0,
+    topScore: sortedEntries[0]?.score ?? 0,
+    entries: topEntries,
+  };
+}
+
+function buildWeeklyRecap(
+  anchorDate: Date,
+  currentWeeklyMetrics: ComputedWindow,
+  previousWeeklyMetrics: ComputedWindow,
+  currentWeeklyReflectionDays: number,
+  previousWeeklyReflectionDays: number,
+  weeklyRange: { start: Date; endExclusive: Date },
+  streakProtection: GamingTrackSummary["streakProtection"]
+): GamingTrackSummary["engagement"]["recap"] {
+  const overallDelta = currentWeeklyMetrics.scores.overall - previousWeeklyMetrics.scores.overall;
+  const executionStreakDelta =
+    currentWeeklyMetrics.streaks.executionActive - previousWeeklyMetrics.streaks.executionActive;
+  const weeklyTrackedDays = getTrackedDays(weeklyRange.start, weeklyRange.endExclusive);
+
+  const focus: GamingTrackRecapFocusId[] = [];
+
+  if (streakProtection.atRisk) {
+    focus.push("protect_streak");
+  }
+
+  if (currentWeeklyMetrics.tasks.carriedOver >= 2) {
+    focus.push("reduce_carryover");
+  }
+
+  if (currentWeeklyReflectionDays < Math.min(weeklyTrackedDays, 4)) {
+    focus.push("increase_reflection");
+  }
+
+  if (currentWeeklyMetrics.tasks.done < 5) {
+    focus.push("increase_throughput");
+  }
+
+  if (currentWeeklyMetrics.scores.consistency < 50) {
+    focus.push("increase_consistency");
+  }
+
+  if (focus.length === 0) {
+    focus.push("increase_throughput");
+  }
+
+  const headline: GamingTrackRecapHeadlineId =
+    overallDelta >= 8 ? "strong_uptrend" : overallDelta <= -8 ? "downtrend_alert" : "steady_progress";
+
+  return {
+    periodStart: weeklyRange.start,
+    periodEnd: addDays(weeklyRange.endExclusive, -1),
+    headline,
+    highlights: [
+      {
+        id: "tasks_done",
+        value: currentWeeklyMetrics.tasks.done,
+        delta: currentWeeklyMetrics.tasks.done - previousWeeklyMetrics.tasks.done,
+      },
+      {
+        id: "reflection_days",
+        value: currentWeeklyReflectionDays,
+        delta: currentWeeklyReflectionDays - previousWeeklyReflectionDays,
+      },
+      {
+        id: "overall_score",
+        value: currentWeeklyMetrics.scores.overall,
+        delta: overallDelta,
+      },
+      {
+        id: "execution_streak",
+        value: currentWeeklyMetrics.streaks.executionActive,
+        delta: executionStreakDelta,
+      },
+    ],
+    focus: focus.slice(0, 3),
+    generatedOn: startOfUtcDay(anchorDate),
+  };
+}
+
+function buildEngagementNudges(
+  currentWeeklyMetrics: ComputedWindow,
+  challenge: GamingTrackSummary["engagement"]["challenge"],
+  streakProtection: GamingTrackSummary["streakProtection"],
+  overallDelta: number
+): GamingTrackSummary["engagement"]["nudges"] {
+  const nudges: GamingTrackSummary["engagement"]["nudges"] = [];
+
+  if (streakProtection.atRisk) {
+    nudges.push({
+      id: "streak_risk",
+      severity: "warning",
+      metric: Math.max(streakProtection.projectedExecutionStreak, streakProtection.projectedReflectionStreak),
+    });
+  }
+
+  if (currentWeeklyMetrics.tasks.carriedOver >= 3) {
+    nudges.push({
+      id: "carryover_pressure",
+      severity: "warning",
+      metric: currentWeeklyMetrics.tasks.carriedOver,
+    });
+  }
+
+  if (overallDelta >= 10) {
+    nudges.push({
+      id: "momentum_positive",
+      severity: "success",
+      metric: overallDelta,
+    });
+  }
+
+  if (currentWeeklyMetrics.scores.consistency < 35) {
+    nudges.push({
+      id: "consistency_low",
+      severity: "info",
+      metric: currentWeeklyMetrics.scores.consistency,
+    });
+  }
+
+  if (!challenge.completed && challenge.target > 0 && challenge.progress / challenge.target >= 0.75) {
+    nudges.push({
+      id: "challenge_almost_done",
+      severity: "info",
+      metric: challenge.target - challenge.progress,
+    });
+  }
+
+  if (nudges.length === 0) {
+    nudges.push({
+      id: "momentum_positive",
+      severity: "success",
+      metric: Math.max(0, overallDelta),
+    });
+  }
+
+  return nudges.slice(0, 3);
+}
+
 export function createGamingTrackService(store: GamingTrackStore): GamingTrackService {
   return {
     async getSummary(input) {
@@ -892,12 +1248,45 @@ export function createGamingTrackService(store: GamingTrackStore): GamingTrackSe
       const carriedOverDoneTasks = lifetimeWindow.tasks.filter(
         (task) => task.rolledFromTaskId !== null && task.status === "done"
       ).length;
+      const previousWeeklyStart = addDays(weeklyMissionRange.start, -weeklyMissionRange.trackedDays);
+      const previousWeeklyWindow = getWindowSlice(lifetimeWindow, previousWeeklyStart, weeklyMissionRange.start);
+      const previousWeekly = computeWindowMetrics(previousWeeklyWindow, previousWeeklyStart, weeklyMissionRange.start);
+      const weeklyReflectionDays = getReflectionDayCountInRange(
+        weeklyWindow,
+        weeklyMissionRange.start,
+        weeklyMissionRange.endExclusive
+      );
+      const previousWeeklyReflectionDays = getReflectionDayCountInRange(
+        previousWeeklyWindow,
+        previousWeeklyStart,
+        weeklyMissionRange.start
+      );
 
       const executionDelta = current.scores.execution - previous.scores.execution;
       const reflectionDelta = current.scores.reflection - previous.scores.reflection;
       const consistencyDelta = current.scores.consistency - previous.scores.consistency;
       const overallDelta = current.scores.overall - previous.scores.overall;
       const momentumScore = clampScore(50 + overallDelta);
+      const streakProtection = computeStreakProtection(dailyActivity, input.anchorDate, missionQualifiedWeeks);
+      const challenge = buildWeeklyChallenge(weeklyWindow, weekly, {
+        start: weeklyMissionRange.start,
+        endExclusive: weeklyMissionRange.endExclusive,
+      });
+      const leaderboard = buildWeeklyLeaderboard(lifetimeWindow, input.anchorDate);
+      const recap = buildWeeklyRecap(
+        input.anchorDate,
+        weekly,
+        previousWeekly,
+        weeklyReflectionDays,
+        previousWeeklyReflectionDays,
+        {
+          start: weeklyMissionRange.start,
+          endExclusive: weeklyMissionRange.endExclusive,
+        },
+        streakProtection
+      );
+      const weeklyOverallDelta = weekly.scores.overall - previousWeekly.scores.overall;
+      const nudges = buildEngagementNudges(weekly, challenge, streakProtection, weeklyOverallDelta);
 
       return {
         period: input.period,
@@ -934,8 +1323,14 @@ export function createGamingTrackService(store: GamingTrackStore): GamingTrackSe
           qualifiedMissionWeeks: missionQualifiedWeeks,
           carriedOverDoneTasks,
         }),
-        streakProtection: computeStreakProtection(dailyActivity, input.anchorDate, missionQualifiedWeeks),
+        streakProtection,
         historicalTrends: buildHistoricalTrends(lifetimeWindow, input.anchorDate),
+        engagement: {
+          challenge,
+          leaderboard,
+          recap,
+          nudges,
+        },
       };
     },
   };

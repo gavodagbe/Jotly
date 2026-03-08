@@ -409,6 +409,49 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
         overallScore: number;
       }>;
     };
+    engagement: {
+      challenge: {
+        id: string;
+        target: number;
+        progress: number;
+        completed: boolean;
+        rewardXp: number;
+        expiresOn: string;
+      };
+      leaderboard: {
+        rank: number;
+        total: number;
+        percentile: number;
+        currentScore: number;
+        topScore: number;
+        entries: Array<{
+          label: string;
+          rangeStart: string;
+          rangeEnd: string;
+          score: number;
+          tasksDone: number;
+          reflectionDays: number;
+          isCurrent: boolean;
+        }>;
+      };
+      recap: {
+        periodStart: string;
+        periodEnd: string;
+        headline: string;
+        highlights: Array<{
+          id: string;
+          value: number;
+          delta: number | null;
+        }>;
+        focus: string[];
+        generatedOn: string;
+      };
+      nudges: Array<{
+        id: string;
+        severity: string;
+        metric: number;
+      }>;
+    };
   };
 
   assert.equal(data.period, "week");
@@ -512,6 +555,32 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
   assert.equal(data.historicalTrends.monthly[11]?.rangeStart, "2026-03-01");
   assert.equal(data.historicalTrends.monthly[11]?.rangeEnd, "2026-03-08");
   assert.equal(data.historicalTrends.monthly[11]?.overallScore, 44);
+
+  assert.match(
+    data.engagement.challenge.id,
+    /^(finish_10_tasks|complete_reflection_4_days|hit_consistency_60|close_carryover_3)$/
+  );
+  assert.equal(data.engagement.challenge.target > 0, true);
+  assert.equal(data.engagement.challenge.rewardXp > 0, true);
+  assert.equal(data.engagement.challenge.expiresOn, "2026-03-08");
+
+  assert.equal(data.engagement.leaderboard.total, 8);
+  assert.equal(data.engagement.leaderboard.rank >= 1 && data.engagement.leaderboard.rank <= 8, true);
+  assert.equal(data.engagement.leaderboard.percentile >= 0 && data.engagement.leaderboard.percentile <= 100, true);
+  assert.equal(data.engagement.leaderboard.entries.length > 0, true);
+  assert.equal(data.engagement.leaderboard.entries.length <= 5, true);
+  assert.equal(data.engagement.leaderboard.entries.some((entry) => entry.isCurrent), true);
+
+  assert.equal(data.engagement.recap.periodStart, "2026-03-02");
+  assert.equal(data.engagement.recap.periodEnd, "2026-03-08");
+  assert.equal(data.engagement.recap.generatedOn, "2026-03-08");
+  assert.match(data.engagement.recap.headline, /^(strong_uptrend|steady_progress|downtrend_alert)$/);
+  assert.equal(data.engagement.recap.highlights.length, 4);
+  assert.equal(data.engagement.recap.focus.length >= 1, true);
+  assert.equal(data.engagement.recap.focus.length <= 3, true);
+
+  assert.equal(data.engagement.nudges.length >= 1, true);
+  assert.equal(data.engagement.nudges.length <= 3, true);
 });
 
 test("gaming-track endpoint requires authentication", async (t) => {
