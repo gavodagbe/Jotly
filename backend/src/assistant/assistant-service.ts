@@ -15,6 +15,7 @@ export type AssistantTaskContext = {
 export type AssistantReplyInput = {
   question: string;
   userDisplayName: string | null;
+  preferredLocale?: "en" | "fr" | null;
   tasks: AssistantTaskContext[];
 };
 
@@ -80,8 +81,16 @@ function preferFrench(question: string): boolean {
   return /\b(bonjour|bonsoir|salut|merci|ça|ca va|comment)\b/.test(normalized);
 }
 
-function createSmallTalkReply(question: string, taskCount: number): AssistantReply {
-  if (preferFrench(question)) {
+function shouldReplyInFrench(question: string, preferredLocale?: "en" | "fr" | null): boolean {
+  return preferFrench(question) || preferredLocale === "fr";
+}
+
+function createSmallTalkReply(
+  question: string,
+  taskCount: number,
+  preferredLocale?: "en" | "fr" | null
+): AssistantReply {
+  if (shouldReplyInFrench(question, preferredLocale)) {
     const followUp =
       taskCount > 0
         ? `Tu as ${taskCount} tâche${taskCount > 1 ? "s" : ""} au total. Tu veux un plan rapide ?`
@@ -148,7 +157,11 @@ function buildOpenAiPrompt(input: AssistantReplyInput): string {
 
   const userName = input.userDisplayName ? `User display name: ${input.userDisplayName}\n` : "";
 
-  return `${userName}User question: ${input.question}
+  const preferredLocaleLine = input.preferredLocale
+    ? `Preferred locale: ${input.preferredLocale}\n`
+    : "";
+
+  return `${userName}${preferredLocaleLine}User question: ${input.question}
 
 Tasks context:
 ${tasksBlock}
@@ -158,6 +171,7 @@ Instructions:
   - If the question is small talk or generic conversation (for example "how are you?", "ça va?"), reply naturally in 1-2 short sentences and do not force a planning template.
   - If the question is about tasks/planning/priorities/progress, provide practical guidance grounded in all available tasks across dates.
 - Mirror the user's language.
+- If the user message language is ambiguous, default to preferred locale when available.
 - Be concise and practical.
 - For task/planning replies, use target dates when relevant, mention blockers only if visible, and suggest clear next steps in priority order.
 - Do not invent tasks or details that are not in context.`;
@@ -211,8 +225,10 @@ function formatMinutes(totalMinutes: number): string {
 }
 
 function createHeuristicReply(input: AssistantReplyInput): AssistantReply {
+  const useFrench = input.preferredLocale === "fr";
+
   if (isSmallTalkQuestion(input.question)) {
-    return createSmallTalkReply(input.question, input.tasks.length);
+    return createSmallTalkReply(input.question, input.tasks.length, input.preferredLocale);
   }
 
   const actionable = input.tasks.filter((task) => task.status === "todo" || task.status === "in_progress");
@@ -239,14 +255,21 @@ function createHeuristicReply(input: AssistantReplyInput): AssistantReply {
   const blocked = findPotentiallyBlockedTasks(actionable).slice(0, 3);
 
   const lines: string[] = [];
-  lines.push("User task overview");
-  lines.push(
-    `You have ${input.tasks.length} task${input.tasks.length === 1 ? "" : "s"} total (${actionable.length} actionable, ${completed.length} done, ${cancelled.length} cancelled).`
-  );
+  if (useFrench) {
+    lines.push("Vue d'ensemble des taches utilisateur");
+    lines.push(
+      `Tu as ${input.tasks.length} tache${input.tasks.length === 1 ? "" : "s"} au total (${actionable.length} actionnable${actionable.length === 1 ? "" : "s"}, ${completed.length} terminee${completed.length === 1 ? "" : "s"}, ${cancelled.length} annulee${cancelled.length === 1 ? "" : "s"}).`
+    );
+  } else {
+    lines.push("User task overview");
+    lines.push(
+      `You have ${input.tasks.length} task${input.tasks.length === 1 ? "" : "s"} total (${actionable.length} actionable, ${completed.length} done, ${cancelled.length} cancelled).`
+    );
+  }
 
   if (focusTasks.length > 0) {
     lines.push("");
-    lines.push("Top focus:");
+    lines.push(useFrench ? "Priorites principales:" : "Top focus:");
     for (const task of focusTasks) {
       const effort = typeof task.plannedTime === "number" ? `, ${formatMinutes(task.plannedTime)}` : "";
       lines.push(`- ${task.title} [${task.priority}, ${task.status}, ${task.targetDate}${effort}]`);
@@ -255,7 +278,7 @@ function createHeuristicReply(input: AssistantReplyInput): AssistantReply {
 
   if (blocked.length > 0) {
     lines.push("");
-    lines.push("Potential blockers to clear first:");
+    lines.push(useFrench ? "Blocages potentiels a lever en premier:" : "Potential blockers to clear first:");
     for (const task of blocked) {
       lines.push(`- ${task.title}`);
     }
@@ -263,15 +286,23 @@ function createHeuristicReply(input: AssistantReplyInput): AssistantReply {
 
   if (quickWins.length > 0) {
     lines.push("");
-    lines.push("Quick wins:");
+    lines.push(useFrench ? "Victoires rapides:" : "Quick wins:");
     for (const task of quickWins) {
       lines.push(`- ${task.title} (${formatMinutes(task.plannedTime ?? 0)})`);
     }
   }
 
   lines.push("");
-  lines.push(`Question received: "${input.question.trim()}"`);
-  lines.push("Recommended next step: finish the first focus task before starting new work.");
+  lines.push(
+    useFrench
+      ? `Question recue: "${input.question.trim()}"`
+      : `Question received: "${input.question.trim()}"`
+  );
+  lines.push(
+    useFrench
+      ? "Prochaine etape recommandee: termine la premiere priorite avant de commencer une nouvelle tache."
+      : "Recommended next step: finish the first focus task before starting new work."
+  );
 
   return {
     answer: lines.join("\n"),

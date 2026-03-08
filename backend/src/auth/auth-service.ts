@@ -11,6 +11,8 @@ export type AuthenticatedUser = {
   id: string;
   email: string;
   displayName: string | null;
+  preferredLocale: "en" | "fr";
+  preferredTimeZone: string | null;
   createdAt: string;
 };
 
@@ -106,11 +108,15 @@ function isEmailUniqueConstraintError(error: unknown): boolean {
 }
 
 function toAuthenticatedUser(user: AuthUser): AuthenticatedUser {
+  const preferredLocale = user.preferredLocale === "fr" ? "fr" : "en";
+
   return {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
-    createdAt: user.createdAt.toISOString()
+    preferredLocale,
+    preferredTimeZone: user.preferredTimeZone ?? null,
+    createdAt: user.createdAt.toISOString(),
   };
 }
 

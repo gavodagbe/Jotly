@@ -16,6 +16,8 @@ Authenticated endpoints for the daily workflow layer:
 - `POST /api/tasks/carry-over-yesterday`
 - `GET /api/day-bilan?date=YYYY-MM-DD`
 - `PUT /api/day-bilan`
+- `GET /api/profile`
+- `PATCH /api/profile`
 
 Request body examples:
 - `PUT /api/day-affirmation`
@@ -25,6 +27,13 @@ Request body examples:
   - response includes `{ copiedCount, skippedCount, tasks }`
 - `PUT /api/day-bilan`
   - `{ "date": "2026-03-08", "mood": 4, "wins": "...", "blockers": "...", "lessonsLearned": "...", "tomorrowTop3": "..." }`
+- `PATCH /api/profile`
+  - `{ "displayName": "Godwin", "preferredLocale": "fr", "preferredTimeZone": "Europe/Paris" }`
+
+Profile preferences:
+- `preferredLocale` currently supports: `en`, `fr`
+- `preferredTimeZone` expects a valid IANA timezone (for example `Europe/Paris`, `America/New_York`)
+- assistant requests can include `locale`; backend defaults to authenticated user profile locale
 
 ## Repository Layout
 - `frontend/` - frontend application workspace

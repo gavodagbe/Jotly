@@ -245,6 +245,16 @@ function createAppForTest() {
   });
 }
 
+function createAppForHeuristicLanguageTest() {
+  return buildApp({
+    logLevel: "silent",
+    taskStore: new InMemoryTaskStore(),
+    commentStore: new InMemoryCommentStore(),
+    authStore: new InMemoryAuthStore(),
+    assistantProvider: "heuristic",
+  });
+}
+
 async function registerAndGetToken(app: ReturnType<typeof createAppForTest>): Promise<string> {
   const response = await app.inject({
     method: "POST",
@@ -395,4 +405,32 @@ test("POST /api/assistant/reply validates body", async (t) => {
   assert.equal(error.code, "VALIDATION_ERROR");
   assert.ok(Array.isArray(error.details));
   assert.ok(error.details && error.details.length >= 1);
+});
+
+test("POST /api/assistant/reply keeps English planning response for English 'comment' prompts", async (t) => {
+  const app = createAppForHeuristicLanguageTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  await createTask(app, token, "Finish roadmap review");
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/reply",
+    headers: authHeaders(token),
+    payload: {
+      question: "Can you comment on my priorities?",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as { answer: string; source: string };
+
+  assert.equal(data.source, "heuristic");
+  assert.match(data.answer, /User task overview/);
+  assert.doesNotMatch(data.answer, /Vue d'ensemble des taches utilisateur/);
 });

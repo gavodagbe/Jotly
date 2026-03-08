@@ -21,13 +21,18 @@ type AssistantRoutesOptions = {
 
 const assistantReplyBodySchema = z.object({
   question: z.string().trim().min(1, "question is required").max(3000, "question is too long"),
+  locale: z.enum(["en", "fr"]).optional(),
 });
 
 function isAssistantStorageMissingError(error: unknown): boolean {
   return isStorageNotInitializedPrismaError(error);
 }
 
-function getAuthenticatedUser(request: { authUserId?: string; authDisplayName?: string }) {
+function getAuthenticatedUser(request: {
+  authUserId?: string;
+  authDisplayName?: string;
+  authPreferredLocale?: "en" | "fr";
+}) {
   if (!request.authUserId || request.authUserId.trim() === "") {
     return null;
   }
@@ -35,6 +40,7 @@ function getAuthenticatedUser(request: { authUserId?: string; authDisplayName?: 
   return {
     id: request.authUserId,
     displayName: request.authDisplayName ?? null,
+    preferredLocale: request.authPreferredLocale ?? "en",
   };
 }
 
@@ -54,13 +60,25 @@ const assistantRoutes: FastifyPluginAsync<AssistantRoutesOptions> = async (app, 
       return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
     }
 
-    (request as { authUserId?: string; authDisplayName?: string }).authUserId = authContext.user.id;
-    (request as { authUserId?: string; authDisplayName?: string }).authDisplayName =
+    (request as { authUserId?: string; authDisplayName?: string; authPreferredLocale?: "en" | "fr" }).authUserId =
+      authContext.user.id;
+    (
+      request as { authUserId?: string; authDisplayName?: string; authPreferredLocale?: "en" | "fr" }
+    ).authDisplayName =
       authContext.user.displayName ?? undefined;
+    (
+      request as { authUserId?: string; authDisplayName?: string; authPreferredLocale?: "en" | "fr" }
+    ).authPreferredLocale = authContext.user.preferredLocale;
   });
 
   app.post("/api/assistant/reply", async (request, reply) => {
-    const authUser = getAuthenticatedUser(request as { authUserId?: string; authDisplayName?: string });
+    const authUser = getAuthenticatedUser(
+      request as {
+        authUserId?: string;
+        authDisplayName?: string;
+        authPreferredLocale?: "en" | "fr";
+      }
+    );
 
     if (!authUser) {
       return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
@@ -99,6 +117,7 @@ const assistantRoutes: FastifyPluginAsync<AssistantRoutesOptions> = async (app, 
       const assistantReply = await assistantService.generateReply({
         question: bodyResult.data.question,
         userDisplayName: authUser.displayName,
+        preferredLocale: bodyResult.data.locale ?? authUser.preferredLocale,
         tasks: tasksWithComments,
       });
 

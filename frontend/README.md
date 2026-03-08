@@ -36,6 +36,7 @@ src/
 
 Current frontend includes:
 - authenticated dashboard flow
+- profile/settings dialog (display name, preferred language, preferred timezone)
 - date-driven Kanban board
 - day affirmation panel (counts in daily completion)
 - carry-over action for non-completed tasks from yesterday
@@ -43,4 +44,4 @@ Current frontend includes:
 - create/edit/delete task dialog
 - drag-and-drop status updates
 - task comments, attachments, and recurrence controls
-- AI assistant chatbot (FAB) with global user context across all task dates
+- AI assistant chatbot (FAB) with global user context across all task dates and profile locale hint

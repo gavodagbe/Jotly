@@ -12,6 +12,7 @@ Implemented in the current codebase:
 - backend day affirmation API (`backend/src/routes/day-affirmation.ts`)
 - backend day bilan API (`backend/src/routes/day-bilan.ts`)
 - backend carry-over endpoint for yesterday non-completed tasks (`backend/src/routes/tasks.ts`)
+- backend profile/preferences API (`backend/src/routes/profile.ts`)
 - Fastify request body limit configured to 8 MB (`backend/src/app.ts`)
 - attachment validation limit of 5 MB per attachment plus URL payload size guard (`backend/src/routes/attachments.ts`)
 - Prisma task model with status, priority, lifecycle timestamps, and carry-over linkage (`backend/prisma/schema.prisma`)
@@ -22,8 +23,9 @@ Implemented in the current codebase:
 - frontend carry-over CTA in date controls (`frontend/src/components/layout/app-shell.tsx`)
 - daily completion percentage includes day affirmation completion (`frontend/src/components/layout/app-shell.tsx`)
 - frontend AI assistant chatbot (FAB) with global user task context (`frontend/src/components/layout/app-shell.tsx`)
+- frontend profile/settings modal with language/timezone preferences (`frontend/src/components/layout/app-shell.tsx`)
 - Docker Compose local runtime (frontend, backend, postgres)
-- route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan
+- route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile
 
 Not implemented yet:
 - reporting
@@ -165,6 +167,19 @@ The boundaries below reflect current ownership and future evolution points.
 - Current API surface:
   - `GET /api/day-bilan?date=YYYY-MM-DD`
   - `PUT /api/day-bilan`
+
+### Profile and preferences
+- Relation to task history: global personalization layer for all day views and assistant responses.
+- Current backend module: `backend/src/profile/`.
+- API surface:
+  - `GET /api/profile`
+  - `PATCH /api/profile`
+- Current storage:
+  - `User.preferredLocale`
+  - `User.preferredTimeZone`
+- UI impact:
+  - profile modal from navbar
+  - localized date/time rendering using preferred locale/timezone
 - Current fields:
   - `mood`, `wins`, `blockers`, `lessonsLearned`, `tomorrowTop3`
 - Current posture: implemented.

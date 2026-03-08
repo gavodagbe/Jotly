@@ -31,6 +31,8 @@ model User {
   email        String    @unique
   passwordHash String
   displayName  String?
+  preferredLocale String @default("en")
+  preferredTimeZone String?
   sessions     Session[]
   tasks        Task[]
   dayAffirmations DayAffirmation[]

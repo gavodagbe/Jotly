@@ -148,10 +148,14 @@ type CarryOverYesterdayPayload = {
   tasks: Task[];
 };
 
+type UserLocale = "en" | "fr";
+
 type AuthUser = {
   id: string;
   email: string;
   displayName: string | null;
+  preferredLocale: UserLocale;
+  preferredTimeZone: string | null;
   createdAt: string;
 };
 
@@ -161,6 +165,18 @@ type AuthFormValues = {
   email: string;
   password: string;
   displayName: string;
+};
+
+type ProfileFormValues = {
+  displayName: string;
+  preferredLocale: UserLocale;
+  preferredTimeZone: string;
+};
+
+type ProfileMutationInput = {
+  displayName: string | null;
+  preferredLocale: UserLocale;
+  preferredTimeZone: string | null;
 };
 
 type TaskFormValues = {
@@ -200,6 +216,10 @@ const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
 const DAY_AFFIRMATION_MAX_LENGTH = 5000;
 const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
+const USER_LOCALE_OPTIONS: ReadonlyArray<{ value: UserLocale; label: string }> = [
+  { value: "en", label: "English" },
+  { value: "fr", label: "Francais" },
+];
 
 const ASSISTANT_PROMPT_SUGGESTIONS: ReadonlyArray<string> = [
   "What should I prioritize across all my tasks?",
@@ -253,21 +273,6 @@ const PRIORITY_VALUES = new Set<TaskPriority>(PRIORITY_OPTIONS.map((option) => o
 const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>(
   RECURRENCE_FREQUENCY_OPTIONS.map((option) => option.value)
 );
-
-const dateHeadingFormatter = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
-
-const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 const statusChipClassByStatus: Record<TaskStatus, string> = {
   todo: "border-sky-200 bg-sky-50 text-sky-700",
@@ -339,8 +344,34 @@ function shiftDate(value: string, offsetDays: number): string {
   return toDateInputValue(shifted);
 }
 
-function getDateHeading(value: string): string {
-  return dateHeadingFormatter.format(parseDateInput(value));
+function getPreferredLocale(value: string | null | undefined): UserLocale {
+  return value === "fr" ? "fr" : "en";
+}
+
+function getLocaleForFormatting(locale: UserLocale): string {
+  return locale === "fr" ? "fr-FR" : "en-US";
+}
+
+function isValidIanaTimeZone(value: string): boolean {
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getBrowserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+}
+
+function getDateHeading(value: string, locale: UserLocale): string {
+  return new Intl.DateTimeFormat(getLocaleForFormatting(locale), {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(parseDateInput(value));
 }
 
 function getDefaultAffirmationText(targetDate: string): string {
@@ -350,14 +381,21 @@ function getDefaultAffirmationText(targetDate: string): string {
   return DAILY_AFFIRMATION_SUGGESTIONS[index];
 }
 
-function formatDateTime(value: string): string {
+function formatDateTime(value: string, locale: UserLocale, timeZone: string | null): string {
   const parsed = new Date(value);
 
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
 
-  return dateTimeFormatter.format(parsed);
+  return new Intl.DateTimeFormat(getLocaleForFormatting(locale), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(parsed);
 }
 
 function formatPriority(priority: TaskPriority): string {
@@ -771,6 +809,39 @@ function buildRecurrenceMutationInput(
   };
 }
 
+function normalizeAuthUser(user: AuthUser): AuthUser {
+  const preferredTimeZone =
+    typeof user.preferredTimeZone === "string" && user.preferredTimeZone.trim() !== ""
+      ? user.preferredTimeZone.trim()
+      : null;
+
+  return {
+    ...user,
+    preferredLocale: getPreferredLocale(user.preferredLocale),
+    preferredTimeZone,
+  };
+}
+
+function getDefaultProfileFormValues(): ProfileFormValues {
+  return {
+    displayName: "",
+    preferredLocale: "en",
+    preferredTimeZone: getBrowserTimeZone(),
+  };
+}
+
+function getProfileFormValues(user: AuthUser | null): ProfileFormValues {
+  if (!user) {
+    return getDefaultProfileFormValues();
+  }
+
+  return {
+    displayName: user.displayName ?? "",
+    preferredLocale: getPreferredLocale(user.preferredLocale),
+    preferredTimeZone: user.preferredTimeZone ?? getBrowserTimeZone(),
+  };
+}
+
 function createAuthHeaders(token: string, includesJsonBody: boolean): HeadersInit {
   return {
     ...(includesJsonBody ? { "Content-Type": "application/json" } : {}),
@@ -824,7 +895,10 @@ async function registerUser(values: AuthFormValues): Promise<{ user: AuthUser; t
     throw new Error("Unable to register.");
   }
 
-  return payload.data;
+  return {
+    ...payload.data,
+    user: normalizeAuthUser(payload.data.user),
+  };
 }
 
 async function loginUser(values: AuthFormValues): Promise<{ user: AuthUser; token: string }> {
@@ -851,7 +925,10 @@ async function loginUser(values: AuthFormValues): Promise<{ user: AuthUser; toke
     throw new Error("Unable to login.");
   }
 
-  return payload.data;
+  return {
+    ...payload.data,
+    user: normalizeAuthUser(payload.data.user),
+  };
 }
 
 async function loadCurrentUser(token: string): Promise<AuthUser> {
@@ -876,7 +953,29 @@ async function loadCurrentUser(token: string): Promise<AuthUser> {
     throw new Error("Unable to validate session.");
   }
 
-  return payload.data.user;
+  return normalizeAuthUser(payload.data.user);
+}
+
+async function updateProfile(input: ProfileMutationInput, token: string): Promise<AuthUser> {
+  const response = await fetch("/backend-api/profile", {
+    method: "PATCH",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: AuthUser; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update profile"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to update profile.");
+  }
+
+  return normalizeAuthUser(payload.data);
 }
 
 async function logoutUser(token: string): Promise<void> {
@@ -1177,12 +1276,17 @@ async function deleteTaskRecurrence(taskId: string, token: string): Promise<void
   }
 }
 
-async function requestAssistantReply(question: string, token: string): Promise<AssistantReplyPayload> {
+async function requestAssistantReply(
+  question: string,
+  token: string,
+  locale: UserLocale
+): Promise<AssistantReplyPayload> {
   const response = await fetch("/backend-api/assistant/reply", {
     method: "POST",
     headers: createAuthHeaders(token, true),
     body: JSON.stringify({
       question,
+      locale,
     }),
   });
 
@@ -1321,6 +1425,7 @@ async function upsertDayBilan(input: DayBilanMutationInput, token: string): Prom
 type AppNavbarProps = {
   user: AuthUser | null;
   onLogout?: () => void;
+  onOpenProfile?: () => void;
   onLogin?: () => void;
   isBusy?: boolean;
 };
@@ -1344,7 +1449,7 @@ function ProfileGlyph({ isLoggedIn }: { isLoggedIn: boolean }) {
   );
 }
 
-function AppNavbar({ user, onLogout, onLogin, isBusy = false }: AppNavbarProps) {
+function AppNavbar({ user, onLogout, onOpenProfile, onLogin, isBusy = false }: AppNavbarProps) {
   const isLoggedIn = user !== null;
   const profileLabel = user?.displayName ?? user?.email ?? "Guest";
 
@@ -1367,9 +1472,19 @@ function AppNavbar({ user, onLogout, onLogin, isBusy = false }: AppNavbarProps) 
         </div>
 
         {isLoggedIn ? (
-          <button type="button" className={controlButtonClass} onClick={onLogout} disabled={isBusy || !onLogout}>
-            Logout
-          </button>
+          <>
+            <button
+              type="button"
+              className={controlButtonClass}
+              onClick={onOpenProfile}
+              disabled={isBusy || !onOpenProfile}
+            >
+              Profile
+            </button>
+            <button type="button" className={controlButtonClass} onClick={onLogout} disabled={isBusy || !onLogout}>
+              Logout
+            </button>
+          </>
         ) : (
           <button type="button" className={controlButtonClass} onClick={onLogin} disabled={isBusy || !onLogin}>
             Login
@@ -1816,6 +1931,13 @@ export function AppShell() {
   });
   const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [profileFormValues, setProfileFormValues] = useState<ProfileFormValues>(
+    getDefaultProfileFormValues
+  );
+  const [profileErrorMessage, setProfileErrorMessage] = useState<string | null>(null);
+  const [profileSuccessMessage, setProfileSuccessMessage] = useState<string | null>(null);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -1905,6 +2027,8 @@ export function AppShell() {
 
   const isTaskDialogOpen = taskDialogMode !== null;
   const isMutationPending = isSubmittingTask || isDeletingTask || isCarryingOverYesterday;
+  const activeLocale = getPreferredLocale(authUser?.preferredLocale);
+  const activeTimeZone = authUser?.preferredTimeZone ?? null;
   const isEditingGeneratedTask =
     taskDialogMode === "edit" && (editingTask?.recurrenceSourceTaskId ?? null) !== null;
   const normalizedSelectedProject = normalizeProjectName(taskFormValues.project);
@@ -1940,6 +2064,9 @@ export function AppShell() {
     window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
     setAuthToken(token);
     setAuthUser(user);
+    setProfileFormValues(getProfileFormValues(user));
+    setProfileErrorMessage(null);
+    setProfileSuccessMessage(null);
     setAuthErrorMessage(null);
     setErrorMessage(null);
   }
@@ -1948,6 +2075,11 @@ export function AppShell() {
     window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     setAuthToken(null);
     setAuthUser(null);
+    setIsProfileDialogOpen(false);
+    setProfileFormValues(getDefaultProfileFormValues());
+    setProfileErrorMessage(null);
+    setProfileSuccessMessage(null);
+    setIsProfileSaving(false);
     setTasks([]);
     setErrorMessage(null);
     setDragErrorMessage(null);
@@ -2042,6 +2174,70 @@ export function AppShell() {
       // Keep logout UX predictable even if backend session cleanup fails.
     } finally {
       clearAuthSession();
+    }
+  }
+
+  function openProfileDialog() {
+    setProfileFormValues(getProfileFormValues(authUser));
+    setProfileErrorMessage(null);
+    setProfileSuccessMessage(null);
+    setIsProfileDialogOpen(true);
+  }
+
+  function closeProfileDialog() {
+    setIsProfileDialogOpen(false);
+  }
+
+  function handleProfileFieldChange<K extends keyof ProfileFormValues>(
+    field: K,
+    value: ProfileFormValues[K]
+  ) {
+    setProfileFormValues((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!authToken || !authUser || isProfileSaving) {
+      return;
+    }
+
+    const preferredTimeZone = profileFormValues.preferredTimeZone.trim();
+
+    if (preferredTimeZone !== "" && !isValidIanaTimeZone(preferredTimeZone)) {
+      setProfileErrorMessage("Time zone must be a valid IANA value, for example Europe/Paris.");
+      setProfileSuccessMessage(null);
+      return;
+    }
+
+    setIsProfileSaving(true);
+    setProfileErrorMessage(null);
+    setProfileSuccessMessage(null);
+
+    try {
+      const updatedUser = await updateProfile(
+        {
+          displayName: profileFormValues.displayName.trim() || null,
+          preferredLocale: getPreferredLocale(profileFormValues.preferredLocale),
+          preferredTimeZone: preferredTimeZone || null,
+        },
+        authToken
+      );
+
+      setAuthUser(updatedUser);
+      setProfileFormValues(getProfileFormValues(updatedUser));
+      setAuthFormValues((current) => ({
+        ...current,
+        displayName: updatedUser.displayName ?? "",
+      }));
+      setProfileSuccessMessage("Profile updated.");
+    } catch (error) {
+      setProfileErrorMessage(error instanceof Error ? error.message : "Unable to update profile.");
+    } finally {
+      setIsProfileSaving(false);
     }
   }
 
@@ -2226,7 +2422,7 @@ export function AppShell() {
     setIsAssistantLoading(true);
 
     try {
-      const reply = await requestAssistantReply(normalizedQuestion, authToken);
+      const reply = await requestAssistantReply(normalizedQuestion, authToken, activeLocale);
       const assistantMessage: AssistantChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
@@ -2852,6 +3048,7 @@ export function AppShell() {
       .then((user) => {
         if (!cancelled) {
           setAuthUser(user);
+          setProfileFormValues(getProfileFormValues(user));
           setAuthErrorMessage(null);
         }
       })
@@ -2873,6 +3070,10 @@ export function AppShell() {
       cancelled = true;
     };
   }, [authToken, clearAuthSession, isAuthReady]);
+
+  useEffect(() => {
+    document.documentElement.lang = activeLocale;
+  }, [activeLocale]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -3166,7 +3367,12 @@ export function AppShell() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1320px] flex-col gap-5 px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <AppNavbar user={authUser} onLogout={handleLogout} isBusy={isMutationPending || isLoading} />
+      <AppNavbar
+        user={authUser}
+        onLogout={handleLogout}
+        onOpenProfile={openProfileDialog}
+        isBusy={isMutationPending || isLoading}
+      />
 
       <header className="rounded-[1.8rem] border border-line bg-surface/95 px-6 py-6 shadow-[0_34px_80px_-60px_rgba(16,34,48,0.95)] backdrop-blur sm:px-8">
         <div>
@@ -3256,7 +3462,7 @@ export function AppShell() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
-          <p className="font-semibold text-foreground">{getDateHeading(selectedDate)}</p>
+          <p className="font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</p>
           <p className="font-medium">
             {isLoading
               ? "Loading tasks..."
@@ -3332,7 +3538,9 @@ export function AppShell() {
           <p>
             {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
           </p>
-          {dayAffirmation?.updatedAt ? <p>Last update: {formatDateTime(dayAffirmation.updatedAt)}</p> : null}
+          {dayAffirmation?.updatedAt ? (
+            <p>Last update: {formatDateTime(dayAffirmation.updatedAt, activeLocale, activeTimeZone)}</p>
+          ) : null}
         </div>
 
         {dayAffirmationErrorMessage ? (
@@ -3542,7 +3750,9 @@ export function AppShell() {
         )}
 
         {dayBilan?.updatedAt ? (
-          <p className="mt-3 text-xs text-muted">Last update: {formatDateTime(dayBilan.updatedAt)}</p>
+          <p className="mt-3 text-xs text-muted">
+            Last update: {formatDateTime(dayBilan.updatedAt, activeLocale, activeTimeZone)}
+          </p>
         ) : null}
 
         {dayBilanErrorMessage ? (
@@ -3902,7 +4112,9 @@ export function AppShell() {
                           >
                             <p className="text-sm text-foreground">{comment.body}</p>
                             <div className="mt-2 flex items-center justify-between gap-2">
-                              <p className="text-xs text-muted">{formatDateTime(comment.createdAt)}</p>
+                              <p className="text-xs text-muted">
+                                {formatDateTime(comment.createdAt, activeLocale, activeTimeZone)}
+                              </p>
                               <button
                                 type="button"
                                 className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
@@ -4094,6 +4306,110 @@ export function AppShell() {
         </div>
       ) : null}
 
+      {isProfileDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#09131f]/55 p-4 backdrop-blur-[1px]"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeProfileDialog();
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Profile settings"
+            className="w-full max-w-lg rounded-3xl border border-line bg-surface p-5 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-6"
+          >
+            <header>
+              <h3 className="text-lg font-semibold text-foreground">Profile Settings</h3>
+              <p className="mt-1 text-sm text-muted">
+                Personalize your workspace preferences and default assistant language.
+              </p>
+            </header>
+
+            <form className="mt-4 space-y-3" onSubmit={handleProfileSubmit}>
+              <label className="block text-sm font-semibold text-foreground">
+                Display Name
+                <input
+                  type="text"
+                  value={profileFormValues.displayName}
+                  onChange={(event) => handleProfileFieldChange("displayName", event.target.value)}
+                  className={textFieldClass}
+                  disabled={isProfileSaving}
+                  placeholder="How should we address you?"
+                />
+              </label>
+
+              <label className="block text-sm font-semibold text-foreground">
+                Preferred Language
+                <select
+                  value={profileFormValues.preferredLocale}
+                  onChange={(event) =>
+                    handleProfileFieldChange("preferredLocale", getPreferredLocale(event.target.value))
+                  }
+                  className={textFieldClass}
+                  disabled={isProfileSaving}
+                >
+                  {USER_LOCALE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm font-semibold text-foreground">
+                Preferred Time Zone
+                <input
+                  type="text"
+                  value={profileFormValues.preferredTimeZone}
+                  onChange={(event) => handleProfileFieldChange("preferredTimeZone", event.target.value)}
+                  className={textFieldClass}
+                  disabled={isProfileSaving}
+                  placeholder="Europe/Paris"
+                />
+              </label>
+
+              <button
+                type="button"
+                className={controlButtonClass}
+                onClick={() => handleProfileFieldChange("preferredTimeZone", getBrowserTimeZone())}
+                disabled={isProfileSaving}
+              >
+                Use Browser Time Zone
+              </button>
+
+              {profileErrorMessage ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {profileErrorMessage}
+                </p>
+              ) : null}
+
+              {profileSuccessMessage ? (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  {profileSuccessMessage}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  className={controlButtonClass}
+                  onClick={closeProfileDialog}
+                  disabled={isProfileSaving}
+                >
+                  Close
+                </button>
+                <button type="submit" className={primaryButtonClass} disabled={isProfileSaving}>
+                  {isProfileSaving ? "Saving..." : "Save Profile"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
       {taskToDelete ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#09131f]/55 p-4 backdrop-blur-[1px]"
@@ -4177,7 +4493,7 @@ export function AppShell() {
                   >
                     <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
                     <p className="mt-1 text-[11px] text-muted">
-                      {formatDateTime(message.timestamp)}
+                      {formatDateTime(message.timestamp, activeLocale, activeTimeZone)}
                       {message.role === "assistant" && message.source ? ` · ${message.source}` : ""}
                       {message.role === "assistant" &&
                       typeof message.usedTaskCount === "number" &&

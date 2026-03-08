@@ -45,6 +45,8 @@ Completed:
 - yesterday carry-over action for non-completed tasks (API + frontend action)
 - day bilan module (API + frontend panel)
 - completion percentage now includes day affirmation completion
+- user profile/preferences module (display name + preferred locale + preferred timezone)
+- assistant request locale now defaults from user profile preference
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal

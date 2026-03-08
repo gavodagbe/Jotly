@@ -5,6 +5,8 @@ export type AuthUser = {
   email: string;
   passwordHash: string;
   displayName: string | null;
+  preferredLocale?: string | null;
+  preferredTimeZone?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

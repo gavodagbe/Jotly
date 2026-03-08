@@ -38,6 +38,7 @@ This section reflects the current repository implementation.
 - Recurrence endpoints in `backend/src/routes/recurrence.ts`
 - Day affirmation endpoints in `backend/src/routes/day-affirmation.ts`
 - Day bilan endpoints in `backend/src/routes/day-bilan.ts`
+- Profile endpoints in `backend/src/routes/profile.ts`
 - AI assistant endpoint in `backend/src/routes/assistant.ts`
 
 ### Database
@@ -47,6 +48,7 @@ This section reflects the current repository implementation.
 
 ### Testing
 - Node test runner tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan routes
+- Node test runner tests include profile route coverage
 
 ### Infrastructure
 - Docker
@@ -108,6 +110,8 @@ Implemented endpoints:
 - `PUT /api/day-affirmation`
 - `GET /api/day-bilan?date=YYYY-MM-DD`
 - `PUT /api/day-bilan`
+- `GET /api/profile`
+- `PATCH /api/profile`
 - `POST /api/assistant/reply`
 
 Rules:
@@ -136,6 +140,7 @@ Main UI currently includes:
 - carry-over action for yesterday non-completed tasks
 - day bilan panel
 - AI assistant chatbot (FAB) using global user task context
+- profile settings dialog with persisted language/timezone preferences
 - create/edit task dialog
 - delete confirmation dialog
 - empty states and API error states
@@ -217,6 +222,17 @@ The modules below define intended boundaries without pre-building abstractions.
 - Relation to task history: read-oriented assistant over tasks, status transitions, and dates.
 - Current backend ownership: `backend/src/assistant/`.
 - Current API surface: `POST /api/assistant/reply`.
+- Locale behavior: request payload can include `locale`; backend defaults to user profile locale.
+
+### Profile and preferences
+- Relation to task history: cross-cutting user preferences for locale/timezone and display identity.
+- Current backend ownership: `backend/src/profile/`.
+- Current API surface:
+  - `GET /api/profile`
+  - `PATCH /api/profile`
+- Storage fields (on `User`):
+  - `preferredLocale` (currently `en` or `fr`)
+  - `preferredTimeZone` (IANA timezone)
 - Current behavior:
   - uses user question + owned tasks/comments across all dates as context
   - supports `heuristic` (default) and `openai` provider modes

@@ -9,6 +9,7 @@ import { createPrismaAuthStore, AuthStore } from "./auth/auth-store";
 import { createPrismaCommentStore, CommentStore } from "./comments/comment-store";
 import { createPrismaDayAffirmationStore, DayAffirmationStore } from "./day-affirmation/day-affirmation-store";
 import { createPrismaDayBilanStore, DayBilanStore } from "./day-bilan/day-bilan-store";
+import { createPrismaProfileStore, ProfileStore } from "./profile/profile-store";
 import healthRoutes from "./routes/health";
 import authRoutes from "./routes/auth";
 import attachmentsRoutes from "./routes/attachments";
@@ -16,6 +17,7 @@ import assistantRoutes from "./routes/assistant";
 import commentsRoutes from "./routes/comments";
 import dayAffirmationRoutes from "./routes/day-affirmation";
 import dayBilanRoutes from "./routes/day-bilan";
+import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
 import tasksRoutes from "./routes/tasks";
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
@@ -30,6 +32,7 @@ export type BuildAppOptions = {
   recurrenceStore?: RecurrenceStore;
   dayAffirmationStore?: DayAffirmationStore;
   dayBilanStore?: DayBilanStore;
+  profileStore?: ProfileStore;
   assistantService?: AssistantService;
   assistantProvider?: "openai" | "heuristic";
   openAiApiKey?: string;
@@ -66,6 +69,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const dayBilanStore =
     options.dayBilanStore ??
     (options.taskStore ? undefined : createPrismaDayBilanStore());
+  const profileStore =
+    options.profileStore ??
+    (options.authStore ? undefined : createPrismaProfileStore());
   const assistantService =
     options.assistantService ??
     createAssistantService({
@@ -82,6 +88,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   app.register(healthRoutes);
   app.register(authRoutes, { authService });
+  if (profileStore) {
+    app.register(profileRoutes, { authService, profileStore });
+  }
   app.register(tasksRoutes, { taskStore, authService, recurrenceStore });
   if (commentStore) {
     app.register(commentsRoutes, { taskStore, commentStore, authService });
@@ -154,6 +163,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (dayBilanStore?.close) {
       await dayBilanStore.close();
+    }
+
+    if (profileStore?.close) {
+      await profileStore.close();
     }
   });
 
