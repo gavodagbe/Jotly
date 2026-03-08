@@ -11,7 +11,15 @@ const envSchema = z.object({
     .default("postgresql://postgres:postgres@localhost:5432/jotly"),
   AUTH_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 365).default(24 * 7),
   AI_ASSISTANT_PROVIDER: z.enum(["heuristic", "openai"]).default("heuristic"),
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.preprocess(
+    (value) => {
+      if (typeof value === "string" && value.trim().length === 0) {
+        return undefined;
+      }
+      return value;
+    },
+    z.string().min(1).optional()
+  ),
   OPENAI_MODEL: z.string().min(1).default("gpt-4o-mini"),
   OPENAI_API_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   AI_ASSISTANT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(10000),

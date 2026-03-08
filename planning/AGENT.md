@@ -156,6 +156,7 @@ UI principles:
 ## Sprint 1 postponed modules
 The following modules are explicitly postponed after Sprint 1 implementation:
 - reporting
+- gaming track
 - notifications
 - mobile app
 - real-time sync
@@ -246,6 +247,25 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely frontend entry points: analytics dashboards under `frontend/src/features/reporting/`.
 - Sprint 1 status: postponed.
 
+### Gaming Track
+- Relation to retention: converts user activity into progress loops and consistency feedback.
+- Core period views: day / week / month / year.
+- Planned dimensions:
+  - task achievement (completion rate, throughput, carry-over trend)
+  - day affirmation completion rate
+  - day bilan completion rate
+  - streak and consistency indicators
+- Planned scoring model:
+  - execution score (tasks)
+  - reflection score (affirmation + bilan)
+  - consistency score (habit continuity)
+  - momentum score (aggregate trend)
+- Likely backend ownership: `backend/src/gaming-track/` with aggregation queries over tasks, affirmations, and bilans.
+- Likely frontend entry points:
+  - top-of-dashboard score card and trend chips
+  - dedicated stats screen under `frontend/src/features/gaming-track/`
+- Status: planned, not implemented.
+
 ## Known entities and extension points
 Existing entities:
 - `Task`
@@ -257,6 +277,7 @@ Existing entities:
 
 Potential future entities:
 - `TaskActivityEvent` (optional, if reporting granularity requires event-level history)
+- `UserDailyMetricSnapshot` (optional, if pre-aggregated gaming-track read models are required)
 
 Current extension points to preserve:
 - task route module boundaries in `backend/src/routes/`

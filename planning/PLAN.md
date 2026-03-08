@@ -73,8 +73,22 @@ Latest AI assistant conventions:
 - provider modes: `heuristic` (default) or `openai`
 - automatic fallback to heuristic when OpenAI is unavailable
 
+Gaming Track planning scope (next module):
+- periodized stats for task achievement: day, week, month, year
+- periodized stats for day affirmation completion
+- periodized stats for day bilan completion
+- engagement metrics: streaks, personal bests, weekly missions
+- composite scoring model:
+  - execution score (task completion quality)
+  - reflection score (affirmation + bilan completion)
+  - consistency score (streak stability)
+  - momentum score (overall trend)
+- whoop-inspired UX principle:
+  - compare short-term behavior to personal baseline and show trend direction
+
 Still not implemented:
 - reporting
+- gaming track analytics and engagement layer
 - notifications
 - mobile client
 - real-time sync

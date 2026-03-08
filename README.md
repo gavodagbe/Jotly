@@ -81,6 +81,27 @@ Relevant backend env vars:
 - `OPENAI_API_BASE_URL` (default: `https://api.openai.com/v1`)
 - `AI_ASSISTANT_TIMEOUT_MS` (default: `10000`)
 
+## Gaming Track (planned)
+
+The next product module is **Gaming Track** to improve retention with structured progress stats and engagement loops.
+
+Scope (planned):
+- stats by period: day / week / month / year
+- task achievement tracking (completion rate, throughput, carry-over trend)
+- affirmation completion tracking
+- day bilan completion tracking
+- composite scoring:
+  - execution score (tasks)
+  - reflection score (affirmations + bilan)
+  - consistency score (streak reliability)
+  - momentum score (combined trend)
+- streaks, personal bests, and weekly missions
+
+Planned UX direction:
+- top-of-dashboard score card
+- dedicated stats view with period switch (`D`, `W`, `M`, `Y`)
+- trend-first visuals (whoop-inspired: baseline vs recent trend)
+
 ## Production Deployment (Hostinger VM + Nginx)
 
 This repo now includes production-specific assets:

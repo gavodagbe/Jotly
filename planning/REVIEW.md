@@ -29,6 +29,7 @@ Implemented in the current codebase:
 
 Not implemented yet:
 - reporting
+- gaming track
 - notifications
 - mobile client
 - real-time sync
@@ -201,6 +202,23 @@ The boundaries below reflect current ownership and future evolution points.
 - Likely frontend feature area: `frontend/src/features/reporting/`.
 - Sprint posture: postponed.
 
+### Gaming Track
+- Relation to user engagement: transforms daily execution and reflection activity into retention loops.
+- Planned metric windows: day, week, month, year.
+- Planned metric families:
+  - task achievement metrics (completion rate, throughput, carry-over trend)
+  - day affirmation completion metrics
+  - day bilan completion metrics
+  - streak and consistency metrics
+- Planned scoring outputs:
+  - execution score
+  - reflection score
+  - consistency score
+  - momentum score
+- Likely backend module: `backend/src/gaming-track/`.
+- Likely frontend feature area: `frontend/src/features/gaming-track/`.
+- Sprint posture: planned, not implemented.
+
 ## Entities and extension points
 Existing entities:
 - `Task`
@@ -269,3 +287,11 @@ Mitigation:
 - enforce uniqueness by source-task/date pair
 - keep carry-over response explicit (`copiedCount`, `skippedCount`)
 - keep copy rules narrow to actionable statuses only
+
+### Risk 8 - Incentive distortion from gamification
+If gaming-track scores optimize for quantity over quality, users may game metrics and reduce meaningful progress.
+
+Mitigation:
+- weight scores by priority and completion quality, not raw volume only
+- include reflection consistency (affirmation + bilan) in composite scoring
+- monitor anomalies and recalibrate scoring rules via explicit product iterations
