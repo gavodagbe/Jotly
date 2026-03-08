@@ -673,6 +673,7 @@ const textFieldClass =
   "mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55";
 const iconButtonClass =
   "inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-line bg-surface px-2 text-xs font-semibold text-foreground/85 transition hover:border-accent/40 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-55";
+const controlIconButtonClass = `${controlButtonClass} h-9 w-9 px-0`;
 
 function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale): string {
   const isFrench = locale === "fr";
@@ -735,6 +736,146 @@ function DragHandleIcon() {
       <circle cx="13" cy="10" r="1.1" fill="currentColor" />
       <circle cx="7" cy="14" r="1.1" fill="currentColor" />
       <circle cx="13" cy="14" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
+      <path d="M11.75 4.75L6.5 10L11.75 15.25" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 10h8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
+      <path d="M8.25 4.75L13.5 10L8.25 15.25" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 10h8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="3.5" y="4.5" width="13" height="12" rx="2.2" />
+      <path d="M6.5 3v3M13.5 3v3M3.5 8.25h13" strokeLinecap="round" />
+      <circle cx="10" cy="11.75" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="6.2" y="6" width="9" height="10" rx="1.8" />
+      <path d="M4.8 13V5.8A1.8 1.8 0 016.6 4h6.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
+      <path d="M10 4.5v11M4.5 10h11" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M4.5 4.5h9.5l1.5 1.5v9.5H4.5z" />
+      <path d="M7 4.5v4h6v-4M7 15h6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M4.75 13.75l-.5 2 2-.5 8-8-1.5-1.5z" strokeLinejoin="round" />
+      <path d="M11.75 5.75l1.5 1.5M13 4.5l1.5 1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4.75 6h10.5M8 6V4.8h4V6M6.5 6l.7 9h5.6l.7-9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.7 8.2v5.3M11.3 8.2v5.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
+      <path d="M5.25 5.25l9.5 9.5M14.75 5.25l-9.5 9.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M10 3.5l5 2v4.2c0 3.2-2.1 5.8-5 6.8-2.9-1-5-3.6-5-6.8V5.5z" />
+      <path d="M7.75 10.1l1.6 1.7 2.9-3.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TrophyIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M6.5 4.5h7v2.1a3.5 3.5 0 01-7 0z" />
+      <path d="M6.5 5.3H4.9A1.4 1.4 0 003.5 6.7v.2A2.6 2.6 0 006.1 9.5M13.5 5.3h1.6a1.4 1.4 0 011.4 1.4v.2a2.6 2.6 0 01-2.6 2.6" />
+      <path d="M10 10.1v2.3M7.5 15.5h5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M3.5 10l13-6-3.9 12L9.8 11z" strokeLinejoin="round" />
+      <path d="M9.8 11L16.5 4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 4.8h12v8.4H9.2L6 15.8v-2.6H4z" strokeLinejoin="round" />
+      <path d="M7 8.3h6M7 10.8h4.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TimeZoneIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="10" cy="10" r="6.5" />
+      <path d="M10 6.2v4.1l2.6 1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LayoutToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return collapsed ? (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 6h12M4 10h12M4 14h12" strokeLinecap="round" />
+      <path d="M8 4l2 2 2-2M8 16l2-2 2 2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 6h12M4 10h12M4 14h12" strokeLinecap="round" />
+      <path d="M8 7l2-2 2 2M8 13l2 2 2-2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -2491,14 +2632,17 @@ function AppNavbar({ locale, user, onLogout, onOpenProfile, onLogin, isBusy = fa
               onClick={onOpenProfile}
               disabled={isBusy || !onOpenProfile}
             >
+              <ProfileGlyph isLoggedIn />
               {isFrench ? "Profil" : "Profile"}
             </button>
             <button type="button" className={controlButtonClass} onClick={onLogout} disabled={isBusy || !onLogout}>
+              <ArrowRightIcon />
               {isFrench ? "Deconnexion" : "Logout"}
             </button>
           </>
         ) : (
           <button type="button" className={controlButtonClass} onClick={onLogin} disabled={isBusy || !onLogin}>
+            <ArrowRightIcon />
             {isFrench ? "Connexion" : "Login"}
           </button>
         )}
@@ -2723,21 +2867,25 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            className="rounded-lg border border-line bg-surface-soft px-2.5 py-1 text-[11px] font-semibold text-muted transition hover:border-accent/45 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            className={`${iconButtonClass} h-8 w-8 rounded-xl px-0`}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onEdit(task)}
             disabled={isSaving}
+            aria-label={isFrench ? "Modifier la tache" : "Edit task"}
+            title={isFrench ? "Modifier la tache" : "Edit task"}
           >
-            {isFrench ? "Modifier" : "Edit"}
+            <PencilIcon />
           </button>
           <button
             type="button"
-            className="rounded-lg border border-rose-200 bg-rose-50/80 px-2.5 py-1 text-[11px] font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-200 bg-rose-50/80 px-0 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onDelete(task)}
             disabled={isSaving}
+            aria-label={isFrench ? "Supprimer la tache" : "Delete task"}
+            title={isFrench ? "Supprimer la tache" : "Delete task"}
           >
-            {isFrench ? "Supprimer" : "Delete"}
+            <TrashIcon />
           </button>
         </div>
       </div>
@@ -4979,8 +5127,14 @@ export function AppShell() {
       />
 
       <div className="flex justify-end">
-        <button type="button" className={controlButtonClass} onClick={handleToggleAllDashboardBlocks}>
-          {collapseAllBlocksButtonLabel}
+        <button
+          type="button"
+          className={controlIconButtonClass}
+          onClick={handleToggleAllDashboardBlocks}
+          aria-label={collapseAllBlocksButtonLabel}
+          title={collapseAllBlocksButtonLabel}
+        >
+          <LayoutToggleIcon collapsed={isAllDashboardBlocksCollapsed} />
         </button>
       </div>
 
@@ -5362,6 +5516,7 @@ export function AppShell() {
                       gamingTrackSummary.streakProtection.availableCharges <= 0
                     }
                   >
+                    <ShieldIcon />
                     {isGamingTrackActionPending
                       ? isFrench
                         ? "Traitement..."
@@ -5466,6 +5621,7 @@ export function AppShell() {
                       gamingTrackSummary.engagement.challenge.claimed
                     }
                   >
+                    <TrophyIcon />
                     {isGamingTrackActionPending
                       ? isFrench
                         ? "Traitement..."
@@ -5641,27 +5797,33 @@ export function AppShell() {
               <div className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-soft p-1.5">
                 <button
                   type="button"
-                  className={controlButtonClass}
+                  className={controlIconButtonClass}
                   onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
                   disabled={isMutationPending}
+                  aria-label={isFrench ? "Jour precedent" : "Previous day"}
+                  title={isFrench ? "Jour precedent" : "Previous day"}
                 >
-                  {isFrench ? "Jour precedent" : "Previous Day"}
+                  <ArrowLeftIcon />
                 </button>
                 <button
                   type="button"
-                  className={controlButtonClass}
+                  className={controlIconButtonClass}
                   onClick={() => handleDateChange(toDateInputValue(new Date()))}
                   disabled={isMutationPending}
+                  aria-label={isFrench ? "Aujourd'hui" : "Today"}
+                  title={isFrench ? "Aujourd'hui" : "Today"}
                 >
-                  {isFrench ? "Aujourd'hui" : "Today"}
+                  <CalendarIcon />
                 </button>
                 <button
                   type="button"
-                  className={controlButtonClass}
+                  className={controlIconButtonClass}
                   onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
                   disabled={isMutationPending}
+                  aria-label={isFrench ? "Jour suivant" : "Next day"}
+                  title={isFrench ? "Jour suivant" : "Next day"}
                 >
-                  {isFrench ? "Jour suivant" : "Next Day"}
+                  <ArrowRightIcon />
                 </button>
               </div>
 
@@ -5672,6 +5834,7 @@ export function AppShell() {
                   onClick={handleCarryOverYesterday}
                   disabled={isMutationPending || isLoading || isDayAffirmationSaving}
                 >
+                  <CopyIcon />
                   {isCarryingOverYesterday
                     ? isFrench
                       ? "Copie..."
@@ -5686,6 +5849,7 @@ export function AppShell() {
                   onClick={() => openCreateTaskDialog()}
                   disabled={isMutationPending}
                 >
+                  <PlusIcon />
                   {isFrench ? "Nouvelle tache" : "New Task"}
                 </button>
               </div>
@@ -5835,6 +5999,7 @@ export function AppShell() {
                 }}
                 disabled={isDayAffirmationLoading || isDayAffirmationSaving}
               >
+                <SaveIcon />
                 {isDayAffirmationSaving
                   ? isFrench
                     ? "Enregistrement..."
@@ -5979,8 +6144,10 @@ export function AppShell() {
                             className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
                             onClick={() => openCreateTaskDialog(column.status)}
                             disabled={isMutationPending}
+                            aria-label={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
+                            title={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
                           >
-                            + {isFrench ? "Tache" : "Task"}
+                            <PlusIcon />
                           </button>
                         </div>
                       </header>
@@ -6055,6 +6222,7 @@ export function AppShell() {
                 onClick={handleSaveDayBilan}
                 disabled={isDayBilanLoading || isDayBilanSaving}
               >
+                <SaveIcon />
                 {isDayBilanSaving
                   ? isFrench
                     ? "Enregistrement..."
@@ -6246,11 +6414,13 @@ export function AppShell() {
               </div>
               <button
                 type="button"
-                className={controlButtonClass}
+                className={controlIconButtonClass}
                 onClick={closeTaskDialog}
                 disabled={isSubmittingTask}
+                aria-label={isFrench ? "Fermer la fenetre de tache" : "Close task dialog"}
+                title={isFrench ? "Fermer la fenetre de tache" : "Close task dialog"}
               >
-                {isFrench ? "Fermer" : "Close"}
+                <CloseIcon />
               </button>
             </header>
 
@@ -6369,6 +6539,7 @@ export function AppShell() {
                       selectedProjectIsUsed
                     }
                   >
+                    <TrashIcon />
                     {isFrench ? "Supprimer le projet" : "Delete Project"}
                   </button>
                 </div>
@@ -6425,6 +6596,7 @@ export function AppShell() {
                     onClick={handleCreateProjectOption}
                     disabled={isSubmittingTask}
                   >
+                    <PlusIcon />
                     {isFrench ? "Ajouter le projet" : "Add Project"}
                   </button>
                 </div>
@@ -6594,21 +6766,21 @@ export function AppShell() {
                               </p>
                               <button
                                 type="button"
-                                className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+                                className={`${iconButtonClass} h-7 w-7 rounded-lg px-0 text-[11px]`}
                                 onClick={() => handleDeleteComment(comment.id)}
                                 disabled={
                                   isSubmittingTask ||
                                   isTaskDetailsLoading ||
                                   pendingCommentIds.includes(comment.id)
                                 }
+                                aria-label={isFrench ? "Retirer le commentaire" : "Remove comment"}
+                                title={isFrench ? "Retirer le commentaire" : "Remove comment"}
                               >
                                 {pendingCommentIds.includes(comment.id)
                                   ? isFrench
                                     ? "Suppression..."
                                     : "Removing..."
-                                  : isFrench
-                                  ? "Retirer"
-                                  : "Remove"}
+                                  : <TrashIcon />}
                               </button>
                             </div>
                           </article>
@@ -6635,6 +6807,7 @@ export function AppShell() {
                         onClick={handleCreateComment}
                         disabled={isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading}
                       >
+                        <PlusIcon />
                         {isCreatingTaskComment
                           ? isFrench
                             ? "Ajout..."
@@ -6692,21 +6865,21 @@ export function AppShell() {
                               </div>
                               <button
                                 type="button"
-                                className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+                                className={`${iconButtonClass} h-7 w-7 rounded-lg px-0 text-[11px]`}
                                 onClick={() => handleDeleteAttachment(attachment.id)}
                                 disabled={
                                   isSubmittingTask ||
                                   isTaskDetailsLoading ||
                                   pendingAttachmentIds.includes(attachment.id)
                                 }
+                                aria-label={isFrench ? "Retirer la piece jointe" : "Remove attachment"}
+                                title={isFrench ? "Retirer la piece jointe" : "Remove attachment"}
                               >
                                 {pendingAttachmentIds.includes(attachment.id)
                                   ? isFrench
                                     ? "Suppression..."
                                     : "Removing..."
-                                  : isFrench
-                                  ? "Retirer"
-                                  : "Remove"}
+                                  : <TrashIcon />}
                               </button>
                             </div>
                           </article>
@@ -6745,6 +6918,7 @@ export function AppShell() {
                         onClick={handleCreateAttachment}
                         disabled={isSubmittingTask || isCreatingTaskAttachment || isTaskDetailsLoading}
                       >
+                        <PlusIcon />
                         {isCreatingTaskAttachment
                           ? isFrench
                             ? "Envoi..."
@@ -6801,6 +6975,7 @@ export function AppShell() {
                     onClick={closeTaskDialog}
                     disabled={isSubmittingTask}
                   >
+                    <CloseIcon />
                     {isFrench ? "Annuler" : "Cancel"}
                   </button>
                   <button type="submit" className={primaryButtonClass} disabled={isSubmittingTask}>
@@ -6888,6 +7063,7 @@ export function AppShell() {
                 onClick={() => handleProfileFieldChange("preferredTimeZone", getBrowserTimeZone())}
                 disabled={isProfileSaving}
               >
+                <TimeZoneIcon />
                 {isFrench ? "Utiliser le fuseau du navigateur" : "Use Browser Time Zone"}
               </button>
 
@@ -6910,9 +7086,11 @@ export function AppShell() {
                   onClick={closeProfileDialog}
                   disabled={isProfileSaving}
                 >
+                  <CloseIcon />
                   {isFrench ? "Fermer" : "Close"}
                 </button>
                 <button type="submit" className={primaryButtonClass} disabled={isProfileSaving}>
+                  <SaveIcon />
                   {isProfileSaving
                     ? isFrench
                       ? "Enregistrement..."
@@ -6963,6 +7141,7 @@ export function AppShell() {
                 onClick={closeDeleteDialog}
                 disabled={isDeletingTask}
               >
+                <CloseIcon />
                 {isFrench ? "Annuler" : "Cancel"}
               </button>
               <button
@@ -6971,6 +7150,7 @@ export function AppShell() {
                 onClick={handleDeleteTask}
                 disabled={isDeletingTask}
               >
+                <TrashIcon />
                 {isDeletingTask
                   ? isFrench
                     ? "Suppression..."
@@ -6997,11 +7177,13 @@ export function AppShell() {
             </div>
             <button
               type="button"
-              className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+              className={`${iconButtonClass} h-8 w-8 rounded-xl px-0 text-[11px]`}
               onClick={() => setIsAssistantPanelOpen(false)}
               disabled={isAssistantLoading}
+              aria-label={isFrench ? "Fermer l'assistant IA" : "Close AI assistant"}
+              title={isFrench ? "Fermer l'assistant IA" : "Close AI assistant"}
             >
-              {isFrench ? "Fermer" : "Close"}
+              <CloseIcon />
             </button>
           </header>
 
@@ -7074,6 +7256,7 @@ export function AppShell() {
                 disabled={isAssistantLoading}
               />
               <button type="submit" className={primaryButtonClass} disabled={isAssistantLoading}>
+                <SendIcon />
                 {isAssistantLoading ? "..." : isFrench ? "Envoyer" : "Send"}
               </button>
             </form>
@@ -7105,7 +7288,8 @@ export function AppShell() {
             : "Open AI assistant"
         }
       >
-        AI
+        <ChatIcon />
+        <span className="text-[10px] font-bold tracking-[0.08em]">AI</span>
       </button>
     </div>
   );
