@@ -216,63 +216,122 @@ const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
 const DAY_AFFIRMATION_MAX_LENGTH = 5000;
 const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
-const USER_LOCALE_OPTIONS: ReadonlyArray<{ value: UserLocale; label: string }> = [
-  { value: "en", label: "English" },
-  { value: "fr", label: "Francais" },
-];
+const USER_LOCALE_OPTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<{ value: UserLocale; label: string }>> = {
+  en: [
+    { value: "en", label: "English" },
+    { value: "fr", label: "French" },
+  ],
+  fr: [
+    { value: "en", label: "Anglais" },
+    { value: "fr", label: "Francais" },
+  ],
+};
 
-const ASSISTANT_PROMPT_SUGGESTIONS: ReadonlyArray<string> = [
-  "What should I prioritize across all my tasks?",
-  "Create a realistic order for my open tasks this week.",
-  "Which tasks look blocked and what should I unblock first?",
-];
+const ASSISTANT_PROMPT_SUGGESTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<string>> = {
+  en: [
+    "What should I prioritize across all my tasks?",
+    "Create a realistic order for my open tasks this week.",
+    "Which tasks look blocked and what should I unblock first?",
+  ],
+  fr: [
+    "Quelles taches dois-je prioriser sur l'ensemble de mes jours ?",
+    "Cree un ordre realiste pour mes taches ouvertes cette semaine.",
+    "Quelles taches semblent bloquees et quoi debloquer en premier ?",
+  ],
+};
 
-const DAILY_AFFIRMATION_SUGGESTIONS: ReadonlyArray<string> = [
-  "I choose focus, discipline, and calm execution today.",
-  "I finish what matters most before I move to new work.",
-  "I am consistent, capable, and committed to meaningful progress.",
-  "I protect deep work and handle distractions with intention.",
-  "I act with clarity, energy, and confidence in every task.",
-];
+const DAILY_AFFIRMATION_SUGGESTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<string>> = {
+  en: [
+    "I choose focus, discipline, and calm execution today.",
+    "I finish what matters most before I move to new work.",
+    "I am consistent, capable, and committed to meaningful progress.",
+    "I protect deep work and handle distractions with intention.",
+    "I act with clarity, energy, and confidence in every task.",
+  ],
+  fr: [
+    "Je choisis la concentration, la discipline et une execution calme aujourd'hui.",
+    "Je termine ce qui compte le plus avant de commencer autre chose.",
+    "Je suis constant, capable et engage vers des progres utiles.",
+    "Je protege mes sessions profondes et je gere les distractions avec intention.",
+    "J'agis avec clarte, energie et confiance dans chaque tache.",
+  ],
+};
 
-const BOARD_COLUMNS: ReadonlyArray<{
-  status: TaskStatus;
-  label: string;
-  emptyLabel: string;
-}> = [
-  { status: "todo", label: "To Do", emptyLabel: "No tasks ready for this day." },
-  { status: "in_progress", label: "In Progress", emptyLabel: "No tasks in progress." },
-  { status: "done", label: "Done", emptyLabel: "Nothing completed yet." },
-  { status: "cancelled", label: "Cancelled", emptyLabel: "No cancelled tasks." },
-];
+const BOARD_COLUMNS_BY_LOCALE: Record<
+  UserLocale,
+  ReadonlyArray<{
+    status: TaskStatus;
+    label: string;
+    emptyLabel: string;
+  }>
+> = {
+  en: [
+    { status: "todo", label: "To Do", emptyLabel: "No tasks ready for this day." },
+    { status: "in_progress", label: "In Progress", emptyLabel: "No tasks in progress." },
+    { status: "done", label: "Done", emptyLabel: "Nothing completed yet." },
+    { status: "cancelled", label: "Cancelled", emptyLabel: "No cancelled tasks." },
+  ],
+  fr: [
+    { status: "todo", label: "A faire", emptyLabel: "Aucune tache prete pour ce jour." },
+    { status: "in_progress", label: "En cours", emptyLabel: "Aucune tache en cours." },
+    { status: "done", label: "Terminee", emptyLabel: "Rien de termine pour le moment." },
+    { status: "cancelled", label: "Annulee", emptyLabel: "Aucune tache annulee." },
+  ],
+};
 
-const PRIORITY_OPTIONS: ReadonlyArray<{ value: TaskPriority; label: string }> = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-];
+const PRIORITY_OPTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<{ value: TaskPriority; label: string }>> = {
+  en: [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+  ],
+  fr: [
+    { value: "low", label: "Basse" },
+    { value: "medium", label: "Moyenne" },
+    { value: "high", label: "Haute" },
+  ],
+};
 
-const RECURRENCE_FREQUENCY_OPTIONS: ReadonlyArray<{ value: RecurrenceFrequency; label: string }> = [
-  { value: "daily", label: "Daily" },
-  { value: "weekly", label: "Weekly" },
-  { value: "monthly", label: "Monthly" },
-];
+const RECURRENCE_FREQUENCY_OPTIONS_BY_LOCALE: Record<
+  UserLocale,
+  ReadonlyArray<{ value: RecurrenceFrequency; label: string }>
+> = {
+  en: [
+    { value: "daily", label: "Daily" },
+    { value: "weekly", label: "Weekly" },
+    { value: "monthly", label: "Monthly" },
+  ],
+  fr: [
+    { value: "daily", label: "Quotidienne" },
+    { value: "weekly", label: "Hebdomadaire" },
+    { value: "monthly", label: "Mensuelle" },
+  ],
+};
 
-const WEEKDAY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
-  { value: 0, label: "Sun" },
-  { value: 1, label: "Mon" },
-  { value: 2, label: "Tue" },
-  { value: 3, label: "Wed" },
-  { value: 4, label: "Thu" },
-  { value: 5, label: "Fri" },
-  { value: 6, label: "Sat" },
-];
+const WEEKDAY_OPTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<{ value: number; label: string }>> = {
+  en: [
+    { value: 0, label: "Sun" },
+    { value: 1, label: "Mon" },
+    { value: 2, label: "Tue" },
+    { value: 3, label: "Wed" },
+    { value: 4, label: "Thu" },
+    { value: 5, label: "Fri" },
+    { value: 6, label: "Sat" },
+  ],
+  fr: [
+    { value: 0, label: "Dim" },
+    { value: 1, label: "Lun" },
+    { value: 2, label: "Mar" },
+    { value: 3, label: "Mer" },
+    { value: 4, label: "Jeu" },
+    { value: 5, label: "Ven" },
+    { value: 6, label: "Sam" },
+  ],
+};
 
-const BOARD_COLUMN_STATUSES = new Set<TaskStatus>(BOARD_COLUMNS.map((column) => column.status));
-const PRIORITY_VALUES = new Set<TaskPriority>(PRIORITY_OPTIONS.map((option) => option.value));
-const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>(
-  RECURRENCE_FREQUENCY_OPTIONS.map((option) => option.value)
-);
+const BOARD_COLUMN_STATUSES = new Set<TaskStatus>(["todo", "in_progress", "done", "cancelled"]);
+const PRIORITY_VALUES = new Set<TaskPriority>(["low", "medium", "high"]);
+const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>(["daily", "weekly", "monthly"]);
 
 const statusChipClassByStatus: Record<TaskStatus, string> = {
   todo: "border-sky-200 bg-sky-50 text-sky-700",
@@ -345,11 +404,46 @@ function shiftDate(value: string, offsetDays: number): string {
 }
 
 function getPreferredLocale(value: string | null | undefined): UserLocale {
-  return value === "fr" ? "fr" : "en";
+  if (typeof value !== "string") {
+    return "en";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === "fr" || normalized.startsWith("fr-") ? "fr" : "en";
 }
 
 function getLocaleForFormatting(locale: UserLocale): string {
   return locale === "fr" ? "fr-FR" : "en-US";
+}
+
+function getUserLocaleOptions(locale: UserLocale): ReadonlyArray<{ value: UserLocale; label: string }> {
+  return USER_LOCALE_OPTIONS_BY_LOCALE[locale];
+}
+
+function getAssistantPromptSuggestions(locale: UserLocale): ReadonlyArray<string> {
+  return ASSISTANT_PROMPT_SUGGESTIONS_BY_LOCALE[locale];
+}
+
+function getBoardColumns(locale: UserLocale): ReadonlyArray<{
+  status: TaskStatus;
+  label: string;
+  emptyLabel: string;
+}> {
+  return BOARD_COLUMNS_BY_LOCALE[locale];
+}
+
+function getPriorityOptions(locale: UserLocale): ReadonlyArray<{ value: TaskPriority; label: string }> {
+  return PRIORITY_OPTIONS_BY_LOCALE[locale];
+}
+
+function getRecurrenceFrequencyOptions(
+  locale: UserLocale
+): ReadonlyArray<{ value: RecurrenceFrequency; label: string }> {
+  return RECURRENCE_FREQUENCY_OPTIONS_BY_LOCALE[locale];
+}
+
+function getWeekdayOptions(locale: UserLocale): ReadonlyArray<{ value: number; label: string }> {
+  return WEEKDAY_OPTIONS_BY_LOCALE[locale];
 }
 
 function isValidIanaTimeZone(value: string): boolean {
@@ -374,11 +468,12 @@ function getDateHeading(value: string, locale: UserLocale): string {
   }).format(parseDateInput(value));
 }
 
-function getDefaultAffirmationText(targetDate: string): string {
+function getDefaultAffirmationText(targetDate: string, locale: UserLocale): string {
+  const suggestions = DAILY_AFFIRMATION_SUGGESTIONS_BY_LOCALE[locale];
   const segments = targetDate.split("-").map((segment) => Number(segment));
   const seed = segments.reduce((total, current) => total + (Number.isNaN(current) ? 0 : current), 0);
-  const index = seed % DAILY_AFFIRMATION_SUGGESTIONS.length;
-  return DAILY_AFFIRMATION_SUGGESTIONS[index];
+  const index = seed % suggestions.length;
+  return suggestions[index];
 }
 
 function formatDateTime(value: string, locale: UserLocale, timeZone: string | null): string {
@@ -398,8 +493,12 @@ function formatDateTime(value: string, locale: UserLocale, timeZone: string | nu
   }).format(parsed);
 }
 
-function formatPriority(priority: TaskPriority): string {
-  return priority.charAt(0).toUpperCase() + priority.slice(1);
+function formatPriority(priority: TaskPriority, locale: UserLocale): string {
+  return getPriorityOptions(locale).find((option) => option.value === priority)?.label ?? priority;
+}
+
+function formatTaskStatus(status: TaskStatus, locale: UserLocale): string {
+  return getBoardColumns(locale).find((column) => column.status === status)?.label ?? status;
 }
 
 function formatPlannedTime(totalMinutes: number): string {
@@ -660,10 +759,17 @@ function normalizeOptionalLongTextInput(value: string): string | null {
 
 function buildDayBilanMutationInput(
   values: DayBilanFormValues,
-  date: string
+  date: string,
+  locale: UserLocale = "en"
 ): { data?: DayBilanMutationInput; error?: string } {
+  const isFrench = locale === "fr";
+
   if (!isDateOnly(date)) {
-    return { error: "Date must be in YYYY-MM-DD format." };
+    return {
+      error: isFrench
+        ? "La date doit respecter le format AAAA-MM-JJ."
+        : "Date must be in YYYY-MM-DD format.",
+    };
   }
 
   let mood: number | null = null;
@@ -673,7 +779,9 @@ function buildDayBilanMutationInput(
     const parsedMood = Number(moodValue);
 
     if (!Number.isInteger(parsedMood) || parsedMood < 1 || parsedMood > 5) {
-      return { error: "Mood must be a value between 1 and 5." };
+      return {
+        error: isFrench ? "L'humeur doit etre une valeur entre 1 et 5." : "Mood must be a value between 1 and 5.",
+      };
     }
 
     mood = parsedMood;
@@ -717,22 +825,30 @@ function getTaskFormValues(task: Task): TaskFormValues {
   };
 }
 
-function buildTaskMutationInput(values: TaskFormValues): { data?: TaskMutationInput; error?: string } {
+function buildTaskMutationInput(
+  values: TaskFormValues,
+  locale: UserLocale = "en"
+): { data?: TaskMutationInput; error?: string } {
+  const isFrench = locale === "fr";
   const title = values.title.trim();
   if (!title) {
-    return { error: "Title is required." };
+    return { error: isFrench ? "Le titre est requis." : "Title is required." };
   }
 
   if (!isDateOnly(values.targetDate)) {
-    return { error: "Target date must be in YYYY-MM-DD format." };
+    return {
+      error: isFrench
+        ? "La date cible doit respecter le format AAAA-MM-JJ."
+        : "Target date must be in YYYY-MM-DD format.",
+    };
   }
 
   if (!isTaskStatus(values.status)) {
-    return { error: "Status is invalid." };
+    return { error: isFrench ? "Le statut est invalide." : "Status is invalid." };
   }
 
   if (!isTaskPriority(values.priority)) {
-    return { error: "Priority is invalid." };
+    return { error: isFrench ? "La priorite est invalide." : "Priority is invalid." };
   }
 
   const plannedTimeValue = values.plannedTime.trim();
@@ -741,7 +857,11 @@ function buildTaskMutationInput(values: TaskFormValues): { data?: TaskMutationIn
   if (plannedTimeValue) {
     const parsed = Number(plannedTimeValue);
     if (!Number.isInteger(parsed) || parsed < 0) {
-      return { error: "Planned time must be a non-negative integer." };
+      return {
+        error: isFrench
+          ? "Le temps planifie doit etre un entier positif ou nul."
+          : "Planned time must be a non-negative integer.",
+      };
     }
 
     plannedTime = parsed;
@@ -761,27 +881,38 @@ function buildTaskMutationInput(values: TaskFormValues): { data?: TaskMutationIn
 }
 
 function buildRecurrenceMutationInput(
-  values: RecurrenceFormValues
+  values: RecurrenceFormValues,
+  locale: UserLocale = "en"
 ): { data?: TaskRecurrenceMutationInput; error?: string } {
+  const isFrench = locale === "fr";
+
   if (!values.enabled) {
     return {};
   }
 
   if (!isRecurrenceFrequency(values.frequency)) {
-    return { error: "Recurrence frequency is invalid." };
+    return { error: isFrench ? "La frequence de recurrence est invalide." : "Recurrence frequency is invalid." };
   }
 
   const intervalValue = values.interval.trim();
   const interval = Number(intervalValue);
 
   if (!intervalValue || !Number.isInteger(interval) || interval < 1) {
-    return { error: "Recurrence interval must be an integer greater than or equal to 1." };
+    return {
+      error: isFrench
+        ? "L'intervalle de recurrence doit etre un entier superieur ou egal a 1."
+        : "Recurrence interval must be an integer greater than or equal to 1.",
+    };
   }
 
   const normalizedWeekdays = [...values.weekdays].sort((left, right) => left - right);
 
   if (values.frequency === "weekly" && normalizedWeekdays.length === 0) {
-    return { error: "Select at least one weekday for weekly recurrence." };
+    return {
+      error: isFrench
+        ? "Selectionnez au moins un jour pour une recurrence hebdomadaire."
+        : "Select at least one weekday for weekly recurrence.",
+    };
   }
 
   if (!values.endsOn.trim()) {
@@ -796,7 +927,11 @@ function buildRecurrenceMutationInput(
   }
 
   if (!isDateOnly(values.endsOn.trim())) {
-    return { error: "Recurrence end date must be in YYYY-MM-DD format." };
+    return {
+      error: isFrench
+        ? "La date de fin de recurrence doit respecter le format AAAA-MM-JJ."
+        : "Recurrence end date must be in YYYY-MM-DD format.",
+    };
   }
 
   return {
@@ -1423,6 +1558,7 @@ async function upsertDayBilan(input: DayBilanMutationInput, token: string): Prom
 }
 
 type AppNavbarProps = {
+  locale: UserLocale;
   user: AuthUser | null;
   onLogout?: () => void;
   onOpenProfile?: () => void;
@@ -1449,9 +1585,10 @@ function ProfileGlyph({ isLoggedIn }: { isLoggedIn: boolean }) {
   );
 }
 
-function AppNavbar({ user, onLogout, onOpenProfile, onLogin, isBusy = false }: AppNavbarProps) {
+function AppNavbar({ locale, user, onLogout, onOpenProfile, onLogin, isBusy = false }: AppNavbarProps) {
   const isLoggedIn = user !== null;
-  const profileLabel = user?.displayName ?? user?.email ?? "Guest";
+  const isFrench = locale === "fr";
+  const profileLabel = user?.displayName ?? user?.email ?? (isFrench ? "Invite" : "Guest");
 
   return (
     <nav className="mb-4 flex items-center justify-between rounded-2xl border border-line bg-surface/92 px-4 py-3 shadow-[0_18px_45px_-34px_rgba(16,34,48,0.7)] backdrop-blur">
@@ -1459,7 +1596,15 @@ function AppNavbar({ user, onLogout, onOpenProfile, onLogin, isBusy = false }: A
         <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-sm font-bold text-white shadow-sm">J</div>
         <div>
           <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
-          <p className="text-xs text-muted">{isLoggedIn ? "Planner workspace" : "Sign in to continue"}</p>
+          <p className="text-xs text-muted">
+            {isLoggedIn
+              ? isFrench
+                ? "Espace de planification"
+                : "Planner workspace"
+              : isFrench
+              ? "Connectez-vous pour continuer"
+              : "Sign in to continue"}
+          </p>
         </div>
       </div>
 
@@ -1479,15 +1624,15 @@ function AppNavbar({ user, onLogout, onOpenProfile, onLogin, isBusy = false }: A
               onClick={onOpenProfile}
               disabled={isBusy || !onOpenProfile}
             >
-              Profile
+              {isFrench ? "Profil" : "Profile"}
             </button>
             <button type="button" className={controlButtonClass} onClick={onLogout} disabled={isBusy || !onLogout}>
-              Logout
+              {isFrench ? "Deconnexion" : "Logout"}
             </button>
           </>
         ) : (
           <button type="button" className={controlButtonClass} onClick={onLogin} disabled={isBusy || !onLogin}>
-            Login
+            {isFrench ? "Connexion" : "Login"}
           </button>
         )}
       </div>
@@ -1496,12 +1641,14 @@ function AppNavbar({ user, onLogout, onOpenProfile, onLogin, isBusy = false }: A
 }
 
 type RichTextEditorProps = {
+  locale: UserLocale;
   value: string;
   disabled: boolean;
   onChange: (nextValue: string) => void;
 };
 
-function RichTextEditor({ value, disabled, onChange }: RichTextEditorProps) {
+function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorProps) {
+  const isFrench = locale === "fr";
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   function updateValueAndSelection(nextValue: string, selectionStart: number, selectionEnd: number) {
@@ -1530,7 +1677,7 @@ function RichTextEditor({ value, disabled, onChange }: RichTextEditorProps) {
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const selected = value.slice(start, end) || "text";
+    const selected = value.slice(start, end) || (isFrench ? "texte" : "text");
     const replacement = `${prefix}${selected}${suffix}`;
     const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
 
@@ -1592,8 +1739,8 @@ function RichTextEditor({ value, disabled, onChange }: RichTextEditorProps) {
 
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
-        const selected = value.slice(start, end) || "link text";
-        const prompted = window.prompt("Enter a URL", "https://");
+        const selected = value.slice(start, end) || (isFrench ? "texte du lien" : "link text");
+        const prompted = window.prompt(isFrench ? "Entrez une URL" : "Enter a URL", "https://");
 
         if (!prompted) {
           return;
@@ -1639,19 +1786,29 @@ function RichTextEditor({ value, disabled, onChange }: RichTextEditorProps) {
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="min-h-[130px] w-full resize-y border-0 bg-transparent px-3 py-2.5 text-sm leading-6 text-foreground outline-none placeholder:text-muted/65 disabled:cursor-not-allowed disabled:opacity-55"
-        placeholder="Describe the task. Use the toolbar for bold, lists, quotes, code, and links."
+        placeholder={
+          isFrench
+            ? "Decrivez la tache. Utilisez la barre pour gras, listes, citations, code et liens."
+            : "Describe the task. Use the toolbar for bold, lists, quotes, code, and links."
+        }
         disabled={disabled}
       />
 
       <div className="border-t border-line bg-surface-soft/60 px-3 py-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Preview</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+          {isFrench ? "Apercu" : "Preview"}
+        </p>
         {value.trim() ? (
           <div
             className="rich-text-render mt-2 text-sm leading-6 text-muted"
             dangerouslySetInnerHTML={{ __html: renderDescriptionHtml(value) }}
           />
         ) : (
-          <p className="mt-1 text-xs text-muted">Add description text to preview formatting.</p>
+          <p className="mt-1 text-xs text-muted">
+            {isFrench
+              ? "Ajoutez une description pour afficher le rendu."
+              : "Add description text to preview formatting."}
+          </p>
         )}
       </div>
     </div>
@@ -1659,6 +1816,7 @@ function RichTextEditor({ value, disabled, onChange }: RichTextEditorProps) {
 }
 
 type TaskCardProps = {
+  locale: UserLocale;
   task: Task;
   isDragging: boolean;
   isSaving: boolean;
@@ -1666,7 +1824,8 @@ type TaskCardProps = {
   onDelete: (task: Task) => void;
 };
 
-function TaskCard({ task, isDragging, isSaving, onEdit, onDelete }: TaskCardProps) {
+function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: TaskCardProps) {
+  const isFrench = locale === "fr";
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: task.id,
     disabled: isSaving,
@@ -1689,7 +1848,7 @@ function TaskCard({ task, isDragging, isSaving, onEdit, onDelete }: TaskCardProp
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.11em] text-muted">
-            Drag
+            {isFrench ? "Glisser" : "Drag"}
           </div>
           <h3 className="text-sm font-semibold text-foreground">{task.title}</h3>
         </div>
@@ -1702,7 +1861,7 @@ function TaskCard({ task, isDragging, isSaving, onEdit, onDelete }: TaskCardProp
             onClick={() => onEdit(task)}
             disabled={isSaving}
           >
-            Edit
+            {isFrench ? "Modifier" : "Edit"}
           </button>
           <button
             type="button"
@@ -1711,7 +1870,7 @@ function TaskCard({ task, isDragging, isSaving, onEdit, onDelete }: TaskCardProp
             onClick={() => onDelete(task)}
             disabled={isSaving}
           >
-            Delete
+            {isFrench ? "Supprimer" : "Delete"}
           </button>
         </div>
       </div>
@@ -1727,26 +1886,26 @@ function TaskCard({ task, isDragging, isSaving, onEdit, onDelete }: TaskCardProp
         <span
           className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${priorityChipClassByPriority[task.priority]}`}
         >
-          {formatPriority(task.priority)}
+          {formatPriority(task.priority, locale)}
         </span>
         <span
           className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${statusChipClassByStatus[task.status]}`}
         >
-          {BOARD_COLUMNS.find((column) => column.status === task.status)?.label ?? task.status}
+          {formatTaskStatus(task.status, locale)}
         </span>
         {task.project ? (
           <span className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[11px] text-muted">
-            Project: {task.project}
+            {isFrench ? "Projet" : "Project"}: {task.project}
           </span>
         ) : null}
         {typeof task.plannedTime === "number" ? (
           <span className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[11px] text-muted">
-            Time: {formatPlannedTime(task.plannedTime)}
+            {isFrench ? "Temps" : "Time"}: {formatPlannedTime(task.plannedTime)}
           </span>
         ) : null}
         {task.recurrenceSourceTaskId ? (
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] text-emerald-700">
-            Recurring
+            {isFrench ? "Recurrente" : "Recurring"}
           </span>
         ) : null}
       </div>
@@ -1777,6 +1936,7 @@ function TaskColumn({ status, children }: TaskColumnProps) {
 }
 
 type AuthPanelProps = {
+  locale: UserLocale;
   mode: AuthMode;
   values: AuthFormValues;
   isSubmitting: boolean;
@@ -1787,6 +1947,7 @@ type AuthPanelProps = {
 };
 
 function AuthPanel({
+  locale,
   mode,
   values,
   isSubmitting,
@@ -1795,37 +1956,54 @@ function AuthPanel({
   onValueChange,
   onSubmit,
 }: AuthPanelProps) {
+  const isFrench = locale === "fr";
   const submitLabel =
     mode === "login"
       ? isSubmitting
-        ? "Signing in..."
+        ? isFrench
+          ? "Connexion..."
+          : "Signing in..."
+        : isFrench
+        ? "Se connecter"
         : "Sign in"
       : isSubmitting
-      ? "Creating..."
+      ? isFrench
+        ? "Creation..."
+        : "Creating..."
+      : isFrench
+      ? "Creer un compte"
       : "Create account";
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1080px] flex-col justify-center px-4 py-8 sm:px-8">
-      <AppNavbar user={null} onLogin={() => onModeChange("login")} isBusy={isSubmitting} />
+      <AppNavbar locale={locale} user={null} onLogin={() => onModeChange("login")} isBusy={isSubmitting} />
 
       <section className="grid w-full overflow-hidden rounded-[2rem] border border-line bg-surface/95 shadow-[0_36px_80px_-52px_rgba(16,34,48,0.8)] backdrop-blur lg:grid-cols-[1.12fr_1fr]">
         <div className="border-b border-line bg-gradient-to-br from-accent-soft via-[#e8f6f4] to-surface-soft p-8 lg:border-b-0 lg:border-r lg:p-10">
-          <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">Daily Planning Workspace</p>
+          <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
+            {isFrench ? "Espace de planification quotidienne" : "Daily Planning Workspace"}
+          </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{APP_NAME}</h1>
           <p className="mt-3 max-w-md text-sm leading-6 text-muted sm:text-base">{APP_TAGLINE}</p>
 
           <div className="mt-7 space-y-3 text-sm text-foreground/90">
             <p className="flex items-start gap-2">
               <span className="mt-1 h-2.5 w-2.5 rounded-full bg-accent" />
-              Plan work by day and keep priorities visible.
+              {isFrench
+                ? "Planifiez le travail par jour et gardez les priorites visibles."
+                : "Plan work by day and keep priorities visible."}
             </p>
             <p className="flex items-start gap-2">
               <span className="mt-1 h-2.5 w-2.5 rounded-full bg-accent" />
-              Drag tasks across statuses as work progresses.
+              {isFrench
+                ? "Deplacez les taches entre les statuts au fil de la progression."
+                : "Drag tasks across statuses as work progresses."}
             </p>
             <p className="flex items-start gap-2">
               <span className="mt-1 h-2.5 w-2.5 rounded-full bg-accent" />
-              Keep a reliable view of what needs attention now.
+              {isFrench
+                ? "Gardez une vue fiable de ce qui demande de l'attention maintenant."
+                : "Keep a reliable view of what needs attention now."}
             </p>
           </div>
         </div>
@@ -1840,7 +2018,7 @@ function AuthPanel({
               onClick={() => onModeChange("login")}
               disabled={isSubmitting}
             >
-              Sign in
+              {isFrench ? "Connexion" : "Sign in"}
             </button>
             <button
               type="button"
@@ -1850,13 +2028,13 @@ function AuthPanel({
               onClick={() => onModeChange("register")}
               disabled={isSubmitting}
             >
-              Register
+              {isFrench ? "Inscription" : "Register"}
             </button>
           </div>
 
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
             <label className="block text-sm font-semibold text-foreground">
-              Email
+              {isFrench ? "Email" : "Email"}
               <input
                 type="email"
                 autoComplete="email"
@@ -1870,7 +2048,7 @@ function AuthPanel({
             </label>
 
             <label className="block text-sm font-semibold text-foreground">
-              Password
+              {isFrench ? "Mot de passe" : "Password"}
               <input
                 type="password"
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -1885,7 +2063,7 @@ function AuthPanel({
 
             {mode === "register" ? (
               <label className="block text-sm font-semibold text-foreground">
-                Display Name (optional)
+                {isFrench ? "Nom affiche (optionnel)" : "Display Name (optional)"}
                 <input
                   type="text"
                   autoComplete="name"
@@ -1893,7 +2071,7 @@ function AuthPanel({
                   onChange={(event) => onValueChange("displayName", event.target.value)}
                   className={textFieldClass}
                   disabled={isSubmitting}
-                  placeholder="How should we address you?"
+                  placeholder={isFrench ? "Comment devons-nous vous appeler ?" : "How should we address you?"}
                 />
               </label>
             ) : null}
@@ -1909,7 +2087,11 @@ function AuthPanel({
             </button>
             <p className="text-xs leading-5 text-muted">
               {mode === "login"
-                ? "Use your account to continue to your daily board."
+                ? isFrench
+                  ? "Utilisez votre compte pour continuer vers votre tableau quotidien."
+                  : "Use your account to continue to your daily board."
+                : isFrench
+                ? "Creez un compte pour commencer a suivre vos taches quotidiennes immediatement."
                 : "Create an account to start tracking daily tasks immediately."}
             </p>
           </form>
@@ -1922,6 +2104,13 @@ function AuthPanel({
 export function AppShell() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [guestLocale, setGuestLocale] = useState<UserLocale>(() =>
+    getPreferredLocale(
+      typeof window === "undefined"
+        ? "en"
+        : window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en"
+    )
+  );
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authFormValues, setAuthFormValues] = useState<AuthFormValues>({
@@ -1949,7 +2138,14 @@ export function AppShell() {
   const [carryOverErrorMessage, setCarryOverErrorMessage] = useState<string | null>(null);
   const [dayAffirmation, setDayAffirmation] = useState<DayAffirmation | null>(null);
   const [dayAffirmationDraft, setDayAffirmationDraft] = useState(() =>
-    getDefaultAffirmationText(toDateInputValue(new Date()))
+    getDefaultAffirmationText(
+      toDateInputValue(new Date()),
+      getPreferredLocale(
+        typeof window === "undefined"
+          ? "en"
+          : window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en"
+      )
+    )
   );
   const [isDayAffirmationLoading, setIsDayAffirmationLoading] = useState(false);
   const [isDayAffirmationSaving, setIsDayAffirmationSaving] = useState(false);
@@ -2027,7 +2223,14 @@ export function AppShell() {
 
   const isTaskDialogOpen = taskDialogMode !== null;
   const isMutationPending = isSubmittingTask || isDeletingTask || isCarryingOverYesterday;
-  const activeLocale = getPreferredLocale(authUser?.preferredLocale);
+  const activeLocale = getPreferredLocale(authUser?.preferredLocale ?? guestLocale);
+  const isFrench = activeLocale === "fr";
+  const boardColumns = getBoardColumns(activeLocale);
+  const priorityOptions = getPriorityOptions(activeLocale);
+  const recurrenceFrequencyOptions = getRecurrenceFrequencyOptions(activeLocale);
+  const weekdayOptions = getWeekdayOptions(activeLocale);
+  const assistantPromptSuggestions = getAssistantPromptSuggestions(activeLocale);
+  const userLocaleOptions = getUserLocaleOptions(activeLocale);
   const activeTimeZone = authUser?.preferredTimeZone ?? null;
   const isEditingGeneratedTask =
     taskDialogMode === "edit" && (editingTask?.recurrenceSourceTaskId ?? null) !== null;
@@ -2087,7 +2290,12 @@ export function AppShell() {
     setCarryOverMessage(null);
     setCarryOverErrorMessage(null);
     setDayAffirmation(null);
-    setDayAffirmationDraft(getDefaultAffirmationText(toDateInputValue(new Date())));
+    setDayAffirmationDraft(
+      getDefaultAffirmationText(
+        toDateInputValue(new Date()),
+        getPreferredLocale(window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en")
+      )
+    );
     setIsDayAffirmationLoading(false);
     setIsDayAffirmationSaving(false);
     setDayAffirmationErrorMessage(null);
@@ -2157,7 +2365,13 @@ export function AppShell() {
         displayName: result.user.displayName ?? "",
       });
     } catch (error) {
-      setAuthErrorMessage(error instanceof Error ? error.message : "Unable to authenticate.");
+      setAuthErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de vous authentifier."
+          : "Unable to authenticate."
+      );
     } finally {
       setIsAuthSubmitting(false);
     }
@@ -2208,7 +2422,11 @@ export function AppShell() {
     const preferredTimeZone = profileFormValues.preferredTimeZone.trim();
 
     if (preferredTimeZone !== "" && !isValidIanaTimeZone(preferredTimeZone)) {
-      setProfileErrorMessage("Time zone must be a valid IANA value, for example Europe/Paris.");
+      setProfileErrorMessage(
+        isFrench
+          ? "Le fuseau horaire doit etre une valeur IANA valide, par exemple Europe/Paris."
+          : "Time zone must be a valid IANA value, for example Europe/Paris."
+      );
       setProfileSuccessMessage(null);
       return;
     }
@@ -2233,9 +2451,15 @@ export function AppShell() {
         ...current,
         displayName: updatedUser.displayName ?? "",
       }));
-      setProfileSuccessMessage("Profile updated.");
+      setProfileSuccessMessage(isFrench ? "Profil mis a jour." : "Profile updated.");
     } catch (error) {
-      setProfileErrorMessage(error instanceof Error ? error.message : "Unable to update profile.");
+      setProfileErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de mettre a jour le profil."
+          : "Unable to update profile."
+      );
     } finally {
       setIsProfileSaving(false);
     }
@@ -2360,7 +2584,7 @@ export function AppShell() {
     setCarryOverMessage(null);
     setCarryOverErrorMessage(null);
     setDayAffirmation(null);
-    setDayAffirmationDraft(getDefaultAffirmationText(nextDate));
+    setDayAffirmationDraft(getDefaultAffirmationText(nextDate, activeLocale));
     setDayAffirmationErrorMessage(null);
     setDayBilan(null);
     setDayBilanFormValues(getDefaultDayBilanFormValues());
@@ -2392,19 +2616,23 @@ export function AppShell() {
     const normalizedQuestion = assistantQuestion.trim();
 
     if (!normalizedQuestion) {
-      setAssistantErrorMessage("Enter a question for the assistant.");
+      setAssistantErrorMessage(
+        isFrench ? "Entrez une question pour l'assistant." : "Enter a question for the assistant."
+      );
       return;
     }
 
     if (normalizedQuestion.length > ASSISTANT_QUESTION_MAX_LENGTH) {
       setAssistantErrorMessage(
-        `Question is too long. Maximum length is ${ASSISTANT_QUESTION_MAX_LENGTH} characters.`
+        isFrench
+          ? `La question est trop longue. Longueur maximale : ${ASSISTANT_QUESTION_MAX_LENGTH} caracteres.`
+          : `Question is too long. Maximum length is ${ASSISTANT_QUESTION_MAX_LENGTH} characters.`
       );
       return;
     }
 
     if (!authToken) {
-      setAssistantErrorMessage("Authentication is required.");
+      setAssistantErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -2440,7 +2668,11 @@ export function AppShell() {
       }
     } catch (error) {
       setAssistantErrorMessage(
-        error instanceof Error ? error.message : "Unable to generate assistant reply."
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de generer une reponse de l'assistant."
+          : "Unable to generate assistant reply."
       );
     } finally {
       setIsAssistantLoading(false);
@@ -2453,7 +2685,7 @@ export function AppShell() {
     }
 
     if (!authToken) {
-      setCarryOverErrorMessage("Authentication is required.");
+      setCarryOverErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -2474,15 +2706,25 @@ export function AppShell() {
       });
 
       if (result.copiedCount === 0 && result.skippedCount === 0) {
-        setCarryOverMessage("No actionable tasks found yesterday.");
+        setCarryOverMessage(
+          isFrench
+            ? "Aucune tache actionnable trouvee hier."
+            : "No actionable tasks found yesterday."
+        );
       } else {
         setCarryOverMessage(
-          `Carry-over complete: ${result.copiedCount} copied, ${result.skippedCount} skipped.`
+          isFrench
+            ? `Copie terminee : ${result.copiedCount} copies, ${result.skippedCount} ignorees.`
+            : `Carry-over complete: ${result.copiedCount} copied, ${result.skippedCount} skipped.`
         );
       }
     } catch (error) {
       setCarryOverErrorMessage(
-        error instanceof Error ? error.message : "Unable to carry over yesterday tasks."
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de copier les taches d'hier."
+          : "Unable to carry over yesterday tasks."
       );
     } finally {
       setIsCarryingOverYesterday(false);
@@ -2495,18 +2737,20 @@ export function AppShell() {
     }
 
     if (!authToken) {
-      setDayAffirmationErrorMessage("Authentication is required.");
+      setDayAffirmationErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
-    const fallbackText = getDefaultAffirmationText(selectedDate);
+    const fallbackText = getDefaultAffirmationText(selectedDate, activeLocale);
     const nextTextCandidate = options?.text ?? dayAffirmationDraft;
     const normalizedText = nextTextCandidate.trim().length > 0 ? nextTextCandidate.trim() : fallbackText;
     const nextCompletion = options?.isCompleted ?? dayAffirmation?.isCompleted ?? false;
 
     if (normalizedText.length > DAY_AFFIRMATION_MAX_LENGTH) {
       setDayAffirmationErrorMessage(
-        `Affirmation is too long. Maximum length is ${DAY_AFFIRMATION_MAX_LENGTH} characters.`
+        isFrench
+          ? `L'affirmation est trop longue. Longueur maximale : ${DAY_AFFIRMATION_MAX_LENGTH} caracteres.`
+          : `Affirmation is too long. Maximum length is ${DAY_AFFIRMATION_MAX_LENGTH} characters.`
       );
       return;
     }
@@ -2528,7 +2772,11 @@ export function AppShell() {
       setDayAffirmationDraft(savedAffirmation.text);
     } catch (error) {
       setDayAffirmationErrorMessage(
-        error instanceof Error ? error.message : "Unable to save day affirmation."
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer l'affirmation du jour."
+          : "Unable to save day affirmation."
       );
     } finally {
       setIsDayAffirmationSaving(false);
@@ -2550,13 +2798,13 @@ export function AppShell() {
     }
 
     if (!authToken) {
-      setDayBilanErrorMessage("Authentication is required.");
+      setDayBilanErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
-    const inputResult = buildDayBilanMutationInput(dayBilanFormValues, selectedDate);
+    const inputResult = buildDayBilanMutationInput(dayBilanFormValues, selectedDate, activeLocale);
     if (!inputResult.data) {
-      setDayBilanErrorMessage(inputResult.error ?? "Invalid day bilan.");
+      setDayBilanErrorMessage(inputResult.error ?? (isFrench ? "Bilan du jour invalide." : "Invalid day bilan."));
       return;
     }
 
@@ -2568,9 +2816,15 @@ export function AppShell() {
       const savedBilan = await upsertDayBilan(inputResult.data, authToken);
       setDayBilan(savedBilan);
       setDayBilanFormValues(getDayBilanFormValues(savedBilan));
-      setDayBilanSuccessMessage("Day bilan saved.");
+      setDayBilanSuccessMessage(isFrench ? "Bilan du jour enregistre." : "Day bilan saved.");
     } catch (error) {
-      setDayBilanErrorMessage(error instanceof Error ? error.message : "Unable to save day bilan.");
+      setDayBilanErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer le bilan du jour."
+          : "Unable to save day bilan."
+      );
     } finally {
       setIsDayBilanSaving(false);
     }
@@ -2643,7 +2897,9 @@ export function AppShell() {
     const normalizedName = normalizeProjectName(newProjectDraft);
 
     if (!normalizedName) {
-      setProjectFormErrorMessage("Project name is required.");
+      setProjectFormErrorMessage(
+        isFrench ? "Le nom du projet est requis." : "Project name is required."
+      );
       return;
     }
 
@@ -2669,13 +2925,17 @@ export function AppShell() {
     const selectedProject = normalizeProjectName(taskFormValues.project);
 
     if (!selectedProject) {
-      setProjectFormErrorMessage("Select a project to delete.");
+      setProjectFormErrorMessage(
+        isFrench ? "Selectionnez un projet a supprimer." : "Select a project to delete."
+      );
       return;
     }
 
     if (selectedProjectIsUsed) {
       setProjectFormErrorMessage(
-        "This project is in use on the current board and cannot be deleted."
+        isFrench
+          ? "Ce projet est utilise sur le tableau actuel et ne peut pas etre supprime."
+          : "This project is in use on the current board and cannot be deleted."
       );
       return;
     }
@@ -2698,12 +2958,14 @@ export function AppShell() {
     const body = taskCommentDraft.trim();
 
     if (!body) {
-      setTaskCommentErrorMessage("Comment text is required.");
+      setTaskCommentErrorMessage(
+        isFrench ? "Le texte du commentaire est requis." : "Comment text is required."
+      );
       return;
     }
 
     if (!authToken) {
-      setTaskCommentErrorMessage("Authentication is required.");
+      setTaskCommentErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -2715,7 +2977,13 @@ export function AppShell() {
       setTaskComments((currentComments) => [...currentComments, comment]);
       setTaskCommentDraft("");
     } catch (error) {
-      setTaskCommentErrorMessage(error instanceof Error ? error.message : "Unable to create comment.");
+      setTaskCommentErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de creer le commentaire."
+          : "Unable to create comment."
+      );
     } finally {
       setIsCreatingTaskComment(false);
     }
@@ -2727,7 +2995,7 @@ export function AppShell() {
     }
 
     if (!authToken) {
-      setTaskCommentErrorMessage("Authentication is required.");
+      setTaskCommentErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -2740,7 +3008,13 @@ export function AppShell() {
         currentComments.filter((comment) => comment.id !== commentId)
       );
     } catch (error) {
-      setTaskCommentErrorMessage(error instanceof Error ? error.message : "Unable to delete comment.");
+      setTaskCommentErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de supprimer le commentaire."
+          : "Unable to delete comment."
+      );
     } finally {
       markCommentAsPending(commentId, false);
     }
@@ -2755,24 +3029,30 @@ export function AppShell() {
     const name = taskAttachmentNameDraft.trim() || file?.name?.trim() || "";
 
     if (!name) {
-      setTaskAttachmentErrorMessage("Attachment name is required.");
+      setTaskAttachmentErrorMessage(
+        isFrench ? "Le nom de la piece jointe est requis." : "Attachment name is required."
+      );
       return;
     }
 
     if (!file) {
-      setTaskAttachmentErrorMessage("Select a file to upload.");
+      setTaskAttachmentErrorMessage(
+        isFrench ? "Selectionnez un fichier a televerser." : "Select a file to upload."
+      );
       return;
     }
 
     if (file.size > MAX_ATTACHMENT_UPLOAD_BYTES) {
       setTaskAttachmentErrorMessage(
-        `Attachment exceeds ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} limit.`
+        isFrench
+          ? `La piece jointe depasse la limite de ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)}.`
+          : `Attachment exceeds ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} limit.`
       );
       return;
     }
 
     if (!authToken) {
-      setTaskAttachmentErrorMessage("Authentication is required.");
+      setTaskAttachmentErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -2796,7 +3076,11 @@ export function AppShell() {
       }
     } catch (error) {
       setTaskAttachmentErrorMessage(
-        error instanceof Error ? error.message : "Unable to create attachment."
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de creer la piece jointe."
+          : "Unable to create attachment."
       );
     } finally {
       setIsCreatingTaskAttachment(false);
@@ -2809,7 +3093,7 @@ export function AppShell() {
     }
 
     if (!authToken) {
-      setTaskAttachmentErrorMessage("Authentication is required.");
+      setTaskAttachmentErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -2823,7 +3107,11 @@ export function AppShell() {
       );
     } catch (error) {
       setTaskAttachmentErrorMessage(
-        error instanceof Error ? error.message : "Unable to delete attachment."
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de supprimer la piece jointe."
+          : "Unable to delete attachment."
       );
     } finally {
       markAttachmentAsPending(attachmentId, false);
@@ -2837,15 +3125,17 @@ export function AppShell() {
       return;
     }
 
-    const inputResult = buildTaskMutationInput(taskFormValues);
+    const inputResult = buildTaskMutationInput(taskFormValues, activeLocale);
     if (!inputResult.data) {
-      setTaskFormErrorMessage(inputResult.error ?? "Invalid task details.");
+      setTaskFormErrorMessage(inputResult.error ?? (isFrench ? "Details de tache invalides." : "Invalid task details."));
       return;
     }
 
-    const recurrenceResult = buildRecurrenceMutationInput(recurrenceFormValues);
+    const recurrenceResult = buildRecurrenceMutationInput(recurrenceFormValues, activeLocale);
     if (recurrenceFormValues.enabled && !recurrenceResult.data) {
-      setTaskFormErrorMessage(recurrenceResult.error ?? "Invalid recurrence settings.");
+      setTaskFormErrorMessage(
+        recurrenceResult.error ?? (isFrench ? "Parametres de recurrence invalides." : "Invalid recurrence settings.")
+      );
       return;
     }
 
@@ -2855,7 +3145,7 @@ export function AppShell() {
 
     try {
       if (!authToken) {
-        throw new Error("Authentication is required.");
+        throw new Error(isFrench ? "Authentification requise." : "Authentication is required.");
       }
 
       const selectedProjectName = normalizeProjectName(taskFormValues.project);
@@ -2907,7 +3197,11 @@ export function AppShell() {
           } catch (error) {
             setErrorMessage(
               error instanceof Error
-                ? `Task saved, but recurrence could not be updated: ${error.message}`
+                ? isFrench
+                  ? `Tache enregistree, mais recurrence non mise a jour : ${error.message}`
+                  : `Task saved, but recurrence could not be updated: ${error.message}`
+                : isFrench
+                ? "Tache enregistree, mais recurrence non mise a jour."
                 : "Task saved, but recurrence could not be updated."
             );
           }
@@ -2918,7 +3212,11 @@ export function AppShell() {
           } catch (error) {
             setErrorMessage(
               error instanceof Error
-                ? `Task saved, but recurrence could not be removed: ${error.message}`
+                ? isFrench
+                  ? `Tache enregistree, mais recurrence non supprimee : ${error.message}`
+                  : `Task saved, but recurrence could not be removed: ${error.message}`
+                : isFrench
+                ? "Tache enregistree, mais recurrence non supprimee."
                 : "Task saved, but recurrence could not be removed."
             );
           }
@@ -2930,7 +3228,13 @@ export function AppShell() {
       setTaskFormErrorMessage(null);
       resetTaskDetailsState();
     } catch (error) {
-      setTaskFormErrorMessage(error instanceof Error ? error.message : "Unable to save task.");
+      setTaskFormErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer la tache."
+          : "Unable to save task."
+      );
     } finally {
       setIsSubmittingTask(false);
     }
@@ -2946,7 +3250,7 @@ export function AppShell() {
 
     try {
       if (!authToken) {
-        throw new Error("Authentication is required.");
+        throw new Error(isFrench ? "Authentification requise." : "Authentication is required.");
       }
 
       await deleteTaskById(taskToDelete.id, authToken);
@@ -2960,7 +3264,13 @@ export function AppShell() {
 
       setTaskToDelete(null);
     } catch (error) {
-      setDeleteErrorMessage(error instanceof Error ? error.message : "Unable to delete task.");
+      setDeleteErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de supprimer la tache."
+          : "Unable to delete task."
+      );
     } finally {
       setIsDeletingTask(false);
     }
@@ -2972,7 +3282,7 @@ export function AppShell() {
     }
 
     if (!authToken) {
-      setTaskDetailsErrorMessage("Authentication is required.");
+      setTaskDetailsErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -3007,7 +3317,11 @@ export function AppShell() {
         }
 
         setTaskDetailsErrorMessage(
-          error instanceof Error ? error.message : "Unable to load task details."
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger les details de la tache."
+            : "Unable to load task details."
         );
       })
       .finally(() => {
@@ -3019,7 +3333,13 @@ export function AppShell() {
     return () => {
       cancelled = true;
     };
-  }, [authToken, editingTask?.recurrenceSourceTaskId, editingTaskId, taskDialogMode]);
+  }, [authToken, editingTask?.recurrenceSourceTaskId, editingTaskId, isFrench, taskDialogMode]);
+
+  useEffect(() => {
+    setGuestLocale(
+      getPreferredLocale(window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en")
+    );
+  }, []);
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
@@ -3056,12 +3376,20 @@ export function AppShell() {
         if (!cancelled) {
           if (error instanceof ApiRequestError && error.statusCode === 401) {
             clearAuthSession();
-            setAuthErrorMessage("Your session expired. Please sign in again.");
+            setAuthErrorMessage(
+              isFrench
+                ? "Votre session a expire. Veuillez vous reconnecter."
+                : "Your session expired. Please sign in again."
+            );
             return;
           }
 
           setAuthErrorMessage(
-            error instanceof Error ? error.message : "Unable to validate your session right now."
+            error instanceof Error
+              ? error.message
+              : isFrench
+              ? "Impossible de valider votre session pour le moment."
+              : "Unable to validate your session right now."
           );
         }
       });
@@ -3069,7 +3397,7 @@ export function AppShell() {
     return () => {
       cancelled = true;
     };
-  }, [authToken, clearAuthSession, isAuthReady]);
+  }, [authToken, clearAuthSession, isAuthReady, isFrench]);
 
   useEffect(() => {
     document.documentElement.lang = activeLocale;
@@ -3100,7 +3428,13 @@ export function AppShell() {
         }
 
         setTasks([]);
-        setErrorMessage(error instanceof Error ? error.message : "Unable to load tasks for this date.");
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger les taches pour cette date."
+            : "Unable to load tasks for this date."
+        );
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -3109,7 +3443,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -3118,7 +3452,7 @@ export function AppShell() {
 
     if (!authToken || !authUser) {
       setDayAffirmation(null);
-      setDayAffirmationDraft(getDefaultAffirmationText(selectedDate));
+      setDayAffirmationDraft(getDefaultAffirmationText(selectedDate, activeLocale));
       setIsDayAffirmationLoading(false);
       return;
     }
@@ -3134,7 +3468,9 @@ export function AppShell() {
         }
 
         setDayAffirmation(nextAffirmation);
-        setDayAffirmationDraft(nextAffirmation?.text ?? getDefaultAffirmationText(selectedDate));
+        setDayAffirmationDraft(
+          nextAffirmation?.text ?? getDefaultAffirmationText(selectedDate, activeLocale)
+        );
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) {
@@ -3142,9 +3478,13 @@ export function AppShell() {
         }
 
         setDayAffirmation(null);
-        setDayAffirmationDraft(getDefaultAffirmationText(selectedDate));
+        setDayAffirmationDraft(getDefaultAffirmationText(selectedDate, activeLocale));
         setDayAffirmationErrorMessage(
-          error instanceof Error ? error.message : "Unable to load day affirmation."
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger l'affirmation du jour."
+            : "Unable to load day affirmation."
         );
       })
       .finally(() => {
@@ -3154,7 +3494,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, selectedDate]);
+  }, [activeLocale, authToken, authUser, isAuthReady, isFrench, selectedDate]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -3189,7 +3529,13 @@ export function AppShell() {
 
         setDayBilan(null);
         setDayBilanFormValues(getDefaultDayBilanFormValues());
-        setDayBilanErrorMessage(error instanceof Error ? error.message : "Unable to load day bilan.");
+        setDayBilanErrorMessage(
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger le bilan du jour."
+            : "Unable to load day bilan."
+        );
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -3198,7 +3544,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -3252,14 +3598,28 @@ export function AppShell() {
   }, [tasks]);
 
   const isEmptyBoard = !isLoading && !errorMessage && tasks.length === 0;
-  const taskDialogTitle = taskDialogMode === "create" ? "Create Task" : "Edit Task";
+  const taskDialogTitle = taskDialogMode === "create"
+    ? isFrench
+      ? "Creer une tache"
+      : "Create Task"
+    : isFrench
+    ? "Modifier la tache"
+    : "Edit Task";
   const taskDialogSubmitLabel =
     taskDialogMode === "create"
       ? isSubmittingTask
-        ? "Creating..."
+        ? isFrench
+          ? "Creation..."
+          : "Creating..."
+        : isFrench
+        ? "Creer la tache"
         : "Create task"
       : isSubmittingTask
-      ? "Saving..."
+      ? isFrench
+        ? "Enregistrement..."
+        : "Saving..."
+      : isFrench
+      ? "Enregistrer les modifications"
       : "Save changes";
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
@@ -3286,7 +3646,7 @@ export function AppShell() {
     }
 
     if (!authToken) {
-      setDragErrorMessage("Authentication is required.");
+      setDragErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
     }
 
@@ -3332,7 +3692,13 @@ export function AppShell() {
             : task
         )
       );
-      setDragErrorMessage(error instanceof Error ? error.message : "Unable to move task.");
+      setDragErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de deplacer la tache."
+          : "Unable to move task."
+      );
     } finally {
       markTaskAsPending(taskId, false);
     }
@@ -3342,7 +3708,7 @@ export function AppShell() {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-[720px] items-center justify-center px-4 py-10 sm:px-8">
         <div className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm font-medium text-muted shadow-sm">
-          Initializing secure session...
+          {isFrench ? "Initialisation de la session securisee..." : "Initializing secure session..."}
         </div>
       </div>
     );
@@ -3351,6 +3717,7 @@ export function AppShell() {
   if (!authToken || !authUser) {
     return (
       <AuthPanel
+        locale={activeLocale}
         mode={authMode}
         values={authFormValues}
         isSubmitting={isAuthSubmitting}
@@ -3368,6 +3735,7 @@ export function AppShell() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1320px] flex-col gap-5 px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
       <AppNavbar
+        locale={activeLocale}
         user={authUser}
         onLogout={handleLogout}
         onOpenProfile={openProfileDialog}
@@ -3376,22 +3744,30 @@ export function AppShell() {
 
       <header className="rounded-[1.8rem] border border-line bg-surface/95 px-6 py-6 shadow-[0_34px_80px_-60px_rgba(16,34,48,0.95)] backdrop-blur sm:px-8">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">Daily Task Operations</p>
+          <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
+            {isFrench ? "Operations quotidiennes des taches" : "Daily Task Operations"}
+          </p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{APP_NAME}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">{APP_TAGLINE}</p>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">Total Tasks</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+              {isFrench ? "Total taches" : "Total Tasks"}
+            </p>
             <p className="mt-1 text-2xl font-semibold text-foreground">{tasks.length}</p>
           </div>
           <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">Actionable</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+              {isFrench ? "Actionnables" : "Actionable"}
+            </p>
             <p className="mt-1 text-2xl font-semibold text-foreground">{actionableTaskCount}</p>
           </div>
           <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">Planned Time</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+              {isFrench ? "Temps planifie" : "Planned Time"}
+            </p>
             <p className="mt-1 text-2xl font-semibold text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
           </div>
         </div>
@@ -3406,7 +3782,7 @@ export function AppShell() {
               onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
               disabled={isMutationPending}
             >
-              Previous Day
+              {isFrench ? "Jour precedent" : "Previous Day"}
             </button>
             <button
               type="button"
@@ -3414,7 +3790,7 @@ export function AppShell() {
               onClick={() => handleDateChange(toDateInputValue(new Date()))}
               disabled={isMutationPending}
             >
-              Today
+              {isFrench ? "Aujourd'hui" : "Today"}
             </button>
             <button
               type="button"
@@ -3422,7 +3798,7 @@ export function AppShell() {
               onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
               disabled={isMutationPending}
             >
-              Next Day
+              {isFrench ? "Jour suivant" : "Next Day"}
             </button>
           </div>
 
@@ -3433,7 +3809,13 @@ export function AppShell() {
               onClick={handleCarryOverYesterday}
               disabled={isMutationPending || isLoading || isDayAffirmationSaving}
             >
-              {isCarryingOverYesterday ? "Carrying..." : "Carry Over Yesterday"}
+              {isCarryingOverYesterday
+                ? isFrench
+                  ? "Copie..."
+                  : "Carrying..."
+                : isFrench
+                ? "Copier les taches d'hier"
+                : "Carry Over Yesterday"}
             </button>
             <button
               type="button"
@@ -3441,12 +3823,12 @@ export function AppShell() {
               onClick={() => openCreateTaskDialog()}
               disabled={isMutationPending}
             >
-              New Task
+              {isFrench ? "Nouvelle tache" : "New Task"}
             </button>
           </div>
 
           <label className="flex min-w-[210px] flex-col gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-            Selected Date
+            {isFrench ? "Date selectionnee" : "Selected Date"}
             <input
               type="date"
               value={selectedDate}
@@ -3465,11 +3847,15 @@ export function AppShell() {
           <p className="font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</p>
           <p className="font-medium">
             {isLoading
-              ? "Loading tasks..."
+              ? isFrench
+                ? "Chargement des taches..."
+                : "Loading tasks..."
+              : isFrench
+              ? `${tasks.length} tache${tasks.length === 1 ? "" : "s"} pour la date selectionnee`
               : `${tasks.length} task${tasks.length === 1 ? "" : "s"} for the selected date`}
           </p>
           <p className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-muted">
-            Completion {completionRate}%
+            {isFrench ? "Completion" : "Completion"} {completionRate}%
           </p>
         </div>
       </section>
@@ -3490,9 +3876,13 @@ export function AppShell() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">Miracle Morning</p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">Day Affirmation</h2>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">
+              {isFrench ? "Affirmation du jour" : "Day Affirmation"}
+            </h2>
             <p className="text-sm text-muted">
-              One intentional statement for the day. Mark it done to include it in completion.
+              {isFrench
+                ? "Une phrase intentionnelle pour la journee. Cochez-la pour l'inclure dans la completion."
+                : "One intentional statement for the day. Mark it done to include it in completion."}
             </p>
           </div>
           <label className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm font-semibold text-foreground">
@@ -3504,13 +3894,13 @@ export function AppShell() {
               }}
               disabled={isDayAffirmationLoading || isDayAffirmationSaving}
             />
-            Affirmation completed
+            {isFrench ? "Affirmation terminee" : "Affirmation completed"}
           </label>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <label className="block text-sm font-semibold text-foreground">
-            Today statement
+            {isFrench ? "Phrase du jour" : "Today statement"}
             <textarea
               value={dayAffirmationDraft}
               onChange={(event) => {
@@ -3530,7 +3920,13 @@ export function AppShell() {
             }}
             disabled={isDayAffirmationLoading || isDayAffirmationSaving}
           >
-            {isDayAffirmationSaving ? "Saving..." : "Save affirmation"}
+            {isDayAffirmationSaving
+              ? isFrench
+                ? "Enregistrement..."
+                : "Saving..."
+              : isFrench
+              ? "Enregistrer l'affirmation"
+              : "Save affirmation"}
           </button>
         </div>
 
@@ -3539,7 +3935,10 @@ export function AppShell() {
             {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
           </p>
           {dayAffirmation?.updatedAt ? (
-            <p>Last update: {formatDateTime(dayAffirmation.updatedAt, activeLocale, activeTimeZone)}</p>
+            <p>
+              {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+              {formatDateTime(dayAffirmation.updatedAt, activeLocale, activeTimeZone)}
+            </p>
           ) : null}
         </div>
 
@@ -3564,8 +3963,16 @@ export function AppShell() {
 
       {isEmptyBoard ? (
         <section className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted shadow-sm">
-          <p className="font-semibold text-foreground">No tasks are scheduled for this date yet.</p>
-          <p className="mt-1">Create your first task to populate this board.</p>
+          <p className="font-semibold text-foreground">
+            {isFrench
+              ? "Aucune tache n'est planifiee pour cette date."
+              : "No tasks are scheduled for this date yet."}
+          </p>
+          <p className="mt-1">
+            {isFrench
+              ? "Creez votre premiere tache pour remplir ce tableau."
+              : "Create your first task to populate this board."}
+          </p>
         </section>
       ) : null}
 
@@ -3577,7 +3984,7 @@ export function AppShell() {
         onDragCancel={() => setActiveTaskId(null)}
       >
         <main className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {BOARD_COLUMNS.map((column) => {
+          {boardColumns.map((column) => {
             const columnTasks = tasksByStatus[column.status];
 
             return (
@@ -3601,7 +4008,7 @@ export function AppShell() {
                       onClick={() => openCreateTaskDialog(column.status)}
                       disabled={isMutationPending}
                     >
-                      + Task
+                      + {isFrench ? "Tache" : "Task"}
                     </button>
                   </div>
                 </header>
@@ -3622,6 +4029,7 @@ export function AppShell() {
                       return (
                         <TaskCard
                           key={task.id}
+                          locale={activeLocale}
                           task={task}
                           isDragging={activeTaskId === task.id}
                           isSaving={isSavingTask}
@@ -3645,9 +4053,17 @@ export function AppShell() {
       <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">End Of Day</p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">Day Bilan</h2>
-            <p className="text-sm text-muted">Capture wins, blockers, and your top 3 for tomorrow.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
+              {isFrench ? "Fin de journee" : "End Of Day"}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">
+              {isFrench ? "Bilan du jour" : "Day Bilan"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench
+                ? "Capturez vos victoires, blocages et top 3 pour demain."
+                : "Capture wins, blockers, and your top 3 for tomorrow."}
+            </p>
           </div>
           <button
             type="button"
@@ -3655,55 +4071,77 @@ export function AppShell() {
             onClick={handleSaveDayBilan}
             disabled={isDayBilanLoading || isDayBilanSaving}
           >
-            {isDayBilanSaving ? "Saving..." : "Save bilan"}
+            {isDayBilanSaving
+              ? isFrench
+                ? "Enregistrement..."
+                : "Saving..."
+              : isFrench
+              ? "Enregistrer le bilan"
+              : "Save bilan"}
           </button>
         </div>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Done Tasks</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+              {isFrench ? "Taches terminees" : "Done Tasks"}
+            </p>
             <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.done.length}</p>
           </div>
           <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Actionable</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+              {isFrench ? "Actionnables" : "Actionable"}
+            </p>
             <p className="mt-1 text-xl font-semibold text-foreground">{actionableTaskCount}</p>
           </div>
           <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Cancelled</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+              {isFrench ? "Annulees" : "Cancelled"}
+            </p>
             <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.cancelled.length}</p>
           </div>
           <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Affirmation</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+              {isFrench ? "Affirmation" : "Affirmation"}
+            </p>
             <p className="mt-1 text-xl font-semibold text-foreground">
-              {isAffirmationCompleted ? "Done" : "Pending"}
+              {isAffirmationCompleted
+                ? isFrench
+                  ? "Terminee"
+                  : "Done"
+                : isFrench
+                ? "En attente"
+                : "Pending"}
             </p>
           </div>
         </div>
 
         {isDayBilanLoading ? (
-          <p className="mt-4 text-sm text-muted">Loading day bilan...</p>
+          <p className="mt-4 text-sm text-muted">
+            {isFrench ? "Chargement du bilan du jour..." : "Loading day bilan..."}
+          </p>
         ) : (
           <div className="mt-4 space-y-3">
             <label className="block text-sm font-semibold text-foreground">
-              Mood (1-5)
+              {isFrench ? "Humeur (1-5)" : "Mood (1-5)"}
               <select
                 value={dayBilanFormValues.mood}
                 onChange={(event) => updateDayBilanField("mood", event.target.value)}
                 className={textFieldClass}
                 disabled={isDayBilanSaving}
               >
-                <option value="">Not set</option>
-                <option value="1">1 - Very hard day</option>
-                <option value="2">2 - Hard day</option>
-                <option value="3">3 - Neutral day</option>
-                <option value="4">4 - Good day</option>
-                <option value="5">5 - Excellent day</option>
+                <option value="">{isFrench ? "Non defini" : "Not set"}</option>
+                <option value="1">{isFrench ? "1 - Journee tres difficile" : "1 - Very hard day"}</option>
+                <option value="2">{isFrench ? "2 - Journee difficile" : "2 - Hard day"}</option>
+                <option value="3">{isFrench ? "3 - Journee neutre" : "3 - Neutral day"}</option>
+                <option value="4">{isFrench ? "4 - Bonne journee" : "4 - Good day"}</option>
+                <option value="5">{isFrench ? "5 - Excellente journee" : "5 - Excellent day"}</option>
               </select>
             </label>
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm font-semibold text-foreground">
-                Wins
+                {isFrench ? "Victoires" : "Wins"}
                 <textarea
                   value={dayBilanFormValues.wins}
                   onChange={(event) => updateDayBilanField("wins", event.target.value)}
@@ -3713,7 +4151,7 @@ export function AppShell() {
                 />
               </label>
               <label className="block text-sm font-semibold text-foreground">
-                Blockers
+                {isFrench ? "Blocages" : "Blockers"}
                 <textarea
                   value={dayBilanFormValues.blockers}
                   onChange={(event) => updateDayBilanField("blockers", event.target.value)}
@@ -3726,7 +4164,7 @@ export function AppShell() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm font-semibold text-foreground">
-                Lessons learned
+                {isFrench ? "Lecons apprises" : "Lessons learned"}
                 <textarea
                   value={dayBilanFormValues.lessonsLearned}
                   onChange={(event) => updateDayBilanField("lessonsLearned", event.target.value)}
@@ -3736,7 +4174,7 @@ export function AppShell() {
                 />
               </label>
               <label className="block text-sm font-semibold text-foreground">
-                Tomorrow top 3
+                {isFrench ? "Top 3 de demain" : "Tomorrow top 3"}
                 <textarea
                   value={dayBilanFormValues.tomorrowTop3}
                   onChange={(event) => updateDayBilanField("tomorrowTop3", event.target.value)}
@@ -3751,7 +4189,8 @@ export function AppShell() {
 
         {dayBilan?.updatedAt ? (
           <p className="mt-3 text-xs text-muted">
-            Last update: {formatDateTime(dayBilan.updatedAt, activeLocale, activeTimeZone)}
+            {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+            {formatDateTime(dayBilan.updatedAt, activeLocale, activeTimeZone)}
           </p>
         ) : null}
 
@@ -3786,7 +4225,11 @@ export function AppShell() {
             <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">{taskDialogTitle}</h2>
-                <p className="mt-1 text-sm text-muted">Set details clearly so this task is easy to complete.</p>
+                <p className="mt-1 text-sm text-muted">
+                  {isFrench
+                    ? "Precisez bien les details pour faciliter l'execution."
+                    : "Set details clearly so this task is easy to complete."}
+                </p>
               </div>
               <button
                 type="button"
@@ -3794,28 +4237,29 @@ export function AppShell() {
                 onClick={closeTaskDialog}
                 disabled={isSubmittingTask}
               >
-                Close
+                {isFrench ? "Fermer" : "Close"}
               </button>
             </header>
 
             <form className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" onSubmit={handleTaskFormSubmit}>
               <label className="block text-sm font-semibold text-foreground">
-                Title
+                {isFrench ? "Titre" : "Title"}
                 <input
                   type="text"
                   value={taskFormValues.title}
                   onChange={(event) => updateTaskFormField("title", event.target.value)}
                   className={textFieldClass}
                   maxLength={200}
-                  placeholder="Write a concise action item"
+                  placeholder={isFrench ? "Ecrivez une action concise" : "Write a concise action item"}
                   required
                   disabled={isSubmittingTask}
                 />
               </label>
 
               <label className="block text-sm font-semibold text-foreground">
-                Description
+                {isFrench ? "Description" : "Description"}
                 <RichTextEditor
+                  locale={activeLocale}
                   value={taskFormValues.description}
                   onChange={(nextValue) => updateTaskFormField("description", nextValue)}
                   disabled={isSubmittingTask}
@@ -3824,7 +4268,7 @@ export function AppShell() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-semibold text-foreground">
-                  Status
+                  {isFrench ? "Statut" : "Status"}
                   <select
                     value={taskFormValues.status}
                     onChange={(event) => {
@@ -3835,7 +4279,7 @@ export function AppShell() {
                     className={textFieldClass}
                     disabled={isSubmittingTask}
                   >
-                    {BOARD_COLUMNS.map((column) => (
+                    {boardColumns.map((column) => (
                       <option key={column.status} value={column.status}>
                         {column.label}
                       </option>
@@ -3844,7 +4288,7 @@ export function AppShell() {
                 </label>
 
                 <label className="block text-sm font-semibold text-foreground">
-                  Priority
+                  {isFrench ? "Priorite" : "Priority"}
                   <select
                     value={taskFormValues.priority}
                     onChange={(event) => {
@@ -3855,7 +4299,7 @@ export function AppShell() {
                     className={textFieldClass}
                     disabled={isSubmittingTask}
                   >
-                    {PRIORITY_OPTIONS.map((option) => (
+                    {priorityOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -3866,7 +4310,7 @@ export function AppShell() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-semibold text-foreground">
-                  Target Date
+                  {isFrench ? "Date cible" : "Target Date"}
                   <input
                     type="date"
                     value={taskFormValues.targetDate}
@@ -3878,7 +4322,7 @@ export function AppShell() {
                 </label>
 
                 <label className="block text-sm font-semibold text-foreground">
-                  Planned Time (minutes)
+                  {isFrench ? "Temps planifie (minutes)" : "Planned Time (minutes)"}
                   <input
                     type="number"
                     inputMode="numeric"
@@ -3895,9 +4339,11 @@ export function AppShell() {
               <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">Project</h3>
+                    <h3 className="text-sm font-semibold text-foreground">{isFrench ? "Projet" : "Project"}</h3>
                     <p className="text-xs text-muted">
-                      Select an existing project or create a new one.
+                      {isFrench
+                        ? "Selectionnez un projet existant ou creez-en un nouveau."
+                        : "Select an existing project or create a new one."}
                     </p>
                   </div>
                   <button
@@ -3910,20 +4356,20 @@ export function AppShell() {
                       selectedProjectIsUsed
                     }
                   >
-                    Delete Project
+                    {isFrench ? "Supprimer le projet" : "Delete Project"}
                   </button>
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   <label className="block text-sm font-semibold text-foreground">
-                    Project
+                    {isFrench ? "Projet" : "Project"}
                     <select
                       value={taskFormValues.project}
                       onChange={(event) => updateTaskFormField("project", event.target.value)}
                       className={textFieldClass}
                       disabled={isSubmittingTask}
                     >
-                      <option value="">No project</option>
+                      <option value="">{isFrench ? "Aucun projet" : "No project"}</option>
                       {projectSelectOptions.map((projectName) => (
                         <option key={projectName} value={projectName}>
                           {projectName}
@@ -3933,14 +4379,18 @@ export function AppShell() {
                   </label>
                   <span className="text-xs text-muted">
                     {selectedProjectIsUsed
-                      ? "Used on current board"
+                      ? isFrench
+                        ? "Utilise sur le tableau actuel"
+                        : "Used on current board"
+                      : isFrench
+                      ? "Peut etre supprime s'il est inutilise"
                       : "Can be deleted if unused"}
                   </span>
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   <label className="block text-sm font-semibold text-foreground">
-                    New Project
+                    {isFrench ? "Nouveau projet" : "New Project"}
                     <input
                       type="text"
                       value={newProjectDraft}
@@ -3952,7 +4402,7 @@ export function AppShell() {
                         }
                       }}
                       className={textFieldClass}
-                      placeholder="Type a project name"
+                      placeholder={isFrench ? "Saisissez un nom de projet" : "Type a project name"}
                       disabled={isSubmittingTask}
                     />
                   </label>
@@ -3962,7 +4412,7 @@ export function AppShell() {
                     onClick={handleCreateProjectOption}
                     disabled={isSubmittingTask}
                   >
-                    Add Project
+                    {isFrench ? "Ajouter le projet" : "Add Project"}
                   </button>
                 </div>
 
@@ -3976,9 +4426,13 @@ export function AppShell() {
               <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">Recurrence</h3>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {isFrench ? "Recurrence" : "Recurrence"}
+                    </h3>
                     <p className="text-xs text-muted">
-                      Automatically create future task instances.
+                      {isFrench
+                        ? "Cree automatiquement les futures occurrences de tache."
+                        : "Automatically create future task instances."}
                     </p>
                   </div>
 
@@ -3991,13 +4445,15 @@ export function AppShell() {
                       }
                       disabled={isSubmittingTask || isEditingGeneratedTask}
                     />
-                    Repeat task
+                    {isFrench ? "Repeter la tache" : "Repeat task"}
                   </label>
                 </div>
 
                 {isEditingGeneratedTask ? (
                   <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    This is a generated recurrence instance. Edit the source task to change recurrence.
+                    {isFrench
+                      ? "Ceci est une occurrence generee. Modifiez la tache source pour changer la recurrence."
+                      : "This is a generated recurrence instance. Edit the source task to change recurrence."}
                   </p>
                 ) : null}
 
@@ -4005,7 +4461,7 @@ export function AppShell() {
                   <div className="mt-4 space-y-3">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <label className="block text-sm font-semibold text-foreground">
-                        Frequency
+                        {isFrench ? "Frequence" : "Frequency"}
                         <select
                           value={recurrenceFormValues.frequency}
                           onChange={(event) =>
@@ -4014,7 +4470,7 @@ export function AppShell() {
                           className={textFieldClass}
                           disabled={isSubmittingTask}
                         >
-                          {RECURRENCE_FREQUENCY_OPTIONS.map((option) => (
+                          {recurrenceFrequencyOptions.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
@@ -4023,7 +4479,7 @@ export function AppShell() {
                       </label>
 
                       <label className="block text-sm font-semibold text-foreground">
-                        Every
+                        {isFrench ? "Chaque" : "Every"}
                         <input
                           type="number"
                           min={1}
@@ -4040,9 +4496,11 @@ export function AppShell() {
 
                     {recurrenceFormValues.frequency === "weekly" ? (
                       <div>
-                        <p className="text-sm font-semibold text-foreground">Weekdays</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {isFrench ? "Jours de semaine" : "Weekdays"}
+                        </p>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {WEEKDAY_OPTIONS.map((option) => {
+                          {weekdayOptions.map((option) => {
                             const isSelected = recurrenceFormValues.weekdays.includes(option.value);
                             return (
                               <button
@@ -4065,7 +4523,7 @@ export function AppShell() {
                     ) : null}
 
                     <label className="block text-sm font-semibold text-foreground">
-                      Ends On (optional)
+                      {isFrench ? "Se termine le (optionnel)" : "Ends On (optional)"}
                       <input
                         type="date"
                         value={recurrenceFormValues.endsOn}
@@ -4081,12 +4539,18 @@ export function AppShell() {
               {taskDialogMode === "edit" ? (
                 <section className="max-h-[42vh] space-y-4 overflow-y-auto rounded-2xl border border-line bg-surface-soft/50 p-4">
                   <header>
-                    <h3 className="text-sm font-semibold text-foreground">Task Details</h3>
-                    <p className="text-xs text-muted">Comments and attachments for this task.</p>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {isFrench ? "Details de la tache" : "Task Details"}
+                    </h3>
+                    <p className="text-xs text-muted">
+                      {isFrench ? "Commentaires et pieces jointes pour cette tache." : "Comments and attachments for this task."}
+                    </p>
                   </header>
 
                   {isTaskDetailsLoading ? (
-                    <p className="text-sm text-muted">Loading task details...</p>
+                    <p className="text-sm text-muted">
+                      {isFrench ? "Chargement des details de la tache..." : "Loading task details..."}
+                    </p>
                   ) : null}
 
                   {taskDetailsErrorMessage ? (
@@ -4097,12 +4561,12 @@ export function AppShell() {
 
                   <section>
                     <h4 className="text-sm font-semibold text-foreground">
-                      Comments ({taskComments.length})
+                      {isFrench ? "Commentaires" : "Comments"} ({taskComments.length})
                     </h4>
                     <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
                       {taskComments.length === 0 ? (
                         <p className="rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                          No comments yet.
+                          {isFrench ? "Aucun commentaire pour le moment." : "No comments yet."}
                         </p>
                       ) : (
                         taskComments.map((comment) => (
@@ -4125,7 +4589,13 @@ export function AppShell() {
                                   pendingCommentIds.includes(comment.id)
                                 }
                               >
-                                {pendingCommentIds.includes(comment.id) ? "Removing..." : "Remove"}
+                                {pendingCommentIds.includes(comment.id)
+                                  ? isFrench
+                                    ? "Suppression..."
+                                    : "Removing..."
+                                  : isFrench
+                                  ? "Retirer"
+                                  : "Remove"}
                               </button>
                             </div>
                           </article>
@@ -4138,7 +4608,7 @@ export function AppShell() {
                         value={taskCommentDraft}
                         onChange={(event) => setTaskCommentDraft(event.target.value)}
                         className={`${textFieldClass} mt-0 min-h-[76px] resize-y`}
-                        placeholder="Add a comment..."
+                        placeholder={isFrench ? "Ajouter un commentaire..." : "Add a comment..."}
                         disabled={isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading}
                       />
                       {taskCommentErrorMessage ? (
@@ -4152,19 +4622,25 @@ export function AppShell() {
                         onClick={handleCreateComment}
                         disabled={isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading}
                       >
-                        {isCreatingTaskComment ? "Adding..." : "Add comment"}
+                        {isCreatingTaskComment
+                          ? isFrench
+                            ? "Ajout..."
+                            : "Adding..."
+                          : isFrench
+                          ? "Ajouter un commentaire"
+                          : "Add comment"}
                       </button>
                     </div>
                   </section>
 
                   <section>
                     <h4 className="text-sm font-semibold text-foreground">
-                      Attachments ({taskAttachments.length})
+                      {isFrench ? "Pieces jointes" : "Attachments"} ({taskAttachments.length})
                     </h4>
                     <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
                       {taskAttachments.length === 0 ? (
                         <p className="rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                          No attachments yet.
+                          {isFrench ? "Aucune piece jointe pour le moment." : "No attachments yet."}
                         </p>
                       ) : (
                         taskAttachments.map((attachment) => (
@@ -4182,7 +4658,11 @@ export function AppShell() {
                                   className="text-xs font-medium text-accent underline-offset-2 hover:underline"
                                   download={isDataUrl(attachment.url) ? attachment.name : undefined}
                                 >
-                                  {isDataUrl(attachment.url) ? "Open file" : attachment.url}
+                                  {isDataUrl(attachment.url)
+                                    ? isFrench
+                                      ? "Ouvrir le fichier"
+                                      : "Open file"
+                                    : attachment.url}
                                 </a>
                                 {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
                                   <p className="mt-1 text-[11px] text-muted">
@@ -4207,7 +4687,13 @@ export function AppShell() {
                                   pendingAttachmentIds.includes(attachment.id)
                                 }
                               >
-                                {pendingAttachmentIds.includes(attachment.id) ? "Removing..." : "Remove"}
+                                {pendingAttachmentIds.includes(attachment.id)
+                                  ? isFrench
+                                    ? "Suppression..."
+                                    : "Removing..."
+                                  : isFrench
+                                  ? "Retirer"
+                                  : "Remove"}
                               </button>
                             </div>
                           </article>
@@ -4217,18 +4703,18 @@ export function AppShell() {
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
                       <label className="block text-sm font-semibold text-foreground">
-                        Name
+                        {isFrench ? "Nom" : "Name"}
                         <input
                           type="text"
                           value={taskAttachmentNameDraft}
                           onChange={(event) => setTaskAttachmentNameDraft(event.target.value)}
                           className={textFieldClass}
                           disabled={isSubmittingTask || isCreatingTaskAttachment || isTaskDetailsLoading}
-                          placeholder="Spec"
+                          placeholder={isFrench ? "Spec" : "Spec"}
                         />
                       </label>
                       <label className="block text-sm font-semibold text-foreground">
-                        File
+                        {isFrench ? "Fichier" : "File"}
                         <input
                           ref={taskAttachmentFileInputRef}
                           type="file"
@@ -4246,12 +4732,20 @@ export function AppShell() {
                         onClick={handleCreateAttachment}
                         disabled={isSubmittingTask || isCreatingTaskAttachment || isTaskDetailsLoading}
                       >
-                        {isCreatingTaskAttachment ? "Uploading..." : "Upload"}
+                        {isCreatingTaskAttachment
+                          ? isFrench
+                            ? "Envoi..."
+                            : "Uploading..."
+                          : isFrench
+                          ? "Televerser"
+                          : "Upload"}
                       </button>
                     </div>
 
                     <p className="mt-2 text-[11px] text-muted">
-                      Upload up to {formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} per attachment.
+                      {isFrench
+                        ? `Televersement jusqu'a ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} par piece jointe.`
+                        : `Upload up to ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} per attachment.`}
                     </p>
 
                     {taskAttachmentErrorMessage ? (
@@ -4281,7 +4775,7 @@ export function AppShell() {
                     }}
                     disabled={isSubmittingTask || !editingTask}
                   >
-                    Delete Task
+                    {isFrench ? "Supprimer la tache" : "Delete Task"}
                   </button>
                 ) : (
                   <span />
@@ -4294,7 +4788,7 @@ export function AppShell() {
                     onClick={closeTaskDialog}
                     disabled={isSubmittingTask}
                   >
-                    Cancel
+                    {isFrench ? "Annuler" : "Cancel"}
                   </button>
                   <button type="submit" className={primaryButtonClass} disabled={isSubmittingTask}>
                     {taskDialogSubmitLabel}
@@ -4318,31 +4812,35 @@ export function AppShell() {
           <section
             role="dialog"
             aria-modal="true"
-            aria-label="Profile settings"
+            aria-label={isFrench ? "Parametres du profil" : "Profile settings"}
             className="w-full max-w-lg rounded-3xl border border-line bg-surface p-5 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-6"
           >
             <header>
-              <h3 className="text-lg font-semibold text-foreground">Profile Settings</h3>
+              <h3 className="text-lg font-semibold text-foreground">
+                {isFrench ? "Parametres du profil" : "Profile Settings"}
+              </h3>
               <p className="mt-1 text-sm text-muted">
-                Personalize your workspace preferences and default assistant language.
+                {isFrench
+                  ? "Personnalisez vos preferences et la langue par defaut de l'assistant."
+                  : "Personalize your workspace preferences and default assistant language."}
               </p>
             </header>
 
             <form className="mt-4 space-y-3" onSubmit={handleProfileSubmit}>
               <label className="block text-sm font-semibold text-foreground">
-                Display Name
+                {isFrench ? "Nom affiche" : "Display Name"}
                 <input
                   type="text"
                   value={profileFormValues.displayName}
                   onChange={(event) => handleProfileFieldChange("displayName", event.target.value)}
                   className={textFieldClass}
                   disabled={isProfileSaving}
-                  placeholder="How should we address you?"
+                  placeholder={isFrench ? "Comment devons-nous vous appeler ?" : "How should we address you?"}
                 />
               </label>
 
               <label className="block text-sm font-semibold text-foreground">
-                Preferred Language
+                {isFrench ? "Langue preferee" : "Preferred Language"}
                 <select
                   value={profileFormValues.preferredLocale}
                   onChange={(event) =>
@@ -4351,7 +4849,7 @@ export function AppShell() {
                   className={textFieldClass}
                   disabled={isProfileSaving}
                 >
-                  {USER_LOCALE_OPTIONS.map((option) => (
+                  {userLocaleOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -4360,7 +4858,7 @@ export function AppShell() {
               </label>
 
               <label className="block text-sm font-semibold text-foreground">
-                Preferred Time Zone
+                {isFrench ? "Fuseau horaire prefere" : "Preferred Time Zone"}
                 <input
                   type="text"
                   value={profileFormValues.preferredTimeZone}
@@ -4377,7 +4875,7 @@ export function AppShell() {
                 onClick={() => handleProfileFieldChange("preferredTimeZone", getBrowserTimeZone())}
                 disabled={isProfileSaving}
               >
-                Use Browser Time Zone
+                {isFrench ? "Utiliser le fuseau du navigateur" : "Use Browser Time Zone"}
               </button>
 
               {profileErrorMessage ? (
@@ -4399,10 +4897,16 @@ export function AppShell() {
                   onClick={closeProfileDialog}
                   disabled={isProfileSaving}
                 >
-                  Close
+                  {isFrench ? "Fermer" : "Close"}
                 </button>
                 <button type="submit" className={primaryButtonClass} disabled={isProfileSaving}>
-                  {isProfileSaving ? "Saving..." : "Save Profile"}
+                  {isProfileSaving
+                    ? isFrench
+                      ? "Enregistrement..."
+                      : "Saving..."
+                    : isFrench
+                    ? "Enregistrer le profil"
+                    : "Save Profile"}
                 </button>
               </div>
             </form>
@@ -4422,12 +4926,15 @@ export function AppShell() {
           <section
             role="dialog"
             aria-modal="true"
-            aria-label="Delete task confirmation"
+            aria-label={isFrench ? "Confirmation de suppression de tache" : "Delete task confirmation"}
             className="w-full max-w-md rounded-3xl border border-line bg-surface p-5 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-6"
           >
-            <h3 className="text-lg font-semibold text-foreground">Delete task?</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              {isFrench ? "Supprimer la tache ?" : "Delete task?"}
+            </h3>
             <p className="mt-2 text-sm text-muted">
-              This will permanently remove <span className="font-semibold text-foreground">{taskToDelete.title}</span>.
+              {isFrench ? "Cette action supprimera definitivement " : "This will permanently remove "}
+              <span className="font-semibold text-foreground">{taskToDelete.title}</span>.
             </p>
 
             {deleteErrorMessage ? (
@@ -4443,7 +4950,7 @@ export function AppShell() {
                 onClick={closeDeleteDialog}
                 disabled={isDeletingTask}
               >
-                Cancel
+                {isFrench ? "Annuler" : "Cancel"}
               </button>
               <button
                 type="button"
@@ -4451,7 +4958,13 @@ export function AppShell() {
                 onClick={handleDeleteTask}
                 disabled={isDeletingTask}
               >
-                {isDeletingTask ? "Deleting..." : "Delete task"}
+                {isDeletingTask
+                  ? isFrench
+                    ? "Suppression..."
+                    : "Deleting..."
+                  : isFrench
+                  ? "Supprimer la tache"
+                  : "Delete task"}
               </button>
             </div>
           </section>
@@ -4462,8 +4975,12 @@ export function AppShell() {
         <section className="fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_24px_65px_-35px_rgba(16,34,48,0.95)] sm:left-auto sm:right-6 sm:w-[390px]">
           <header className="flex items-center justify-between gap-2 border-b border-line bg-surface-soft px-4 py-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">AI Assistant</p>
-              <p className="text-sm font-semibold text-foreground">All your tasks</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
+                {isFrench ? "Assistant IA" : "AI Assistant"}
+              </p>
+              <p className="text-sm font-semibold text-foreground">
+                {isFrench ? "Toutes vos taches" : "All your tasks"}
+              </p>
             </div>
             <button
               type="button"
@@ -4471,14 +4988,16 @@ export function AppShell() {
               onClick={() => setIsAssistantPanelOpen(false)}
               disabled={isAssistantLoading}
             >
-              Close
+              {isFrench ? "Fermer" : "Close"}
             </button>
           </header>
 
           <div className="flex-1 space-y-2 overflow-y-auto bg-surface-soft/40 px-3 py-3">
             {assistantMessages.length === 0 ? (
               <p className="rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                Ask anything about your tasks across all dates. Press Enter to send.
+                {isFrench
+                  ? "Posez vos questions sur toutes vos taches. Appuyez sur Entree pour envoyer."
+                  : "Ask anything about your tasks across all dates. Press Enter to send."}
               </p>
             ) : (
               <>
@@ -4498,7 +5017,9 @@ export function AppShell() {
                       {message.role === "assistant" &&
                       typeof message.usedTaskCount === "number" &&
                       typeof message.usedCommentCount === "number"
-                        ? ` · ${message.usedTaskCount} tasks, ${message.usedCommentCount} comments`
+                        ? isFrench
+                          ? ` · ${message.usedTaskCount} taches, ${message.usedCommentCount} commentaires`
+                          : ` · ${message.usedTaskCount} tasks, ${message.usedCommentCount} comments`
                         : ""}
                     </p>
                   </article>
@@ -4510,7 +5031,7 @@ export function AppShell() {
 
           <div className="border-t border-line bg-surface px-3 py-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              {ASSISTANT_PROMPT_SUGGESTIONS.map((prompt) => (
+              {assistantPromptSuggestions.map((prompt) => (
                 <button
                   key={prompt}
                   type="button"
@@ -4536,11 +5057,11 @@ export function AppShell() {
                 }}
                 className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55"
                 maxLength={ASSISTANT_QUESTION_MAX_LENGTH}
-                placeholder="Ask anything about your tasks..."
+                placeholder={isFrench ? "Posez une question sur vos taches..." : "Ask anything about your tasks..."}
                 disabled={isAssistantLoading}
               />
               <button type="submit" className={primaryButtonClass} disabled={isAssistantLoading}>
-                {isAssistantLoading ? "..." : "Send"}
+                {isAssistantLoading ? "..." : isFrench ? "Envoyer" : "Send"}
               </button>
             </form>
 
@@ -4561,7 +5082,15 @@ export function AppShell() {
         type="button"
         className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-accent/75 bg-accent text-lg font-semibold text-white shadow-[0_20px_45px_-25px_rgba(16,34,48,0.95)] transition hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         onClick={() => setIsAssistantPanelOpen((isOpen) => !isOpen)}
-        aria-label={isAssistantPanelOpen ? "Close AI assistant" : "Open AI assistant"}
+        aria-label={
+          isAssistantPanelOpen
+            ? isFrench
+              ? "Fermer l'assistant IA"
+              : "Close AI assistant"
+            : isFrench
+            ? "Ouvrir l'assistant IA"
+            : "Open AI assistant"
+        }
       >
         AI
       </button>

@@ -34,6 +34,7 @@ Profile preferences:
 - `preferredLocale` currently supports: `en`, `fr`
 - `preferredTimeZone` expects a valid IANA timezone (for example `Europe/Paris`, `America/New_York`)
 - assistant requests can include `locale`; backend defaults to authenticated user profile locale
+- frontend UI language follows `preferredLocale` after login (with browser-language fallback before login)
 
 ## Repository Layout
 - `frontend/` - frontend application workspace

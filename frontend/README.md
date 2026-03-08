@@ -37,6 +37,7 @@ src/
 Current frontend includes:
 - authenticated dashboard flow
 - profile/settings dialog (display name, preferred language, preferred timezone)
+- interface internationalization (`en`/`fr`) driven by user profile locale with browser fallback
 - date-driven Kanban board
 - day affirmation panel (counts in daily completion)
 - carry-over action for non-completed tasks from yesterday

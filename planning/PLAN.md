@@ -47,6 +47,7 @@ Completed:
 - completion percentage now includes day affirmation completion
 - user profile/preferences module (display name + preferred locale + preferred timezone)
 - assistant request locale now defaults from user profile preference
+- frontend internationalization for core UX (`en`/`fr`) using profile locale with browser fallback
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal
