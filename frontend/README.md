@@ -46,3 +46,5 @@ Current frontend includes:
 - drag-and-drop status updates
 - task comments, attachments, and recurrence controls
 - AI assistant chatbot (FAB) with global user context across all task dates and profile locale hint
+- gaming track dashboard (period stats, missions, bests, levels/badges, trends, challenge, leaderboard, recap, and nudges)
+- gaming track engagement actions (claim weekly challenge reward, consume streak protection, dismiss nudge)

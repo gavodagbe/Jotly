@@ -26,9 +26,39 @@ export type GamingTrackWindowData = {
   bilans: GamingTrackBilanRecord[];
 };
 
+export type GamingTrackChallengeClaimRecord = {
+  challengeId: string;
+  challengeWeekStart: Date;
+  rewardXp: number;
+  claimedAt: Date;
+};
+
+export type GamingTrackStreakProtectionUsageRecord = {
+  usedOn: Date;
+  createdAt: Date;
+};
+
+export type GamingTrackNudgeDismissalRecord = {
+  nudgeId: string;
+  dismissedOn: Date;
+  createdAt: Date;
+};
+
 export type GamingTrackStore = {
   getWindowData(userId: string, start: Date, endExclusive: Date): Promise<GamingTrackWindowData>;
   getLifetimeData(userId: string): Promise<GamingTrackWindowData>;
+  getChallengeClaim(userId: string, challengeId: string, challengeWeekStart: Date): Promise<GamingTrackChallengeClaimRecord | null>;
+  createChallengeClaim(input: {
+    userId: string;
+    challengeId: string;
+    challengeWeekStart: Date;
+    rewardXp: number;
+  }): Promise<GamingTrackChallengeClaimRecord>;
+  countStreakProtectionUsages(userId: string, endExclusive: Date): Promise<number>;
+  getStreakProtectionUsage(userId: string, usedOn: Date): Promise<GamingTrackStreakProtectionUsageRecord | null>;
+  createStreakProtectionUsage(input: { userId: string; usedOn: Date }): Promise<GamingTrackStreakProtectionUsageRecord>;
+  getDismissedNudges(userId: string, start: Date, endExclusive: Date): Promise<GamingTrackNudgeDismissalRecord[]>;
+  createNudgeDismissal(input: { userId: string; nudgeId: string; dismissedOn: Date }): Promise<GamingTrackNudgeDismissalRecord>;
   close?: () => Promise<void>;
 };
 
@@ -116,6 +146,100 @@ export function createPrismaGamingTrackStore(prisma = new PrismaClient()): Gamin
         affirmations,
         bilans,
       };
+    },
+
+    async getChallengeClaim(userId, challengeId, challengeWeekStart) {
+      return prisma.gamingTrackChallengeClaim.findUnique({
+        where: {
+          userId_challengeId_challengeWeekStart: {
+            userId,
+            challengeId,
+            challengeWeekStart,
+          },
+        },
+        select: {
+          challengeId: true,
+          challengeWeekStart: true,
+          rewardXp: true,
+          claimedAt: true,
+        },
+      });
+    },
+
+    async createChallengeClaim(input) {
+      return prisma.gamingTrackChallengeClaim.create({
+        data: input,
+        select: {
+          challengeId: true,
+          challengeWeekStart: true,
+          rewardXp: true,
+          claimedAt: true,
+        },
+      });
+    },
+
+    async countStreakProtectionUsages(userId, endExclusive) {
+      return prisma.gamingTrackStreakProtectionUsage.count({
+        where: {
+          userId,
+          usedOn: {
+            lt: endExclusive,
+          },
+        },
+      });
+    },
+
+    async getStreakProtectionUsage(userId, usedOn) {
+      return prisma.gamingTrackStreakProtectionUsage.findUnique({
+        where: {
+          userId_usedOn: {
+            userId,
+            usedOn,
+          },
+        },
+        select: {
+          usedOn: true,
+          createdAt: true,
+        },
+      });
+    },
+
+    async createStreakProtectionUsage(input) {
+      return prisma.gamingTrackStreakProtectionUsage.create({
+        data: input,
+        select: {
+          usedOn: true,
+          createdAt: true,
+        },
+      });
+    },
+
+    async getDismissedNudges(userId, start, endExclusive) {
+      return prisma.gamingTrackNudgeDismissal.findMany({
+        where: {
+          userId,
+          dismissedOn: {
+            gte: start,
+            lt: endExclusive,
+          },
+        },
+        select: {
+          nudgeId: true,
+          dismissedOn: true,
+          createdAt: true,
+        },
+      });
+    },
+
+    async createNudgeDismissal(input) {
+      return prisma.gamingTrackNudgeDismissal.create({
+        data: input,
+        select: {
+          nudgeId: true,
+          dismissedOn: true,
+          createdAt: true,
+        },
+      });
     },
 
     async close() {

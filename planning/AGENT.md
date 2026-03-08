@@ -156,7 +156,7 @@ UI principles:
 ## Sprint 1 postponed modules
 The following modules are explicitly postponed after Sprint 1 implementation:
 - reporting
-- gaming track phase 5+
+- gaming track phase 6+
 - notifications
 - mobile app
 - real-time sync
@@ -235,9 +235,8 @@ The modules below define intended boundaries without pre-building abstractions.
   - `preferredLocale` (currently `en` or `fr`)
   - `preferredTimeZone` (IANA timezone)
 - Current behavior:
-  - uses user question + owned tasks/comments across all dates as context
-  - supports `heuristic` (default) and `openai` provider modes
-  - falls back to heuristic when OpenAI is unavailable
+  - stores and serves profile-level identity/localization preferences
+  - powers frontend localization and timezone rendering
 - Current status: implemented.
 
 ### Reporting
@@ -250,8 +249,12 @@ The modules below define intended boundaries without pre-building abstractions.
 ### Gaming Track
 - Relation to retention: converts user activity into progress loops and consistency feedback.
 - Core period views: day / week / month / year.
-- Implemented in Phase 1-4:
+- Implemented in Phase 1-5:
   - backend summary endpoint: `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
+  - action endpoints:
+    - `POST /api/gaming-track/challenge/claim`
+    - `POST /api/gaming-track/streak-protection/use`
+    - `POST /api/gaming-track/nudges/dismiss`
   - top-of-dashboard score card with period switch
   - task/affirmation/bilan completion metrics + streaks + trend deltas
   - weekly missions
@@ -263,6 +266,10 @@ The modules below define intended boundaries without pre-building abstractions.
   - dynamic weekly challenge (`engagement.challenge`)
   - personal weekly leaderboard (`engagement.leaderboard`)
   - weekly recap and nudges (`engagement.recap`, `engagement.nudges`)
+  - persisted engagement actions:
+    - challenge reward claiming state (`engagement.challenge.claimed`, `claimedAt`)
+    - streak protection usage consumption (`streakProtection.usedCharges`)
+    - per-day nudge dismissals (filtered from `engagement.nudges`)
 - Next dimensions:
   - task achievement (completion rate, throughput, carry-over trend)
   - day affirmation completion rate
@@ -278,7 +285,7 @@ The modules below define intended boundaries without pre-building abstractions.
 - Likely frontend entry points:
   - top-of-dashboard score card and trend chips
   - dedicated stats screen under `frontend/src/features/gaming-track/`
-- Status: Phase 1-4 implemented; phase 5+ deeper engagement layer remains planned.
+- Status: Phase 1-5 implemented; phase 6+ deeper engagement layer remains planned.
 
 ## Known entities and extension points
 Existing entities:

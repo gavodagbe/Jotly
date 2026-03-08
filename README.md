@@ -81,12 +81,16 @@ Relevant backend env vars:
 - `OPENAI_API_BASE_URL` (default: `https://api.openai.com/v1`)
 - `AI_ASSISTANT_TIMEOUT_MS` (default: `10000`)
 
-## Gaming Track (Phase 1-4 implemented)
+## Gaming Track (Phase 1-5 implemented)
 
 Gaming Track now includes a first production slice focused on periodized progress scoring.
 
 Delivered:
 - backend endpoint: `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
+- engagement action endpoints:
+  - `POST /api/gaming-track/challenge/claim`
+  - `POST /api/gaming-track/streak-protection/use`
+  - `POST /api/gaming-track/nudges/dismiss`
 - authenticated aggregation across user-owned:
   - tasks (completion, actionable, cancelled, carry-over count)
   - day affirmation completion
@@ -109,6 +113,10 @@ Delivered:
 - personal weekly leaderboard (rank vs recent weekly baselines)
 - weekly recap block (highlights + focus actions)
 - engagement nudges (streak risk, carry-over pressure, momentum signals)
+- persistent engagement state:
+  - challenge reward claiming state per week
+  - streak protection usage consumption per day
+  - per-day nudge dismissal filtering
 
 Still planned for next phases:
 - deeper analytics screens and social collaborative loops

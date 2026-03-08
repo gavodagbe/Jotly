@@ -37,6 +37,9 @@ model User {
   tasks        Task[]
   dayAffirmations DayAffirmation[]
   dayBilans    DayBilan[]
+  gamingTrackChallengeClaims GamingTrackChallengeClaim[]
+  gamingTrackStreakProtectionUsages GamingTrackStreakProtectionUsage[]
+  gamingTrackNudgeDismissals GamingTrackNudgeDismissal[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -159,4 +162,40 @@ model TaskRecurrenceRule {
   task      Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([endsOn])
+}
+
+model GamingTrackChallengeClaim {
+  id                String   @id @default(cuid())
+  userId            String
+  challengeId       String
+  challengeWeekStart DateTime @db.Date
+  rewardXp          Int
+  claimedAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, challengeId, challengeWeekStart])
+  @@index([userId, challengeWeekStart])
+}
+
+model GamingTrackStreakProtectionUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  usedOn    DateTime @db.Date
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, usedOn])
+  @@index([userId, usedOn])
+}
+
+model GamingTrackNudgeDismissal {
+  id         String   @id @default(cuid())
+  userId     String
+  nudgeId    String
+  dismissedOn DateTime @db.Date
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, nudgeId, dismissedOn])
+  @@index([userId, dismissedOn])
 }

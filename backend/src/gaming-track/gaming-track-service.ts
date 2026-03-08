@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { formatDateOnly, parseDateOnly } from "../tasks/task-store";
 import {
   GamingTrackAffirmationRecord,
@@ -26,6 +27,22 @@ export type GamingTrackSummaryInput = {
   userId: string;
   period: GamingTrackPeriod;
   anchorDate: Date;
+};
+
+export type GamingTrackClaimChallengeInput = {
+  userId: string;
+  anchorDate: Date;
+};
+
+export type GamingTrackUseStreakProtectionInput = {
+  userId: string;
+  anchorDate: Date;
+};
+
+export type GamingTrackDismissNudgeInput = {
+  userId: string;
+  anchorDate: Date;
+  nudgeId: GamingTrackNudgeId;
 };
 
 export type GamingTrackMissionId = "done_tasks" | "affirmation_days" | "bilan_days" | "execution_streak";
@@ -149,6 +166,7 @@ export type GamingTrackSummary = {
     availableCharges: number;
     maxCharges: number;
     earnedCharges: number;
+    usedCharges: number;
     atRisk: boolean;
     recommended: boolean;
     projectedExecutionStreak: number;
@@ -165,6 +183,8 @@ export type GamingTrackSummary = {
       target: number;
       progress: number;
       completed: boolean;
+      claimed: boolean;
+      claimedAt: Date | null;
       rewardXp: number;
       expiresOn: Date;
     };
@@ -206,7 +226,44 @@ export type GamingTrackSummary = {
 
 export type GamingTrackService = {
   getSummary(input: GamingTrackSummaryInput): Promise<GamingTrackSummary>;
+  claimChallengeReward(input: GamingTrackClaimChallengeInput): Promise<{
+    challengeId: GamingTrackChallengeId;
+    challengeWeekStart: Date;
+    rewardXp: number;
+    alreadyClaimed: boolean;
+    claimedAt: Date;
+  }>;
+  useStreakProtection(input: GamingTrackUseStreakProtectionInput): Promise<{
+    usedOn: Date;
+    remainingCharges: number;
+    alreadyUsed: boolean;
+  }>;
+  dismissNudge(input: GamingTrackDismissNudgeInput): Promise<{
+    nudgeId: GamingTrackNudgeId;
+    dismissedOn: Date;
+    alreadyDismissed: boolean;
+  }>;
 };
+
+export class GamingTrackActionError extends Error {
+  readonly statusCode: number;
+  readonly errorCode: "VALIDATION_ERROR" | "CONFLICT" | "NOT_FOUND";
+
+  constructor(
+    statusCode: number,
+    errorCode: "VALIDATION_ERROR" | "CONFLICT" | "NOT_FOUND",
+    message: string
+  ) {
+    super(message);
+    this.name = "GamingTrackActionError";
+    this.statusCode = statusCode;
+    this.errorCode = errorCode;
+  }
+}
+
+export function isGamingTrackActionError(error: unknown): error is GamingTrackActionError {
+  return error instanceof GamingTrackActionError;
+}
 
 type DateRange = {
   start: Date;
@@ -346,6 +403,10 @@ function getDateRange(anchorDate: Date, period: GamingTrackPeriod): DateRange {
 
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
 function hasNonEmptyText(value: string | null): boolean {
@@ -807,7 +868,8 @@ function getTrailingStreakBeforeDate(
 function computeStreakProtection(
   activity: Map<string, DailyActivityFlags>,
   anchorDate: Date,
-  qualifiedMissionWeeks: number
+  qualifiedMissionWeeks: number,
+  usedChargeCount: number
 ): GamingTrackSummary["streakProtection"] {
   const normalizedAnchorDate = startOfUtcDay(anchorDate);
   const yesterday = addDays(normalizedAnchorDate, -1);
@@ -831,12 +893,15 @@ function computeStreakProtection(
   const projectedReflectionStreak = yesterdayReflection && !todayReflection ? reflectionStreakToYesterday + 1 : 0;
 
   const earnedCharges = qualifiedMissionWeeks;
-  const availableCharges = Math.min(STREAK_PROTECTION_MAX_CHARGES, earnedCharges);
+  const cappedEarnedCharges = Math.min(STREAK_PROTECTION_MAX_CHARGES, earnedCharges);
+  const usedCharges = Math.max(0, Math.min(cappedEarnedCharges, usedChargeCount));
+  const availableCharges = Math.max(0, cappedEarnedCharges - usedCharges);
 
   return {
     availableCharges,
     maxCharges: STREAK_PROTECTION_MAX_CHARGES,
     earnedCharges,
+    usedCharges,
     atRisk,
     recommended:
       atRisk && availableCharges > 0 && Math.max(executionStreakToYesterday, reflectionStreakToYesterday) >= 3,
@@ -944,7 +1009,7 @@ function buildWeeklyChallenge(
   weeklyWindow: GamingTrackWindowData,
   weeklyMetrics: ComputedWindow,
   weeklyRange: { start: Date; endExclusive: Date }
-): GamingTrackSummary["engagement"]["challenge"] {
+): Omit<GamingTrackSummary["engagement"]["challenge"], "claimed" | "claimedAt"> {
   const weeklyReflectionDays = getReflectionDayCountInRange(weeklyWindow, weeklyRange.start, weeklyRange.endExclusive);
   const recoveredCarryOverCount = weeklyWindow.tasks.filter(
     (task) => task.rolledFromTaskId !== null && task.status === "done"
@@ -1214,124 +1279,308 @@ function buildEngagementNudges(
 }
 
 export function createGamingTrackService(store: GamingTrackStore): GamingTrackService {
-  return {
-    async getSummary(input) {
-      const range = getDateRange(input.anchorDate, input.period);
-      const previousStart = addDays(range.start, -range.trackedDays);
-      const weeklyMissionRange = getDateRange(input.anchorDate, "week");
+  async function buildSummary(input: GamingTrackSummaryInput): Promise<GamingTrackSummary> {
+    const range = getDateRange(input.anchorDate, input.period);
+    const previousStart = addDays(range.start, -range.trackedDays);
+    const weeklyMissionRange = getDateRange(input.anchorDate, "week");
+    const anchorDay = startOfUtcDay(input.anchorDate);
+    const anchorDayEndExclusive = addDays(anchorDay, 1);
 
-      const currentWindowPromise = store.getWindowData(input.userId, range.start, range.endExclusive);
-      const weeklyWindowPromise =
-        weeklyMissionRange.start.getTime() === range.start.getTime() &&
-        weeklyMissionRange.endExclusive.getTime() === range.endExclusive.getTime()
-          ? currentWindowPromise
-          : store.getWindowData(input.userId, weeklyMissionRange.start, weeklyMissionRange.endExclusive);
+    const currentWindowPromise = store.getWindowData(input.userId, range.start, range.endExclusive);
+    const weeklyWindowPromise =
+      weeklyMissionRange.start.getTime() === range.start.getTime() &&
+      weeklyMissionRange.endExclusive.getTime() === range.endExclusive.getTime()
+        ? currentWindowPromise
+        : store.getWindowData(input.userId, weeklyMissionRange.start, weeklyMissionRange.endExclusive);
 
-      const [currentWindow, previousWindow, lifetimeWindow, weeklyWindow] = await Promise.all([
+    const [currentWindow, previousWindow, lifetimeWindow, weeklyWindow, usedChargeCount, dismissedNudges] =
+      await Promise.all([
         currentWindowPromise,
         store.getWindowData(input.userId, previousStart, range.start),
         store.getLifetimeData(input.userId),
         weeklyWindowPromise,
+        store.countStreakProtectionUsages(input.userId, anchorDayEndExclusive),
+        store.getDismissedNudges(input.userId, weeklyMissionRange.start, weeklyMissionRange.endExclusive),
       ]);
 
-      const current = computeWindowMetrics(currentWindow, range.start, range.endExclusive);
-      const previous = computeWindowMetrics(previousWindow, previousStart, range.start);
-      const weekly = computeWindowMetrics(weeklyWindow, weeklyMissionRange.start, weeklyMissionRange.endExclusive);
-      const lifetimeBounds = getDateBounds(lifetimeWindow);
-      const lifetimeMetrics = lifetimeBounds
-        ? computeWindowMetrics(lifetimeWindow, lifetimeBounds.start, lifetimeBounds.endExclusive)
-        : computeWindowMetrics(lifetimeWindow, range.start, range.start);
-      const missionQualifiedWeeks = countQualifiedMissionWeeks(lifetimeWindow);
-      const personalBests = computePersonalBests(lifetimeWindow);
-      const dailyActivity = buildDailyActivityMap(lifetimeWindow);
-      const reflectionDayCount = countDailyActivity(dailyActivity, "reflection");
-      const carriedOverDoneTasks = lifetimeWindow.tasks.filter(
-        (task) => task.rolledFromTaskId !== null && task.status === "done"
-      ).length;
-      const previousWeeklyStart = addDays(weeklyMissionRange.start, -weeklyMissionRange.trackedDays);
-      const previousWeeklyWindow = getWindowSlice(lifetimeWindow, previousWeeklyStart, weeklyMissionRange.start);
-      const previousWeekly = computeWindowMetrics(previousWeeklyWindow, previousWeeklyStart, weeklyMissionRange.start);
-      const weeklyReflectionDays = getReflectionDayCountInRange(
-        weeklyWindow,
-        weeklyMissionRange.start,
-        weeklyMissionRange.endExclusive
-      );
-      const previousWeeklyReflectionDays = getReflectionDayCountInRange(
-        previousWeeklyWindow,
-        previousWeeklyStart,
-        weeklyMissionRange.start
-      );
+    const current = computeWindowMetrics(currentWindow, range.start, range.endExclusive);
+    const previous = computeWindowMetrics(previousWindow, previousStart, range.start);
+    const weekly = computeWindowMetrics(weeklyWindow, weeklyMissionRange.start, weeklyMissionRange.endExclusive);
+    const lifetimeBounds = getDateBounds(lifetimeWindow);
+    const lifetimeMetrics = lifetimeBounds
+      ? computeWindowMetrics(lifetimeWindow, lifetimeBounds.start, lifetimeBounds.endExclusive)
+      : computeWindowMetrics(lifetimeWindow, range.start, range.start);
+    const missionQualifiedWeeks = countQualifiedMissionWeeks(lifetimeWindow);
+    const personalBests = computePersonalBests(lifetimeWindow);
+    const dailyActivity = buildDailyActivityMap(lifetimeWindow);
+    const reflectionDayCount = countDailyActivity(dailyActivity, "reflection");
+    const carriedOverDoneTasks = lifetimeWindow.tasks.filter(
+      (task) => task.rolledFromTaskId !== null && task.status === "done"
+    ).length;
+    const previousWeeklyStart = addDays(weeklyMissionRange.start, -weeklyMissionRange.trackedDays);
+    const previousWeeklyWindow = getWindowSlice(lifetimeWindow, previousWeeklyStart, weeklyMissionRange.start);
+    const previousWeekly = computeWindowMetrics(previousWeeklyWindow, previousWeeklyStart, weeklyMissionRange.start);
+    const weeklyReflectionDays = getReflectionDayCountInRange(
+      weeklyWindow,
+      weeklyMissionRange.start,
+      weeklyMissionRange.endExclusive
+    );
+    const previousWeeklyReflectionDays = getReflectionDayCountInRange(
+      previousWeeklyWindow,
+      previousWeeklyStart,
+      weeklyMissionRange.start
+    );
 
-      const executionDelta = current.scores.execution - previous.scores.execution;
-      const reflectionDelta = current.scores.reflection - previous.scores.reflection;
-      const consistencyDelta = current.scores.consistency - previous.scores.consistency;
-      const overallDelta = current.scores.overall - previous.scores.overall;
-      const momentumScore = clampScore(50 + overallDelta);
-      const streakProtection = computeStreakProtection(dailyActivity, input.anchorDate, missionQualifiedWeeks);
-      const challenge = buildWeeklyChallenge(weeklyWindow, weekly, {
+    const executionDelta = current.scores.execution - previous.scores.execution;
+    const reflectionDelta = current.scores.reflection - previous.scores.reflection;
+    const consistencyDelta = current.scores.consistency - previous.scores.consistency;
+    const overallDelta = current.scores.overall - previous.scores.overall;
+    const momentumScore = clampScore(50 + overallDelta);
+    const streakProtection = computeStreakProtection(dailyActivity, input.anchorDate, missionQualifiedWeeks, usedChargeCount);
+    const challengeBase = buildWeeklyChallenge(weeklyWindow, weekly, {
+      start: weeklyMissionRange.start,
+      endExclusive: weeklyMissionRange.endExclusive,
+    });
+    const challengeClaim = await store.getChallengeClaim(input.userId, challengeBase.id, weeklyMissionRange.start);
+    const challenge: GamingTrackSummary["engagement"]["challenge"] = {
+      ...challengeBase,
+      claimed: challengeClaim !== null,
+      claimedAt: challengeClaim?.claimedAt ?? null,
+    };
+    const leaderboard = buildWeeklyLeaderboard(lifetimeWindow, input.anchorDate);
+    const recap = buildWeeklyRecap(
+      input.anchorDate,
+      weekly,
+      previousWeekly,
+      weeklyReflectionDays,
+      previousWeeklyReflectionDays,
+      {
         start: weeklyMissionRange.start,
         endExclusive: weeklyMissionRange.endExclusive,
+      },
+      streakProtection
+    );
+    const weeklyOverallDelta = weekly.scores.overall - previousWeekly.scores.overall;
+    const dismissedNudgeIds = new Set(dismissedNudges.map((dismissal) => dismissal.nudgeId));
+    const nudges = buildEngagementNudges(weekly, challenge, streakProtection, weeklyOverallDelta).filter(
+      (nudge) => !dismissedNudgeIds.has(nudge.id)
+    );
+
+    return {
+      period: input.period,
+      anchorDate: startOfUtcDay(input.anchorDate),
+      rangeStart: range.start,
+      rangeEnd: addDays(range.endExclusive, -1),
+      trackedDays: range.trackedDays,
+      tasks: current.tasks,
+      affirmations: current.affirmations,
+      bilans: current.bilans,
+      streaks: current.streaks,
+      scores: {
+        ...current.scores,
+        momentum: momentumScore,
+      },
+      trend: {
+        executionDelta,
+        reflectionDelta,
+        consistencyDelta,
+        overallDelta,
+      },
+      weeklyMissionWindow: {
+        rangeStart: weeklyMissionRange.start,
+        rangeEnd: addDays(weeklyMissionRange.endExclusive, -1),
+        trackedDays: weeklyMissionRange.trackedDays,
+      },
+      missions: buildWeeklyMissions(weekly),
+      personalBests,
+      level: computeLevel(lifetimeMetrics, reflectionDayCount, missionQualifiedWeeks),
+      badges: buildBadges({
+        doneTasks: lifetimeMetrics.tasks.done,
+        executionBestStreak: personalBests.executionBestStreak,
+        reflectionBestStreak: personalBests.reflectionBestStreak,
+        qualifiedMissionWeeks: missionQualifiedWeeks,
+        carriedOverDoneTasks,
+      }),
+      streakProtection,
+      historicalTrends: buildHistoricalTrends(lifetimeWindow, input.anchorDate),
+      engagement: {
+        challenge,
+        leaderboard,
+        recap,
+        nudges,
+      },
+    };
+  }
+
+  return {
+    getSummary: buildSummary,
+
+    async claimChallengeReward(input) {
+      const summary = await buildSummary({
+        userId: input.userId,
+        period: "week",
+        anchorDate: input.anchorDate,
       });
-      const leaderboard = buildWeeklyLeaderboard(lifetimeWindow, input.anchorDate);
-      const recap = buildWeeklyRecap(
-        input.anchorDate,
-        weekly,
-        previousWeekly,
-        weeklyReflectionDays,
-        previousWeeklyReflectionDays,
-        {
-          start: weeklyMissionRange.start,
-          endExclusive: weeklyMissionRange.endExclusive,
-        },
-        streakProtection
-      );
-      const weeklyOverallDelta = weekly.scores.overall - previousWeekly.scores.overall;
-      const nudges = buildEngagementNudges(weekly, challenge, streakProtection, weeklyOverallDelta);
+      const challenge = summary.engagement.challenge;
+
+      if (!challenge.completed) {
+        throw new GamingTrackActionError(409, "CONFLICT", "Challenge is not completed yet");
+      }
+
+      const challengeWeekStart = summary.weeklyMissionWindow.rangeStart;
+
+      if (challenge.claimed && challenge.claimedAt) {
+        return {
+          challengeId: challenge.id,
+          challengeWeekStart,
+          rewardXp: challenge.rewardXp,
+          alreadyClaimed: true,
+          claimedAt: challenge.claimedAt,
+        };
+      }
+
+      try {
+        const claim = await store.createChallengeClaim({
+          userId: input.userId,
+          challengeId: challenge.id,
+          challengeWeekStart,
+          rewardXp: challenge.rewardXp,
+        });
+
+        return {
+          challengeId: challenge.id,
+          challengeWeekStart,
+          rewardXp: claim.rewardXp,
+          alreadyClaimed: false,
+          claimedAt: claim.claimedAt,
+        };
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
+
+        const existing = await store.getChallengeClaim(input.userId, challenge.id, challengeWeekStart);
+        if (!existing) {
+          throw error;
+        }
+
+        return {
+          challengeId: challenge.id,
+          challengeWeekStart,
+          rewardXp: existing.rewardXp,
+          alreadyClaimed: true,
+          claimedAt: existing.claimedAt,
+        };
+      }
+    },
+
+    async useStreakProtection(input) {
+      const usedOn = startOfUtcDay(input.anchorDate);
+      const existingUsage = await store.getStreakProtectionUsage(input.userId, usedOn);
+
+      if (existingUsage) {
+        const refreshed = await buildSummary({
+          userId: input.userId,
+          period: "week",
+          anchorDate: input.anchorDate,
+        });
+
+        return {
+          usedOn,
+          remainingCharges: refreshed.streakProtection.availableCharges,
+          alreadyUsed: true,
+        };
+      }
+
+      const summary = await buildSummary({
+        userId: input.userId,
+        period: "week",
+        anchorDate: input.anchorDate,
+      });
+
+      if (!summary.streakProtection.atRisk) {
+        throw new GamingTrackActionError(409, "CONFLICT", "No streak is currently at risk");
+      }
+
+      if (summary.streakProtection.availableCharges <= 0) {
+        throw new GamingTrackActionError(409, "CONFLICT", "No streak protection charges available");
+      }
+
+      let alreadyUsed = false;
+      try {
+        await store.createStreakProtectionUsage({
+          userId: input.userId,
+          usedOn,
+        });
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
+
+        alreadyUsed = true;
+      }
+
+      const refreshed = await buildSummary({
+        userId: input.userId,
+        period: "week",
+        anchorDate: input.anchorDate,
+      });
 
       return {
-        period: input.period,
-        anchorDate: startOfUtcDay(input.anchorDate),
-        rangeStart: range.start,
-        rangeEnd: addDays(range.endExclusive, -1),
-        trackedDays: range.trackedDays,
-        tasks: current.tasks,
-        affirmations: current.affirmations,
-        bilans: current.bilans,
-        streaks: current.streaks,
-        scores: {
-          ...current.scores,
-          momentum: momentumScore,
-        },
-        trend: {
-          executionDelta,
-          reflectionDelta,
-          consistencyDelta,
-          overallDelta,
-        },
-        weeklyMissionWindow: {
-          rangeStart: weeklyMissionRange.start,
-          rangeEnd: addDays(weeklyMissionRange.endExclusive, -1),
-          trackedDays: weeklyMissionRange.trackedDays,
-        },
-        missions: buildWeeklyMissions(weekly),
-        personalBests,
-        level: computeLevel(lifetimeMetrics, reflectionDayCount, missionQualifiedWeeks),
-        badges: buildBadges({
-          doneTasks: lifetimeMetrics.tasks.done,
-          executionBestStreak: personalBests.executionBestStreak,
-          reflectionBestStreak: personalBests.reflectionBestStreak,
-          qualifiedMissionWeeks: missionQualifiedWeeks,
-          carriedOverDoneTasks,
-        }),
-        streakProtection,
-        historicalTrends: buildHistoricalTrends(lifetimeWindow, input.anchorDate),
-        engagement: {
-          challenge,
-          leaderboard,
-          recap,
-          nudges,
-        },
+        usedOn,
+        remainingCharges: refreshed.streakProtection.availableCharges,
+        alreadyUsed,
       };
+    },
+
+    async dismissNudge(input) {
+      const dismissedOn = startOfUtcDay(input.anchorDate);
+      const dismissedDayEndExclusive = addDays(dismissedOn, 1);
+      const existingDismissals = await store.getDismissedNudges(input.userId, dismissedOn, dismissedDayEndExclusive);
+      const existingDismissal = existingDismissals.find((dismissal) => dismissal.nudgeId === input.nudgeId);
+
+      if (existingDismissal) {
+        return {
+          nudgeId: input.nudgeId,
+          dismissedOn,
+          alreadyDismissed: true,
+        };
+      }
+
+      const summary = await buildSummary({
+        userId: input.userId,
+        period: "week",
+        anchorDate: input.anchorDate,
+      });
+
+      const isActive = summary.engagement.nudges.some((nudge) => nudge.id === input.nudgeId);
+      if (!isActive) {
+        throw new GamingTrackActionError(404, "NOT_FOUND", "Nudge is not active for this period");
+      }
+
+      try {
+        await store.createNudgeDismissal({
+          userId: input.userId,
+          nudgeId: input.nudgeId,
+          dismissedOn,
+        });
+
+        return {
+          nudgeId: input.nudgeId,
+          dismissedOn,
+          alreadyDismissed: false,
+        };
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
+
+        return {
+          nudgeId: input.nudgeId,
+          dismissedOn,
+          alreadyDismissed: true,
+        };
+      }
     },
   };
 }

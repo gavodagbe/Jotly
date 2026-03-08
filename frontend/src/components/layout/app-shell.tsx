@@ -12,7 +12,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type DragEvent as ReactDragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app-meta";
 
 type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
@@ -229,6 +229,7 @@ type GamingTrackSummary = {
     availableCharges: number;
     maxCharges: number;
     earnedCharges: number;
+    usedCharges: number;
     atRisk: boolean;
     recommended: boolean;
     projectedExecutionStreak: number;
@@ -275,6 +276,8 @@ type GamingTrackSummary = {
       target: number;
       progress: number;
       completed: boolean;
+      claimed: boolean;
+      claimedAt: string | null;
       rewardXp: number;
       expiresOn: string;
     };
@@ -373,6 +376,11 @@ type RecurrenceFormValues = {
 
 type TaskDialogMode = "create" | "edit";
 type ApiErrorPayload = { error?: { message?: string } } | null;
+type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan";
+type DashboardLayoutConfig = {
+  order: DashboardBlockId[];
+  collapsed: Record<DashboardBlockId, boolean>;
+};
 
 class ApiRequestError extends Error {
   constructor(
@@ -390,6 +398,109 @@ const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
 const DAY_AFFIRMATION_MAX_LENGTH = 5000;
 const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
+const DASHBOARD_LAYOUT_STORAGE_KEY = "jotly_dashboard_layout_v1";
+const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
+  "overview",
+  "gamingTrack",
+  "dailyControls",
+  "affirmation",
+  "board",
+  "bilan",
+];
+const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
+  overview: false,
+  gamingTrack: true,
+  dailyControls: false,
+  affirmation: true,
+  board: false,
+  bilan: true,
+};
+
+function getDefaultDashboardBlockOrder(): DashboardBlockId[] {
+  return [...DASHBOARD_BLOCK_IDS];
+}
+
+function getDefaultDashboardBlockCollapsedState(): Record<DashboardBlockId, boolean> {
+  return { ...DEFAULT_DASHBOARD_BLOCK_COLLAPSED };
+}
+
+function isDashboardBlockId(value: string): value is DashboardBlockId {
+  return DASHBOARD_BLOCK_IDS.includes(value as DashboardBlockId);
+}
+
+function getNormalizedDashboardBlockOrder(value: unknown): DashboardBlockId[] {
+  const fallbackOrder = getDefaultDashboardBlockOrder();
+
+  if (!Array.isArray(value)) {
+    return fallbackOrder;
+  }
+
+  const uniqueIds: DashboardBlockId[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== "string" || !isDashboardBlockId(candidate) || uniqueIds.includes(candidate)) {
+      continue;
+    }
+    uniqueIds.push(candidate);
+  }
+
+  for (const requiredId of DASHBOARD_BLOCK_IDS) {
+    if (!uniqueIds.includes(requiredId)) {
+      uniqueIds.push(requiredId);
+    }
+  }
+
+  return uniqueIds;
+}
+
+function getNormalizedDashboardCollapsedState(value: unknown): Record<DashboardBlockId, boolean> {
+  const normalized = getDefaultDashboardBlockCollapsedState();
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return normalized;
+  }
+
+  for (const blockId of DASHBOARD_BLOCK_IDS) {
+    const candidate = (value as Record<string, unknown>)[blockId];
+    if (typeof candidate === "boolean") {
+      normalized[blockId] = candidate;
+    }
+  }
+
+  return normalized;
+}
+
+function parseStoredDashboardLayout(rawValue: string | null): DashboardLayoutConfig | null {
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as { order?: unknown; collapsed?: unknown };
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return {
+      order: getNormalizedDashboardBlockOrder(parsed.order),
+      collapsed: getNormalizedDashboardCollapsedState(parsed.collapsed),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getInitialDashboardLayoutConfig(): DashboardLayoutConfig {
+  const fallbackConfig: DashboardLayoutConfig = {
+    order: getDefaultDashboardBlockOrder(),
+    collapsed: getDefaultDashboardBlockCollapsedState(),
+  };
+
+  if (typeof window === "undefined") {
+    return fallbackConfig;
+  }
+
+  return parseStoredDashboardLayout(window.localStorage.getItem(DASHBOARD_LAYOUT_STORAGE_KEY)) ?? fallbackConfig;
+}
 const USER_LOCALE_OPTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<{ value: UserLocale; label: string }>> = {
   en: [
     { value: "en", label: "English" },
@@ -562,6 +673,71 @@ const textFieldClass =
   "mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55";
 const iconButtonClass =
   "inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-line bg-surface px-2 text-xs font-semibold text-foreground/85 transition hover:border-accent/40 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-55";
+
+function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale): string {
+  const isFrench = locale === "fr";
+
+  if (blockId === "overview") {
+    return isFrench ? "Vue d'ensemble" : "Overview";
+  }
+
+  if (blockId === "gamingTrack") {
+    return "Gaming Track";
+  }
+
+  if (blockId === "dailyControls") {
+    return isFrench ? "Pilotage du jour" : "Day controls";
+  }
+
+  if (blockId === "affirmation") {
+    return isFrench ? "Affirmation du jour" : "Day affirmation";
+  }
+
+  if (blockId === "board") {
+    return isFrench ? "Tableau Kanban" : "Kanban board";
+  }
+
+  return isFrench ? "Bilan du jour" : "Day bilan";
+}
+
+function CollapseChevronIcon({ isCollapsed }: { isCollapsed: boolean }) {
+  return isCollapsed ? (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="M5.75 7.75L10 12.25L14.25 7.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.75"
+      />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="M5.75 12.25L10 7.75L14.25 12.25"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.75"
+      />
+    </svg>
+  );
+}
+
+function DragHandleIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+      <circle cx="7" cy="6" r="1.1" fill="currentColor" />
+      <circle cx="13" cy="6" r="1.1" fill="currentColor" />
+      <circle cx="7" cy="10" r="1.1" fill="currentColor" />
+      <circle cx="13" cy="10" r="1.1" fill="currentColor" />
+      <circle cx="7" cy="14" r="1.1" fill="currentColor" />
+      <circle cx="13" cy="14" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
 
 const markdownToolbarActions: ReadonlyArray<{ id: string; label: string; title: string }> = [
   { id: "bold", label: "B", title: "Bold" },
@@ -2149,6 +2325,105 @@ async function loadGamingTrackSummary(
   return payload.data;
 }
 
+async function claimGamingTrackChallenge(date: string, token: string): Promise<{
+  challengeId: GamingTrackSummary["engagement"]["challenge"]["id"];
+  challengeWeekStart: string;
+  rewardXp: number;
+  alreadyClaimed: boolean;
+  claimedAt: string;
+}> {
+  const response = await fetch("/backend-api/gaming-track/challenge/claim", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({ date }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: {
+          challengeId: GamingTrackSummary["engagement"]["challenge"]["id"];
+          challengeWeekStart: string;
+          rewardXp: number;
+          alreadyClaimed: boolean;
+          claimedAt: string;
+        };
+        error?: { message?: string };
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to claim challenge reward"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to claim challenge reward.");
+  }
+
+  return payload.data;
+}
+
+async function useGamingTrackStreakProtection(date: string, token: string): Promise<{
+  usedOn: string;
+  remainingCharges: number;
+  alreadyUsed: boolean;
+}> {
+  const response = await fetch("/backend-api/gaming-track/streak-protection/use", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({ date }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { usedOn: string; remainingCharges: number; alreadyUsed: boolean }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to use streak protection"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to use streak protection.");
+  }
+
+  return payload.data;
+}
+
+async function dismissGamingTrackNudge(
+  date: string,
+  nudgeId: GamingTrackSummary["engagement"]["nudges"][number]["id"],
+  token: string
+): Promise<{ nudgeId: GamingTrackSummary["engagement"]["nudges"][number]["id"]; dismissedOn: string; alreadyDismissed: boolean }> {
+  const response = await fetch("/backend-api/gaming-track/nudges/dismiss", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      date,
+      nudgeId,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: {
+          nudgeId: GamingTrackSummary["engagement"]["nudges"][number]["id"];
+          dismissedOn: string;
+          alreadyDismissed: boolean;
+        };
+        error?: { message?: string };
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to dismiss nudge"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to dismiss nudge.");
+  }
+
+  return payload.data;
+}
+
 type AppNavbarProps = {
   locale: UserLocale;
   user: AuthUser | null;
@@ -2728,6 +3003,14 @@ export function AppShell() {
   const [isCarryingOverYesterday, setIsCarryingOverYesterday] = useState(false);
   const [carryOverMessage, setCarryOverMessage] = useState<string | null>(null);
   const [carryOverErrorMessage, setCarryOverErrorMessage] = useState<string | null>(null);
+  const [dashboardBlockOrder, setDashboardBlockOrder] = useState<DashboardBlockId[]>(
+    () => getInitialDashboardLayoutConfig().order
+  );
+  const [dashboardBlockCollapsed, setDashboardBlockCollapsed] = useState<Record<DashboardBlockId, boolean>>(
+    () => getInitialDashboardLayoutConfig().collapsed
+  );
+  const [draggedDashboardBlockId, setDraggedDashboardBlockId] = useState<DashboardBlockId | null>(null);
+  const [dashboardDropTargetId, setDashboardDropTargetId] = useState<DashboardBlockId | null>(null);
   const [dayAffirmation, setDayAffirmation] = useState<DayAffirmation | null>(null);
   const [dayAffirmationDraft, setDayAffirmationDraft] = useState(() =>
     getDefaultAffirmationText(
@@ -2753,6 +3036,8 @@ export function AppShell() {
   const [gamingTrackPeriod, setGamingTrackPeriod] = useState<GamingTrackPeriod>("week");
   const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
+  const [isGamingTrackActionPending, setIsGamingTrackActionPending] = useState(false);
+  const [gamingTrackActionMessage, setGamingTrackActionMessage] = useState<string | null>(null);
   const [gamingTrackErrorMessage, setGamingTrackErrorMessage] = useState<string | null>(null);
   const [isAssistantPanelOpen, setIsAssistantPanelOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState("");
@@ -2829,6 +3114,52 @@ export function AppShell() {
   const assistantPromptSuggestions = getAssistantPromptSuggestions(activeLocale);
   const userLocaleOptions = getUserLocaleOptions(activeLocale);
   const activeTimeZone = authUser?.preferredTimeZone ?? null;
+  const dashboardIconButtonClass = `${iconButtonClass} h-9 w-9 rounded-xl px-0`;
+  const dashboardBlockOrderIndex = useMemo(() => {
+    const fallbackIndex = Object.fromEntries(
+      DASHBOARD_BLOCK_IDS.map((blockId, index) => [blockId, index])
+    ) as Record<DashboardBlockId, number>;
+
+    dashboardBlockOrder.forEach((blockId, index) => {
+      fallbackIndex[blockId] = index;
+    });
+
+    return fallbackIndex;
+  }, [dashboardBlockOrder]);
+  const getDashboardBlockVisualOrder = useCallback(
+    (blockId: DashboardBlockId, offset = 0) => (dashboardBlockOrderIndex[blockId] ?? 0) * 10 + offset,
+    [dashboardBlockOrderIndex]
+  );
+  const isAllDashboardBlocksCollapsed = DASHBOARD_BLOCK_IDS.every((blockId) => dashboardBlockCollapsed[blockId]);
+  const getCollapseToggleLabel = (isCollapsed: boolean) =>
+    isCollapsed
+      ? isFrench
+        ? "Developper"
+        : "Expand"
+      : isFrench
+      ? "Reduire"
+      : "Collapse";
+  const getCollapseToggleAriaLabel = (blockId: DashboardBlockId, isCollapsed: boolean) => {
+    const blockLabel = formatDashboardBlockLabel(blockId, activeLocale);
+    const action = getCollapseToggleLabel(isCollapsed);
+    return `${action} ${blockLabel}`;
+  };
+  const getDashboardDragHandleLabel = (blockId: DashboardBlockId) => {
+    const blockLabel = formatDashboardBlockLabel(blockId, activeLocale);
+    return isFrench ? `Deplacer ${blockLabel}` : `Move ${blockLabel}`;
+  };
+  const getDashboardDropClassName = (blockId: DashboardBlockId) =>
+    draggedDashboardBlockId && dashboardDropTargetId === blockId
+      ? "ring-2 ring-accent/35 ring-offset-2 ring-offset-surface"
+      : "";
+  const collapseAllBlocksButtonLabel = isAllDashboardBlocksCollapsed
+    ? isFrench
+      ? "Developper tous les blocs"
+      : "Expand all blocks"
+    : isFrench
+    ? "Reduire tous les blocs"
+    : "Collapse all blocks";
+  const collapsedHintLabel = isFrench ? "Bloc replie." : "Block collapsed.";
   const isEditingGeneratedTask =
     taskDialogMode === "edit" && (editingTask?.recurrenceSourceTaskId ?? null) !== null;
   const normalizedSelectedProject = normalizeProjectName(taskFormValues.project);
@@ -2886,6 +3217,8 @@ export function AppShell() {
     setIsCarryingOverYesterday(false);
     setCarryOverMessage(null);
     setCarryOverErrorMessage(null);
+    setDraggedDashboardBlockId(null);
+    setDashboardDropTargetId(null);
     setDayAffirmation(null);
     setDayAffirmationDraft(
       getDefaultAffirmationText(
@@ -2905,6 +3238,8 @@ export function AppShell() {
     setGamingTrackPeriod("week");
     setGamingTrackSummary(null);
     setIsGamingTrackLoading(false);
+    setIsGamingTrackActionPending(false);
+    setGamingTrackActionMessage(null);
     setGamingTrackErrorMessage(null);
     setIsAssistantPanelOpen(false);
     setAssistantQuestion("");
@@ -3191,6 +3526,7 @@ export function AppShell() {
     setDayBilanFormValues(getDefaultDayBilanFormValues());
     setDayBilanErrorMessage(null);
     setDayBilanSuccessMessage(null);
+    setGamingTrackActionMessage(null);
     setGamingTrackErrorMessage(null);
     setAssistantErrorMessage(null);
     setActiveTaskId(null);
@@ -3206,6 +3542,92 @@ export function AppShell() {
     resetTaskDetailsState();
 
     setSelectedDate(nextDate);
+  }
+
+  function toggleDashboardBlock(blockId: DashboardBlockId) {
+    setDashboardBlockCollapsed((currentState) => ({
+      ...currentState,
+      [blockId]: !currentState[blockId],
+    }));
+  }
+
+  function handleToggleAllDashboardBlocks() {
+    setDashboardBlockCollapsed((currentState) => {
+      const shouldCollapseAll = DASHBOARD_BLOCK_IDS.some((blockId) => !currentState[blockId]);
+      const nextState = { ...currentState };
+
+      for (const blockId of DASHBOARD_BLOCK_IDS) {
+        nextState[blockId] = shouldCollapseAll;
+      }
+
+      return nextState;
+    });
+  }
+
+  function moveDashboardBlock(sourceId: DashboardBlockId, targetId: DashboardBlockId) {
+    if (sourceId === targetId) {
+      return;
+    }
+
+    setDashboardBlockOrder((currentOrder) => {
+      const sourceIndex = currentOrder.indexOf(sourceId);
+      const targetIndex = currentOrder.indexOf(targetId);
+      if (sourceIndex < 0 || targetIndex < 0) {
+        return currentOrder;
+      }
+
+      const nextOrder = [...currentOrder];
+      nextOrder.splice(sourceIndex, 1);
+      nextOrder.splice(targetIndex, 0, sourceId);
+      return nextOrder;
+    });
+  }
+
+  function handleDashboardBlockDragStart(blockId: DashboardBlockId, event: ReactDragEvent<HTMLButtonElement>) {
+    setDraggedDashboardBlockId(blockId);
+    setDashboardDropTargetId(blockId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", blockId);
+  }
+
+  function handleDashboardBlockDragOver(blockId: DashboardBlockId, event: ReactDragEvent<HTMLElement>) {
+    const sourceIdFromTransfer = event.dataTransfer.getData("text/plain");
+    const sourceId =
+      typeof sourceIdFromTransfer === "string" && isDashboardBlockId(sourceIdFromTransfer)
+        ? sourceIdFromTransfer
+        : draggedDashboardBlockId;
+
+    if (!sourceId || sourceId === blockId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+
+    if (dashboardDropTargetId !== blockId) {
+      setDashboardDropTargetId(blockId);
+    }
+  }
+
+  function handleDashboardBlockDrop(blockId: DashboardBlockId, event: ReactDragEvent<HTMLElement>) {
+    event.preventDefault();
+    const sourceIdFromTransfer = event.dataTransfer.getData("text/plain");
+    const sourceId =
+      typeof sourceIdFromTransfer === "string" && isDashboardBlockId(sourceIdFromTransfer)
+        ? sourceIdFromTransfer
+        : draggedDashboardBlockId;
+
+    if (sourceId && sourceId !== blockId) {
+      moveDashboardBlock(sourceId, blockId);
+    }
+
+    setDraggedDashboardBlockId(null);
+    setDashboardDropTargetId(null);
+  }
+
+  function handleDashboardBlockDragEnd() {
+    setDraggedDashboardBlockId(null);
+    setDashboardDropTargetId(null);
   }
 
   async function handleAssistantSubmit(event: FormEvent<HTMLFormElement>) {
@@ -3429,6 +3851,134 @@ export function AppShell() {
       );
     } finally {
       setIsDayBilanSaving(false);
+    }
+  }
+
+  async function refreshGamingTrackSummary() {
+    if (!authToken) {
+      return;
+    }
+
+    const summary = await loadGamingTrackSummary(selectedDate, gamingTrackPeriod, authToken);
+    setGamingTrackSummary(summary);
+  }
+
+  async function handleClaimGamingTrackChallenge() {
+    if (isGamingTrackActionPending || isGamingTrackLoading) {
+      return;
+    }
+
+    if (!authToken) {
+      setGamingTrackErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
+      return;
+    }
+
+    setIsGamingTrackActionPending(true);
+    setGamingTrackActionMessage(null);
+    setGamingTrackErrorMessage(null);
+
+    try {
+      const result = await claimGamingTrackChallenge(selectedDate, authToken);
+      await refreshGamingTrackSummary();
+      setGamingTrackActionMessage(
+        result.alreadyClaimed
+          ? isFrench
+            ? "Recompense deja reclamee."
+            : "Reward already claimed."
+          : isFrench
+          ? `Recompense challenge reclamee (+${result.rewardXp} XP).`
+          : `Challenge reward claimed (+${result.rewardXp} XP).`
+      );
+    } catch (error) {
+      setGamingTrackErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de reclamer la recompense."
+          : "Unable to claim challenge reward."
+      );
+    } finally {
+      setIsGamingTrackActionPending(false);
+    }
+  }
+
+  async function handleUseGamingTrackStreakProtection() {
+    if (isGamingTrackActionPending || isGamingTrackLoading) {
+      return;
+    }
+
+    if (!authToken) {
+      setGamingTrackErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
+      return;
+    }
+
+    setIsGamingTrackActionPending(true);
+    setGamingTrackActionMessage(null);
+    setGamingTrackErrorMessage(null);
+
+    try {
+      const result = await useGamingTrackStreakProtection(selectedDate, authToken);
+      await refreshGamingTrackSummary();
+      setGamingTrackActionMessage(
+        result.alreadyUsed
+          ? isFrench
+            ? "Protection deja utilisee aujourd'hui."
+            : "Protection already used today."
+          : isFrench
+          ? `Protection utilisee. Charges restantes: ${result.remainingCharges}.`
+          : `Protection used. Remaining charges: ${result.remainingCharges}.`
+      );
+    } catch (error) {
+      setGamingTrackErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'utiliser la protection de serie."
+          : "Unable to use streak protection."
+      );
+    } finally {
+      setIsGamingTrackActionPending(false);
+    }
+  }
+
+  async function handleDismissGamingTrackNudge(
+    nudgeId: GamingTrackSummary["engagement"]["nudges"][number]["id"]
+  ) {
+    if (isGamingTrackActionPending || isGamingTrackLoading) {
+      return;
+    }
+
+    if (!authToken) {
+      setGamingTrackErrorMessage(isFrench ? "Authentification requise." : "Authentication is required.");
+      return;
+    }
+
+    setIsGamingTrackActionPending(true);
+    setGamingTrackActionMessage(null);
+    setGamingTrackErrorMessage(null);
+
+    try {
+      const result = await dismissGamingTrackNudge(selectedDate, nudgeId, authToken);
+      await refreshGamingTrackSummary();
+      setGamingTrackActionMessage(
+        result.alreadyDismissed
+          ? isFrench
+            ? "Nudge deja masque."
+            : "Nudge already dismissed."
+          : isFrench
+          ? "Nudge masque."
+          : "Nudge dismissed."
+      );
+    } catch (error) {
+      setGamingTrackErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de masquer ce nudge."
+          : "Unable to dismiss this nudge."
+      );
+    } finally {
+      setIsGamingTrackActionPending(false);
     }
   }
 
@@ -4006,6 +4556,16 @@ export function AppShell() {
   }, [activeLocale]);
 
   useEffect(() => {
+    window.localStorage.setItem(
+      DASHBOARD_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        order: dashboardBlockOrder,
+        collapsed: dashboardBlockCollapsed,
+      })
+    );
+  }, [dashboardBlockCollapsed, dashboardBlockOrder]);
+
+  useEffect(() => {
     if (!isAuthReady) {
       return;
     }
@@ -4056,6 +4616,8 @@ export function AppShell() {
       setGamingTrackSummary(null);
       setGamingTrackErrorMessage(null);
       setIsGamingTrackLoading(false);
+      setIsGamingTrackActionPending(false);
+      setGamingTrackActionMessage(null);
       return;
     }
 
@@ -4416,38 +4978,87 @@ export function AppShell() {
         isBusy={isMutationPending || isLoading}
       />
 
-      <header className="rounded-[1.8rem] border border-line bg-surface/95 px-6 py-6 shadow-[0_34px_80px_-60px_rgba(16,34,48,0.95)] backdrop-blur sm:px-8">
-        <div>
-          <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
-            {isFrench ? "Operations quotidiennes des taches" : "Daily Task Operations"}
-          </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{APP_NAME}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">{APP_TAGLINE}</p>
+      <div className="flex justify-end">
+        <button type="button" className={controlButtonClass} onClick={handleToggleAllDashboardBlocks}>
+          {collapseAllBlocksButtonLabel}
+        </button>
+      </div>
+
+      <header
+        className={`rounded-[1.8rem] border border-line bg-surface/95 px-6 py-6 shadow-[0_34px_80px_-60px_rgba(16,34,48,0.95)] backdrop-blur sm:px-8 ${getDashboardDropClassName(
+          "overview"
+        )}`}
+        style={{ order: getDashboardBlockVisualOrder("overview") }}
+        onDragOver={(event) => handleDashboardBlockDragOver("overview", event)}
+        onDrop={(event) => handleDashboardBlockDrop("overview", event)}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
+              {isFrench ? "Operations quotidiennes des taches" : "Daily Task Operations"}
+            </p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{APP_NAME}</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">{APP_TAGLINE}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("overview", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("overview")}
+              title={getDashboardDragHandleLabel("overview")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("overview")}
+              aria-expanded={!dashboardBlockCollapsed.overview}
+              aria-label={getCollapseToggleAriaLabel("overview", dashboardBlockCollapsed.overview)}
+              title={getCollapseToggleAriaLabel("overview", dashboardBlockCollapsed.overview)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.overview} />
+            </button>
+          </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-              {isFrench ? "Total taches" : "Total Tasks"}
-            </p>
-            <p className="mt-1 text-2xl font-semibold text-foreground">{tasks.length}</p>
+        {dashboardBlockCollapsed.overview ? (
+          <p className="mt-4 text-xs text-muted">{collapsedHintLabel}</p>
+        ) : (
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                {isFrench ? "Total taches" : "Total Tasks"}
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{tasks.length}</p>
+            </div>
+            <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                {isFrench ? "Actionnables" : "Actionable"}
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{actionableTaskCount}</p>
+            </div>
+            <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                {isFrench ? "Temps planifie" : "Planned Time"}
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
+            </div>
           </div>
-          <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-              {isFrench ? "Actionnables" : "Actionable"}
-            </p>
-            <p className="mt-1 text-2xl font-semibold text-foreground">{actionableTaskCount}</p>
-          </div>
-          <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-              {isFrench ? "Temps planifie" : "Planned Time"}
-            </p>
-            <p className="mt-1 text-2xl font-semibold text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
-          </div>
-        </div>
+        )}
       </header>
 
-      <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
+      <section
+        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
+          "gamingTrack"
+        )}`}
+        style={{ order: getDashboardBlockVisualOrder("gamingTrack") }}
+        onDragOver={(event) => handleDashboardBlockDragOver("gamingTrack", event)}
+        onDrop={(event) => handleDashboardBlockDrop("gamingTrack", event)}
+      >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">Gaming Track</p>
@@ -4463,34 +5074,61 @@ export function AppShell() {
             </p>
           </div>
 
-          <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-line bg-surface-soft p-1.5">
-            {gamingTrackPeriodOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={`${controlButtonClass} ${
-                  gamingTrackPeriod === option.value ? "border-accent bg-accent-soft/60 text-accent" : ""
-                }`}
-                onClick={() => {
-                  setGamingTrackPeriod(option.value);
-                }}
-                disabled={isGamingTrackLoading}
-                aria-pressed={gamingTrackPeriod === option.value}
-                title={formatGamingTrackPeriod(option.value, activeLocale)}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            {!dashboardBlockCollapsed.gamingTrack ? (
+              <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-line bg-surface-soft p-1.5">
+                {gamingTrackPeriodOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`${controlButtonClass} ${
+                      gamingTrackPeriod === option.value ? "border-accent bg-accent-soft/60 text-accent" : ""
+                    }`}
+                    onClick={() => {
+                      setGamingTrackPeriod(option.value);
+                    }}
+                    disabled={isGamingTrackLoading}
+                    aria-pressed={gamingTrackPeriod === option.value}
+                    title={formatGamingTrackPeriod(option.value, activeLocale)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("gamingTrack", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("gamingTrack")}
+              title={getDashboardDragHandleLabel("gamingTrack")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("gamingTrack")}
+              aria-expanded={!dashboardBlockCollapsed.gamingTrack}
+              aria-label={getCollapseToggleAriaLabel("gamingTrack", dashboardBlockCollapsed.gamingTrack)}
+              title={getCollapseToggleAriaLabel("gamingTrack", dashboardBlockCollapsed.gamingTrack)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.gamingTrack} />
+            </button>
           </div>
         </div>
 
-        {isGamingTrackLoading ? (
+        {dashboardBlockCollapsed.gamingTrack ? <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p> : null}
+
+        {!dashboardBlockCollapsed.gamingTrack && isGamingTrackLoading ? (
           <p className="mt-4 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
             {isFrench ? "Chargement du gaming track..." : "Loading gaming track..."}
           </p>
         ) : null}
 
-        {gamingTrackSummary ? (
+        {!dashboardBlockCollapsed.gamingTrack && gamingTrackSummary ? (
           <>
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               <div className="rounded-2xl border border-accent/25 bg-accent-soft/30 px-4 py-4">
@@ -4686,6 +5324,9 @@ export function AppShell() {
                     {isFrench ? "Total gagnees" : "Earned total"}: {gamingTrackSummary.streakProtection.earnedCharges}
                   </p>
                   <p className="mt-1 text-xs text-muted">
+                    {isFrench ? "Total utilisees" : "Used total"}: {gamingTrackSummary.streakProtection.usedCharges}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
                     {gamingTrackSummary.streakProtection.atRisk
                       ? isFrench
                         ? "Serie en risque aujourd'hui."
@@ -4710,6 +5351,25 @@ export function AppShell() {
                       {isFrench ? "Reflection" : "Reflection"} {gamingTrackSummary.streakProtection.projectedReflectionStreak}
                     </p>
                   ) : null}
+                  <button
+                    type="button"
+                    className={`${controlButtonClass} mt-2 w-full`}
+                    onClick={handleUseGamingTrackStreakProtection}
+                    disabled={
+                      isGamingTrackActionPending ||
+                      isGamingTrackLoading ||
+                      !gamingTrackSummary.streakProtection.atRisk ||
+                      gamingTrackSummary.streakProtection.availableCharges <= 0
+                    }
+                  >
+                    {isGamingTrackActionPending
+                      ? isFrench
+                        ? "Traitement..."
+                        : "Processing..."
+                      : isFrench
+                      ? "Utiliser une protection"
+                      : "Use protection"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -4770,6 +5430,14 @@ export function AppShell() {
                     {isFrench ? "Expire le" : "Expires"}{" "}
                     {formatDateOnlyForLocale(gamingTrackSummary.engagement.challenge.expiresOn, activeLocale)}
                   </p>
+                  {gamingTrackSummary.engagement.challenge.claimed ? (
+                    <p className="mt-1 text-xs font-semibold text-emerald-700">
+                      {isFrench ? "Recompense reclamee" : "Reward claimed"}
+                      {gamingTrackSummary.engagement.challenge.claimedAt
+                        ? ` · ${formatDateOnlyForLocale(gamingTrackSummary.engagement.challenge.claimedAt, activeLocale)}`
+                        : ""}
+                    </p>
+                  ) : null}
                   <div className="mt-2 h-1.5 rounded-full bg-surface-soft">
                     <div
                       className={`h-full rounded-full ${
@@ -4787,6 +5455,25 @@ export function AppShell() {
                       }}
                     />
                   </div>
+                  <button
+                    type="button"
+                    className={`${controlButtonClass} mt-2 w-full`}
+                    onClick={handleClaimGamingTrackChallenge}
+                    disabled={
+                      isGamingTrackActionPending ||
+                      isGamingTrackLoading ||
+                      !gamingTrackSummary.engagement.challenge.completed ||
+                      gamingTrackSummary.engagement.challenge.claimed
+                    }
+                  >
+                    {isGamingTrackActionPending
+                      ? isFrench
+                        ? "Traitement..."
+                        : "Processing..."
+                      : isFrench
+                      ? "Reclamer la recompense"
+                      : "Claim reward"}
+                  </button>
                 </div>
 
                 <div className="mt-2 rounded-lg border border-line bg-surface px-2.5 py-2.5">
@@ -4871,14 +5558,17 @@ export function AppShell() {
                   <p className="text-xs font-semibold text-foreground">{isFrench ? "Nudges actifs" : "Active nudges"}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {gamingTrackSummary.engagement.nudges.map((nudge, index) => (
-                      <span
+                      <button
+                        type="button"
                         key={`${nudge.id}-${index}`}
                         className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getGamingTrackNudgeClass(
                           nudge.severity
                         )}`}
+                        onClick={() => handleDismissGamingTrackNudge(nudge.id)}
+                        disabled={isGamingTrackActionPending || isGamingTrackLoading}
                       >
-                        {formatGamingTrackNudgeLabel(nudge.id, activeLocale)}: {nudge.metric}
-                      </span>
+                        {formatGamingTrackNudgeLabel(nudge.id, activeLocale)}: {nudge.metric} ×
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -4887,113 +5577,179 @@ export function AppShell() {
           </>
         ) : null}
 
-        {gamingTrackErrorMessage ? (
+        {!dashboardBlockCollapsed.gamingTrack && gamingTrackActionMessage ? (
+          <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            {gamingTrackActionMessage}
+          </p>
+        ) : null}
+
+        {!dashboardBlockCollapsed.gamingTrack && gamingTrackErrorMessage ? (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             {gamingTrackErrorMessage}
           </p>
         ) : null}
       </section>
 
-      <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-soft p-1.5">
+      <section
+        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
+          "dailyControls"
+        )}`}
+        style={{ order: getDashboardBlockVisualOrder("dailyControls") }}
+        onDragOver={(event) => handleDashboardBlockDragOver("dailyControls", event)}
+        onDrop={(event) => handleDashboardBlockDrop("dailyControls", event)}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
+              {isFrench ? "Pilotage du jour" : "Day controls"}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</h2>
+            <p className="text-sm text-muted">
+              {isFrench ? "Navigation, actions et creation rapide." : "Navigation, actions, and quick create."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className={controlButtonClass}
-              onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
-              disabled={isMutationPending}
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("dailyControls", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("dailyControls")}
+              title={getDashboardDragHandleLabel("dailyControls")}
             >
-              {isFrench ? "Jour precedent" : "Previous Day"}
+              <DragHandleIcon />
             </button>
             <button
               type="button"
-              className={controlButtonClass}
-              onClick={() => handleDateChange(toDateInputValue(new Date()))}
-              disabled={isMutationPending}
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("dailyControls")}
+              aria-expanded={!dashboardBlockCollapsed.dailyControls}
+              aria-label={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
+              title={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
             >
-              {isFrench ? "Aujourd'hui" : "Today"}
-            </button>
-            <button
-              type="button"
-              className={controlButtonClass}
-              onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
-              disabled={isMutationPending}
-            >
-              {isFrench ? "Jour suivant" : "Next Day"}
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.dailyControls} />
             </button>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={controlButtonClass}
-              onClick={handleCarryOverYesterday}
-              disabled={isMutationPending || isLoading || isDayAffirmationSaving}
-            >
-              {isCarryingOverYesterday
-                ? isFrench
-                  ? "Copie..."
-                  : "Carrying..."
-                : isFrench
-                ? "Copier les taches d'hier"
-                : "Carry Over Yesterday"}
-            </button>
-            <button
-              type="button"
-              className={primaryButtonClass}
-              onClick={() => openCreateTaskDialog()}
-              disabled={isMutationPending}
-            >
-              {isFrench ? "Nouvelle tache" : "New Task"}
-            </button>
-          </div>
-
-          <label className="flex min-w-[210px] flex-col gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-            {isFrench ? "Date selectionnee" : "Selected Date"}
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(event) => {
-                if (event.target.value) {
-                  handleDateChange(event.target.value);
-                }
-              }}
-              disabled={isMutationPending}
-              className={textFieldClass}
-            />
-          </label>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
-          <p className="font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</p>
-          <p className="font-medium">
-            {isLoading
-              ? isFrench
-                ? "Chargement des taches..."
-                : "Loading tasks..."
-              : isFrench
-              ? `${tasks.length} tache${tasks.length === 1 ? "" : "s"} pour la date selectionnee`
-              : `${tasks.length} task${tasks.length === 1 ? "" : "s"} for the selected date`}
-          </p>
-          <p className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-muted">
-            {isFrench ? "Completion" : "Completion"} {completionRate}%
-          </p>
-        </div>
+        {dashboardBlockCollapsed.dailyControls ? (
+          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-soft p-1.5">
+                <button
+                  type="button"
+                  className={controlButtonClass}
+                  onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
+                  disabled={isMutationPending}
+                >
+                  {isFrench ? "Jour precedent" : "Previous Day"}
+                </button>
+                <button
+                  type="button"
+                  className={controlButtonClass}
+                  onClick={() => handleDateChange(toDateInputValue(new Date()))}
+                  disabled={isMutationPending}
+                >
+                  {isFrench ? "Aujourd'hui" : "Today"}
+                </button>
+                <button
+                  type="button"
+                  className={controlButtonClass}
+                  onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
+                  disabled={isMutationPending}
+                >
+                  {isFrench ? "Jour suivant" : "Next Day"}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={controlButtonClass}
+                  onClick={handleCarryOverYesterday}
+                  disabled={isMutationPending || isLoading || isDayAffirmationSaving}
+                >
+                  {isCarryingOverYesterday
+                    ? isFrench
+                      ? "Copie..."
+                      : "Carrying..."
+                    : isFrench
+                    ? "Copier les taches d'hier"
+                    : "Carry Over Yesterday"}
+                </button>
+                <button
+                  type="button"
+                  className={primaryButtonClass}
+                  onClick={() => openCreateTaskDialog()}
+                  disabled={isMutationPending}
+                >
+                  {isFrench ? "Nouvelle tache" : "New Task"}
+                </button>
+              </div>
+
+              <label className="flex min-w-[210px] flex-col gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                {isFrench ? "Date selectionnee" : "Selected Date"}
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      handleDateChange(event.target.value);
+                    }
+                  }}
+                  disabled={isMutationPending}
+                  className={textFieldClass}
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
+              <p className="font-medium">
+                {isLoading
+                  ? isFrench
+                    ? "Chargement des taches..."
+                    : "Loading tasks..."
+                  : isFrench
+                  ? `${tasks.length} tache${tasks.length === 1 ? "" : "s"} pour la date selectionnee`
+                  : `${tasks.length} task${tasks.length === 1 ? "" : "s"} for the selected date`}
+              </p>
+              <p className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-muted">
+                {isFrench ? "Completion" : "Completion"} {completionRate}%
+              </p>
+            </div>
+          </>
+        )}
       </section>
 
       {carryOverMessage ? (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+        <section
+          className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
+          style={{ order: getDashboardBlockVisualOrder("dailyControls", 1) }}
+        >
           {carryOverMessage}
         </section>
       ) : null}
 
       {carryOverErrorMessage ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+        <section
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+          style={{ order: getDashboardBlockVisualOrder("dailyControls", 2) }}
+        >
           {carryOverErrorMessage}
         </section>
       ) : null}
 
-      <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
+      <section
+        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
+          "affirmation"
+        )}`}
+        style={{ order: getDashboardBlockVisualOrder("affirmation") }}
+        onDragOver={(event) => handleDashboardBlockDragOver("affirmation", event)}
+        onDrop={(event) => handleDashboardBlockDrop("affirmation", event)}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">Miracle Morning</p>
@@ -5006,172 +5762,277 @@ export function AppShell() {
                 : "One intentional statement for the day. Mark it done to include it in completion."}
             </p>
           </div>
-          <label className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm font-semibold text-foreground">
-            <input
-              type="checkbox"
-              checked={isAffirmationCompleted}
-              onChange={(event) => {
-                void saveDayAffirmation({ isCompleted: event.target.checked });
-              }}
-              disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-            />
-            {isFrench ? "Affirmation terminee" : "Affirmation completed"}
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            {!dashboardBlockCollapsed.affirmation ? (
+              <label className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm font-semibold text-foreground">
+                <input
+                  type="checkbox"
+                  checked={isAffirmationCompleted}
+                  onChange={(event) => {
+                    void saveDayAffirmation({ isCompleted: event.target.checked });
+                  }}
+                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                />
+                {isFrench ? "Affirmation terminee" : "Affirmation completed"}
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("affirmation", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("affirmation")}
+              title={getDashboardDragHandleLabel("affirmation")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("affirmation")}
+              aria-expanded={!dashboardBlockCollapsed.affirmation}
+              aria-label={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
+              title={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.affirmation} />
+            </button>
+          </div>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <label className="block text-sm font-semibold text-foreground">
-            {isFrench ? "Phrase du jour" : "Today statement"}
-            <textarea
-              value={dayAffirmationDraft}
-              onChange={(event) => {
-                setDayAffirmationDraft(event.target.value);
-                setDayAffirmationErrorMessage(null);
-              }}
-              className={`${textFieldClass} mt-1 min-h-[94px] resize-y`}
-              maxLength={DAY_AFFIRMATION_MAX_LENGTH}
-              disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-            />
-          </label>
-          <button
-            type="button"
-            className={primaryButtonClass}
-            onClick={() => {
-              void saveDayAffirmation({ text: dayAffirmationDraft });
-            }}
-            disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-          >
-            {isDayAffirmationSaving
+        {dashboardBlockCollapsed.affirmation ? (
+          <p className="mt-3 text-xs text-muted">
+            {collapsedHintLabel}{" "}
+            {isAffirmationCompleted
               ? isFrench
-                ? "Enregistrement..."
-                : "Saving..."
+                ? "Statut: terminee."
+                : "Status: completed."
               : isFrench
-              ? "Enregistrer l'affirmation"
-              : "Save affirmation"}
-          </button>
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
-          <p>
-            {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
+              ? "Statut: en attente."
+              : "Status: pending."}
           </p>
-          {dayAffirmation?.updatedAt ? (
-            <p>
-              {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
-              {formatDateTime(dayAffirmation.updatedAt, activeLocale, activeTimeZone)}
-            </p>
-          ) : null}
-        </div>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Phrase du jour" : "Today statement"}
+                <textarea
+                  value={dayAffirmationDraft}
+                  onChange={(event) => {
+                    setDayAffirmationDraft(event.target.value);
+                    setDayAffirmationErrorMessage(null);
+                  }}
+                  className={`${textFieldClass} mt-1 min-h-[94px] resize-y`}
+                  maxLength={DAY_AFFIRMATION_MAX_LENGTH}
+                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                />
+              </label>
+              <button
+                type="button"
+                className={primaryButtonClass}
+                onClick={() => {
+                  void saveDayAffirmation({ text: dayAffirmationDraft });
+                }}
+                disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+              >
+                {isDayAffirmationSaving
+                  ? isFrench
+                    ? "Enregistrement..."
+                    : "Saving..."
+                  : isFrench
+                  ? "Enregistrer l'affirmation"
+                  : "Save affirmation"}
+              </button>
+            </div>
 
-        {dayAffirmationErrorMessage ? (
-          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {dayAffirmationErrorMessage}
-          </p>
-        ) : null}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+              <p>
+                {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
+              </p>
+              {dayAffirmation?.updatedAt ? (
+                <p>
+                  {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+                  {formatDateTime(dayAffirmation.updatedAt, activeLocale, activeTimeZone)}
+                </p>
+              ) : null}
+            </div>
+
+            {dayAffirmationErrorMessage ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {dayAffirmationErrorMessage}
+              </p>
+            ) : null}
+          </>
+        )}
       </section>
 
       {errorMessage ? (
-        <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+        <section
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
+          style={{ order: getDashboardBlockVisualOrder("board", 1) }}
+        >
           {errorMessage}
         </section>
       ) : null}
 
       {dragErrorMessage ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+        <section
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+          style={{ order: getDashboardBlockVisualOrder("board", 2) }}
+        >
           {dragErrorMessage}
         </section>
       ) : null}
 
-      {isEmptyBoard ? (
-        <section className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted shadow-sm">
-          <p className="font-semibold text-foreground">
-            {isFrench
-              ? "Aucune tache n'est planifiee pour cette date."
-              : "No tasks are scheduled for this date yet."}
-          </p>
-          <p className="mt-1">
-            {isFrench
-              ? "Creez votre premiere tache pour remplir ce tableau."
-              : "Create your first task to populate this board."}
-          </p>
-        </section>
-      ) : null}
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={pointerWithin}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={() => setActiveTaskId(null)}
+      <section
+        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
+          "board"
+        )}`}
+        style={{ order: getDashboardBlockVisualOrder("board") }}
+        onDragOver={(event) => handleDashboardBlockDragOver("board", event)}
+        onDrop={(event) => handleDashboardBlockDrop("board", event)}
       >
-        <main className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {boardColumns.map((column) => {
-            const columnTasks = tasksByStatus[column.status];
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
+              {isFrench ? "Execution quotidienne" : "Daily execution"}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">{isFrench ? "Tableau Kanban" : "Kanban board"}</h2>
+            <p className="text-sm text-muted">
+              {isFrench
+                ? "Faites glisser les taches entre les statuts."
+                : "Drag tasks across columns as work progresses."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("board", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("board")}
+              title={getDashboardDragHandleLabel("board")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("board")}
+              aria-expanded={!dashboardBlockCollapsed.board}
+              aria-label={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
+              title={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.board} />
+            </button>
+          </div>
+        </div>
 
-            return (
-              <section
-                key={column.status}
-                className={`flex min-h-[340px] flex-col rounded-3xl border border-line border-t-4 bg-surface px-4 py-4 shadow-[0_16px_35px_-30px_rgba(16,34,48,0.9)] ${statusColumnClassByStatus[column.status]}`}
-              >
-                <header className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted">
-                    {column.label}
-                  </h2>
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusChipClassByStatus[column.status]}`}
-                    >
-                      {columnTasks.length}
-                    </span>
-                    <button
-                      type="button"
-                      className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
-                      onClick={() => openCreateTaskDialog(column.status)}
-                      disabled={isMutationPending}
-                    >
-                      + {isFrench ? "Tache" : "Task"}
-                    </button>
-                  </div>
-                </header>
-
-                <TaskColumn status={column.status}>
-                  {isLoading ? (
-                    <>
-                      <div className="h-20 animate-pulse rounded-2xl bg-surface-soft" />
-                      <div className="h-16 animate-pulse rounded-2xl bg-surface-soft" />
-                    </>
-                  ) : columnTasks.length > 0 ? (
-                    columnTasks.map((task) => {
-                      const isSavingTask =
-                        pendingTaskIds.includes(task.id) ||
-                        (isDeletingTask && taskToDelete?.id === task.id) ||
-                        (isSubmittingTask && editingTaskId === task.id);
-
-                      return (
-                        <TaskCard
-                          key={task.id}
-                          locale={activeLocale}
-                          task={task}
-                          isDragging={activeTaskId === task.id}
-                          isSaving={isSavingTask}
-                          onEdit={openEditTaskDialog}
-                          onDelete={openDeleteDialog}
-                        />
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-line bg-surface-soft px-3 py-4 text-sm text-muted">
-                      {column.emptyLabel}
-                    </div>
-                  )}
-                </TaskColumn>
+        {dashboardBlockCollapsed.board ? (
+          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
+        ) : (
+          <>
+            {isEmptyBoard ? (
+              <section className="mt-4 rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted shadow-sm">
+                <p className="font-semibold text-foreground">
+                  {isFrench
+                    ? "Aucune tache n'est planifiee pour cette date."
+                    : "No tasks are scheduled for this date yet."}
+                </p>
+                <p className="mt-1">
+                  {isFrench
+                    ? "Creez votre premiere tache pour remplir ce tableau."
+                    : "Create your first task to populate this board."}
+                </p>
               </section>
-            );
-          })}
-        </main>
-      </DndContext>
+            ) : null}
 
-      <section className="rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={pointerWithin}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={() => setActiveTaskId(null)}
+            >
+              <main className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {boardColumns.map((column) => {
+                  const columnTasks = tasksByStatus[column.status];
+
+                  return (
+                    <section
+                      key={column.status}
+                      className={`flex min-h-[340px] flex-col rounded-3xl border border-line border-t-4 bg-surface px-4 py-4 shadow-[0_16px_35px_-30px_rgba(16,34,48,0.9)] ${statusColumnClassByStatus[column.status]}`}
+                    >
+                      <header className="flex items-center justify-between gap-2">
+                        <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted">
+                          {column.label}
+                        </h2>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusChipClassByStatus[column.status]}`}
+                          >
+                            {columnTasks.length}
+                          </span>
+                          <button
+                            type="button"
+                            className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+                            onClick={() => openCreateTaskDialog(column.status)}
+                            disabled={isMutationPending}
+                          >
+                            + {isFrench ? "Tache" : "Task"}
+                          </button>
+                        </div>
+                      </header>
+
+                      <TaskColumn status={column.status}>
+                        {isLoading ? (
+                          <>
+                            <div className="h-20 animate-pulse rounded-2xl bg-surface-soft" />
+                            <div className="h-16 animate-pulse rounded-2xl bg-surface-soft" />
+                          </>
+                        ) : columnTasks.length > 0 ? (
+                          columnTasks.map((task) => {
+                            const isSavingTask =
+                              pendingTaskIds.includes(task.id) ||
+                              (isDeletingTask && taskToDelete?.id === task.id) ||
+                              (isSubmittingTask && editingTaskId === task.id);
+
+                            return (
+                              <TaskCard
+                                key={task.id}
+                                locale={activeLocale}
+                                task={task}
+                                isDragging={activeTaskId === task.id}
+                                isSaving={isSavingTask}
+                                onEdit={openEditTaskDialog}
+                                onDelete={openDeleteDialog}
+                              />
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-line bg-surface-soft px-3 py-4 text-sm text-muted">
+                            {column.emptyLabel}
+                          </div>
+                        )}
+                      </TaskColumn>
+                    </section>
+                  );
+                })}
+              </main>
+            </DndContext>
+          </>
+        )}
+      </section>
+
+      <section
+        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
+          "bilan"
+        )}`}
+        style={{ order: getDashboardBlockVisualOrder("bilan") }}
+        onDragOver={(event) => handleDashboardBlockDragOver("bilan", event)}
+        onDrop={(event) => handleDashboardBlockDrop("bilan", event)}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
@@ -5186,146 +6047,177 @@ export function AppShell() {
                 : "Capture wins, blockers, and your top 3 for tomorrow."}
             </p>
           </div>
-          <button
-            type="button"
-            className={primaryButtonClass}
-            onClick={handleSaveDayBilan}
-            disabled={isDayBilanLoading || isDayBilanSaving}
-          >
-            {isDayBilanSaving
-              ? isFrench
-                ? "Enregistrement..."
-                : "Saving..."
-              : isFrench
-              ? "Enregistrer le bilan"
-              : "Save bilan"}
-          </button>
-        </div>
-
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
-              {isFrench ? "Taches terminees" : "Done Tasks"}
-            </p>
-            <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.done.length}</p>
-          </div>
-          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
-              {isFrench ? "Actionnables" : "Actionable"}
-            </p>
-            <p className="mt-1 text-xl font-semibold text-foreground">{actionableTaskCount}</p>
-          </div>
-          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
-              {isFrench ? "Annulees" : "Cancelled"}
-            </p>
-            <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.cancelled.length}</p>
-          </div>
-          <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
-              {isFrench ? "Affirmation" : "Affirmation"}
-            </p>
-            <p className="mt-1 text-xl font-semibold text-foreground">
-              {isAffirmationCompleted
-                ? isFrench
-                  ? "Terminee"
-                  : "Done"
-                : isFrench
-                ? "En attente"
-                : "Pending"}
-            </p>
-          </div>
-        </div>
-
-        {isDayBilanLoading ? (
-          <p className="mt-4 text-sm text-muted">
-            {isFrench ? "Chargement du bilan du jour..." : "Loading day bilan..."}
-          </p>
-        ) : (
-          <div className="mt-4 space-y-3">
-            <label className="block text-sm font-semibold text-foreground">
-              {isFrench ? "Humeur (1-5)" : "Mood (1-5)"}
-              <select
-                value={dayBilanFormValues.mood}
-                onChange={(event) => updateDayBilanField("mood", event.target.value)}
-                className={textFieldClass}
-                disabled={isDayBilanSaving}
+          <div className="flex flex-wrap items-center gap-2">
+            {!dashboardBlockCollapsed.bilan ? (
+              <button
+                type="button"
+                className={primaryButtonClass}
+                onClick={handleSaveDayBilan}
+                disabled={isDayBilanLoading || isDayBilanSaving}
               >
-                <option value="">{isFrench ? "Non defini" : "Not set"}</option>
-                <option value="1">{isFrench ? "1 - Journee tres difficile" : "1 - Very hard day"}</option>
-                <option value="2">{isFrench ? "2 - Journee difficile" : "2 - Hard day"}</option>
-                <option value="3">{isFrench ? "3 - Journee neutre" : "3 - Neutral day"}</option>
-                <option value="4">{isFrench ? "4 - Bonne journee" : "4 - Good day"}</option>
-                <option value="5">{isFrench ? "5 - Excellente journee" : "5 - Excellent day"}</option>
-              </select>
-            </label>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Victoires" : "Wins"}
-                <textarea
-                  value={dayBilanFormValues.wins}
-                  onChange={(event) => updateDayBilanField("wins", event.target.value)}
-                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
-                  disabled={isDayBilanSaving}
-                />
-              </label>
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Blocages" : "Blockers"}
-                <textarea
-                  value={dayBilanFormValues.blockers}
-                  onChange={(event) => updateDayBilanField("blockers", event.target.value)}
-                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
-                  disabled={isDayBilanSaving}
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Lecons apprises" : "Lessons learned"}
-                <textarea
-                  value={dayBilanFormValues.lessonsLearned}
-                  onChange={(event) => updateDayBilanField("lessonsLearned", event.target.value)}
-                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
-                  disabled={isDayBilanSaving}
-                />
-              </label>
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Top 3 de demain" : "Tomorrow top 3"}
-                <textarea
-                  value={dayBilanFormValues.tomorrowTop3}
-                  onChange={(event) => updateDayBilanField("tomorrowTop3", event.target.value)}
-                  className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                  maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
-                  disabled={isDayBilanSaving}
-                />
-              </label>
-            </div>
+                {isDayBilanSaving
+                  ? isFrench
+                    ? "Enregistrement..."
+                    : "Saving..."
+                  : isFrench
+                  ? "Enregistrer le bilan"
+                  : "Save bilan"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("bilan", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("bilan")}
+              title={getDashboardDragHandleLabel("bilan")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("bilan")}
+              aria-expanded={!dashboardBlockCollapsed.bilan}
+              aria-label={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
+              title={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.bilan} />
+            </button>
           </div>
+        </div>
+
+        {dashboardBlockCollapsed.bilan ? (
+          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+                  {isFrench ? "Taches terminees" : "Done Tasks"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.done.length}</p>
+              </div>
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+                  {isFrench ? "Actionnables" : "Actionable"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{actionableTaskCount}</p>
+              </div>
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+                  {isFrench ? "Annulees" : "Cancelled"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.cancelled.length}</p>
+              </div>
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+                  {isFrench ? "Affirmation" : "Affirmation"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">
+                  {isAffirmationCompleted
+                    ? isFrench
+                      ? "Terminee"
+                      : "Done"
+                    : isFrench
+                    ? "En attente"
+                    : "Pending"}
+                </p>
+              </div>
+            </div>
+
+            {isDayBilanLoading ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Chargement du bilan du jour..." : "Loading day bilan..."}
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <label className="block text-sm font-semibold text-foreground">
+                  {isFrench ? "Humeur (1-5)" : "Mood (1-5)"}
+                  <select
+                    value={dayBilanFormValues.mood}
+                    onChange={(event) => updateDayBilanField("mood", event.target.value)}
+                    className={textFieldClass}
+                    disabled={isDayBilanSaving}
+                  >
+                    <option value="">{isFrench ? "Non defini" : "Not set"}</option>
+                    <option value="1">{isFrench ? "1 - Journee tres difficile" : "1 - Very hard day"}</option>
+                    <option value="2">{isFrench ? "2 - Journee difficile" : "2 - Hard day"}</option>
+                    <option value="3">{isFrench ? "3 - Journee neutre" : "3 - Neutral day"}</option>
+                    <option value="4">{isFrench ? "4 - Bonne journee" : "4 - Good day"}</option>
+                    <option value="5">{isFrench ? "5 - Excellente journee" : "5 - Excellent day"}</option>
+                  </select>
+                </label>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block text-sm font-semibold text-foreground">
+                    {isFrench ? "Victoires" : "Wins"}
+                    <textarea
+                      value={dayBilanFormValues.wins}
+                      onChange={(event) => updateDayBilanField("wins", event.target.value)}
+                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      disabled={isDayBilanSaving}
+                    />
+                  </label>
+                  <label className="block text-sm font-semibold text-foreground">
+                    {isFrench ? "Blocages" : "Blockers"}
+                    <textarea
+                      value={dayBilanFormValues.blockers}
+                      onChange={(event) => updateDayBilanField("blockers", event.target.value)}
+                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      disabled={isDayBilanSaving}
+                    />
+                  </label>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block text-sm font-semibold text-foreground">
+                    {isFrench ? "Lecons apprises" : "Lessons learned"}
+                    <textarea
+                      value={dayBilanFormValues.lessonsLearned}
+                      onChange={(event) => updateDayBilanField("lessonsLearned", event.target.value)}
+                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      disabled={isDayBilanSaving}
+                    />
+                  </label>
+                  <label className="block text-sm font-semibold text-foreground">
+                    {isFrench ? "Top 3 de demain" : "Tomorrow top 3"}
+                    <textarea
+                      value={dayBilanFormValues.tomorrowTop3}
+                      onChange={(event) => updateDayBilanField("tomorrowTop3", event.target.value)}
+                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
+                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      disabled={isDayBilanSaving}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {dayBilan?.updatedAt ? (
+              <p className="mt-3 text-xs text-muted">
+                {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+                {formatDateTime(dayBilan.updatedAt, activeLocale, activeTimeZone)}
+              </p>
+            ) : null}
+
+            {dayBilanErrorMessage ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {dayBilanErrorMessage}
+              </p>
+            ) : null}
+
+            {dayBilanSuccessMessage ? (
+              <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                {dayBilanSuccessMessage}
+              </p>
+            ) : null}
+          </>
         )}
-
-        {dayBilan?.updatedAt ? (
-          <p className="mt-3 text-xs text-muted">
-            {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
-            {formatDateTime(dayBilan.updatedAt, activeLocale, activeTimeZone)}
-          </p>
-        ) : null}
-
-        {dayBilanErrorMessage ? (
-          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {dayBilanErrorMessage}
-          </p>
-        ) : null}
-
-        {dayBilanSuccessMessage ? (
-          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-            {dayBilanSuccessMessage}
-          </p>
-        ) : null}
       </section>
 
       {isTaskDialogOpen ? (

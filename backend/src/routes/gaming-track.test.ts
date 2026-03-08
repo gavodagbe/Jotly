@@ -45,6 +45,24 @@ class InMemoryGamingTrackStore implements GamingTrackStore {
   private readonly taskRecords: Array<GamingTrackTaskRecord & { userId: string }> = [];
   private readonly affirmationRecords: Array<GamingTrackAffirmationRecord & { userId: string }> = [];
   private readonly bilanRecords: Array<GamingTrackBilanRecord & { userId: string }> = [];
+  private readonly challengeClaims: Array<{
+    userId: string;
+    challengeId: string;
+    challengeWeekStart: Date;
+    rewardXp: number;
+    claimedAt: Date;
+  }> = [];
+  private readonly streakProtectionUsages: Array<{
+    userId: string;
+    usedOn: Date;
+    createdAt: Date;
+  }> = [];
+  private readonly nudgeDismissals: Array<{
+    userId: string;
+    nudgeId: string;
+    dismissedOn: Date;
+    createdAt: Date;
+  }> = [];
 
   seedTask(userId: string, record: GamingTrackTaskRecord) {
     this.taskRecords.push({ userId, ...record });
@@ -99,6 +117,132 @@ class InMemoryGamingTrackStore implements GamingTrackStore {
           lessonsLearned,
           tomorrowTop3,
         })),
+    };
+  }
+
+  async getChallengeClaim(userId: string, challengeId: string, challengeWeekStart: Date) {
+    const match = this.challengeClaims.find(
+      (claim) =>
+        claim.userId === userId &&
+        claim.challengeId === challengeId &&
+        claim.challengeWeekStart.getTime() === challengeWeekStart.getTime()
+    );
+
+    if (!match) {
+      return null;
+    }
+
+    return {
+      challengeId: match.challengeId,
+      challengeWeekStart: match.challengeWeekStart,
+      rewardXp: match.rewardXp,
+      claimedAt: match.claimedAt,
+    };
+  }
+
+  async createChallengeClaim(input: {
+    userId: string;
+    challengeId: string;
+    challengeWeekStart: Date;
+    rewardXp: number;
+  }) {
+    const existing = await this.getChallengeClaim(input.userId, input.challengeId, input.challengeWeekStart);
+    if (existing) {
+      throw new Error("Challenge already claimed");
+    }
+
+    const claim = {
+      userId: input.userId,
+      challengeId: input.challengeId,
+      challengeWeekStart: input.challengeWeekStart,
+      rewardXp: input.rewardXp,
+      claimedAt: new Date(),
+    };
+    this.challengeClaims.push(claim);
+    return {
+      challengeId: claim.challengeId,
+      challengeWeekStart: claim.challengeWeekStart,
+      rewardXp: claim.rewardXp,
+      claimedAt: claim.claimedAt,
+    };
+  }
+
+  async countStreakProtectionUsages(userId: string, endExclusive: Date) {
+    return this.streakProtectionUsages.filter(
+      (usage) => usage.userId === userId && usage.usedOn.getTime() < endExclusive.getTime()
+    ).length;
+  }
+
+  async getStreakProtectionUsage(userId: string, usedOn: Date) {
+    const match = this.streakProtectionUsages.find(
+      (usage) => usage.userId === userId && usage.usedOn.getTime() === usedOn.getTime()
+    );
+    if (!match) {
+      return null;
+    }
+
+    return {
+      usedOn: match.usedOn,
+      createdAt: match.createdAt,
+    };
+  }
+
+  async createStreakProtectionUsage(input: { userId: string; usedOn: Date }) {
+    const existing = await this.getStreakProtectionUsage(input.userId, input.usedOn);
+    if (existing) {
+      throw new Error("Streak protection already used");
+    }
+
+    const usage = {
+      userId: input.userId,
+      usedOn: input.usedOn,
+      createdAt: new Date(),
+    };
+    this.streakProtectionUsages.push(usage);
+    return {
+      usedOn: usage.usedOn,
+      createdAt: usage.createdAt,
+    };
+  }
+
+  async getDismissedNudges(userId: string, start: Date, endExclusive: Date) {
+    return this.nudgeDismissals
+      .filter(
+        (dismissal) =>
+          dismissal.userId === userId &&
+          dismissal.dismissedOn.getTime() >= start.getTime() &&
+          dismissal.dismissedOn.getTime() < endExclusive.getTime()
+      )
+      .map((dismissal) => ({
+        nudgeId: dismissal.nudgeId,
+        dismissedOn: dismissal.dismissedOn,
+        createdAt: dismissal.createdAt,
+      }));
+  }
+
+  async createNudgeDismissal(input: { userId: string; nudgeId: string; dismissedOn: Date }) {
+    const existing = this.nudgeDismissals.find(
+      (dismissal) =>
+        dismissal.userId === input.userId &&
+        dismissal.nudgeId === input.nudgeId &&
+        dismissal.dismissedOn.getTime() === input.dismissedOn.getTime()
+    );
+    if (existing) {
+      throw new Error("Nudge already dismissed");
+    }
+
+    const dismissal = {
+      userId: input.userId,
+      nudgeId: input.nudgeId,
+      dismissedOn: input.dismissedOn,
+      createdAt: new Date(),
+    };
+    this.nudgeDismissals.push(dismissal);
+
+    return {
+      nudgeId: dismissal.nudgeId,
+      dismissedOn: dismissal.dismissedOn,
+      createdAt: dismissal.createdAt,
     };
   }
 }
@@ -336,6 +480,112 @@ function seedWeekFixture(store: InMemoryGamingTrackStore, userId: string) {
   });
 }
 
+function seedCompletedChallengeFixture(store: InMemoryGamingTrackStore, userId: string) {
+  const challengeWeekDays = [
+    "2026-03-02",
+    "2026-03-03",
+    "2026-03-04",
+    "2026-03-05",
+    "2026-03-06",
+    "2026-03-07",
+    "2026-03-08",
+  ];
+
+  for (const [index, day] of challengeWeekDays.entries()) {
+    store.seedTask(userId, {
+      targetDate: parseDate(day),
+      status: "done",
+      rolledFromTaskId: index <= 2 ? `carry-${index}` : null,
+    });
+
+    store.seedTask(userId, {
+      targetDate: parseDate(day),
+      status: "done",
+      rolledFromTaskId: null,
+    });
+  }
+
+  for (const day of challengeWeekDays) {
+    store.seedAffirmation(userId, {
+      targetDate: parseDate(day),
+      isCompleted: true,
+    });
+    store.seedBilan(userId, {
+      targetDate: parseDate(day),
+      mood: 4,
+      wins: null,
+      blockers: null,
+      lessonsLearned: null,
+      tomorrowTop3: null,
+    });
+  }
+}
+
+function seedStreakRiskFixture(store: InMemoryGamingTrackStore, userId: string) {
+  // Previous week qualifies at least three weekly missions, earning one streak-protection charge.
+  const previousWeekDays = [
+    "2026-02-23",
+    "2026-02-24",
+    "2026-02-25",
+    "2026-02-26",
+    "2026-02-27",
+    "2026-02-28",
+    "2026-03-01",
+  ];
+
+  for (const day of previousWeekDays) {
+    store.seedTask(userId, {
+      targetDate: parseDate(day),
+      status: "done",
+      rolledFromTaskId: null,
+    });
+  }
+  // Add one extra done task to reach mission target of 8 done tasks.
+  store.seedTask(userId, {
+    targetDate: parseDate("2026-02-23"),
+    status: "done",
+    rolledFromTaskId: null,
+  });
+
+  for (const day of ["2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27"]) {
+    store.seedAffirmation(userId, {
+      targetDate: parseDate(day),
+      isCompleted: true,
+    });
+    store.seedBilan(userId, {
+      targetDate: parseDate(day),
+      mood: 4,
+      wins: null,
+      blockers: null,
+      lessonsLearned: null,
+      tomorrowTop3: null,
+    });
+  }
+
+  // Current week keeps yesterday execution but no execution on anchor day => streak at risk.
+  for (const day of ["2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07"]) {
+    store.seedTask(userId, {
+      targetDate: parseDate(day),
+      status: "done",
+      rolledFromTaskId: null,
+    });
+  }
+  for (const day of ["2026-03-03", "2026-03-04"]) {
+    store.seedAffirmation(userId, {
+      targetDate: parseDate(day),
+      isCompleted: true,
+    });
+    store.seedBilan(userId, {
+      targetDate: parseDate(day),
+      mood: 3,
+      wins: null,
+      blockers: null,
+      lessonsLearned: null,
+      tomorrowTop3: null,
+    });
+  }
+}
+
 test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async (t) => {
   const { app, gamingTrackStore } = createAppForTest();
 
@@ -415,6 +665,8 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
         target: number;
         progress: number;
         completed: boolean;
+        claimed: boolean;
+        claimedAt: string | null;
         rewardXp: number;
         expiresOn: string;
       };
@@ -534,6 +786,7 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
   assert.equal(data.streakProtection.availableCharges, 0);
   assert.equal(data.streakProtection.maxCharges, 3);
   assert.equal(data.streakProtection.earnedCharges, 0);
+  assert.equal(data.streakProtection.usedCharges, 0);
   assert.equal(data.streakProtection.atRisk, false);
   assert.equal(data.streakProtection.recommended, false);
   assert.equal(data.streakProtection.projectedExecutionStreak, 0);
@@ -555,6 +808,9 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
   assert.equal(data.historicalTrends.monthly[11]?.rangeStart, "2026-03-01");
   assert.equal(data.historicalTrends.monthly[11]?.rangeEnd, "2026-03-08");
   assert.equal(data.historicalTrends.monthly[11]?.overallScore, 44);
+
+  assert.equal(data.engagement.challenge.claimed, false);
+  assert.equal(data.engagement.challenge.claimedAt, null);
 
   assert.match(
     data.engagement.challenge.id,
@@ -581,6 +837,175 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
 
   assert.equal(data.engagement.nudges.length >= 1, true);
   assert.equal(data.engagement.nudges.length <= 3, true);
+});
+
+test("POST /api/gaming-track/challenge/claim claims completed weekly challenge", async (t) => {
+  const { app, gamingTrackStore } = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const userId = await getCurrentUserId(app, token);
+  seedCompletedChallengeFixture(gamingTrackStore, userId);
+
+  const firstClaimResponse = await app.inject({
+    method: "POST",
+    url: "/api/gaming-track/challenge/claim",
+    headers: authHeaders(token),
+    payload: {
+      date: "2026-03-08",
+    },
+  });
+
+  assert.equal(firstClaimResponse.statusCode, 200);
+  const firstPayload = parsePayload(firstClaimResponse.payload);
+  const firstData = firstPayload.data as {
+    challengeId: string;
+    challengeWeekStart: string;
+    rewardXp: number;
+    alreadyClaimed: boolean;
+    claimedAt: string;
+  };
+
+  assert.equal(firstData.challengeId, "finish_10_tasks");
+  assert.equal(firstData.challengeWeekStart, "2026-03-02");
+  assert.equal(firstData.rewardXp, 60);
+  assert.equal(firstData.alreadyClaimed, false);
+  assert.equal(Number.isNaN(new Date(firstData.claimedAt).getTime()), false);
+
+  const secondClaimResponse = await app.inject({
+    method: "POST",
+    url: "/api/gaming-track/challenge/claim",
+    headers: authHeaders(token),
+    payload: {
+      date: "2026-03-08",
+    },
+  });
+
+  assert.equal(secondClaimResponse.statusCode, 200);
+  const secondPayload = parsePayload(secondClaimResponse.payload);
+  const secondData = secondPayload.data as { alreadyClaimed: boolean };
+  assert.equal(secondData.alreadyClaimed, true);
+});
+
+test("POST /api/gaming-track/streak-protection/use consumes available charge when streak is at risk", async (t) => {
+  const { app, gamingTrackStore } = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const userId = await getCurrentUserId(app, token);
+  seedStreakRiskFixture(gamingTrackStore, userId);
+
+  const summaryBeforeResponse = await app.inject({
+    method: "GET",
+    url: "/api/gaming-track/summary?date=2026-03-08&period=week",
+    headers: authHeaders(token),
+  });
+  assert.equal(summaryBeforeResponse.statusCode, 200);
+  const summaryBefore = parsePayload(summaryBeforeResponse.payload);
+  const summaryBeforeData = summaryBefore.data as {
+    streakProtection: { availableCharges: number; atRisk: boolean };
+  };
+  assert.equal(summaryBeforeData.streakProtection.atRisk, true);
+  assert.equal(summaryBeforeData.streakProtection.availableCharges, 1);
+
+  const firstUseResponse = await app.inject({
+    method: "POST",
+    url: "/api/gaming-track/streak-protection/use",
+    headers: authHeaders(token),
+    payload: {
+      date: "2026-03-08",
+    },
+  });
+
+  assert.equal(firstUseResponse.statusCode, 200);
+  const firstUsePayload = parsePayload(firstUseResponse.payload);
+  const firstUseData = firstUsePayload.data as { usedOn: string; remainingCharges: number; alreadyUsed: boolean };
+  assert.equal(firstUseData.usedOn, "2026-03-08");
+  assert.equal(firstUseData.remainingCharges, 0);
+  assert.equal(firstUseData.alreadyUsed, false);
+
+  const secondUseResponse = await app.inject({
+    method: "POST",
+    url: "/api/gaming-track/streak-protection/use",
+    headers: authHeaders(token),
+    payload: {
+      date: "2026-03-08",
+    },
+  });
+
+  assert.equal(secondUseResponse.statusCode, 200);
+  const secondUsePayload = parsePayload(secondUseResponse.payload);
+  const secondUseData = secondUsePayload.data as { alreadyUsed: boolean; remainingCharges: number };
+  assert.equal(secondUseData.alreadyUsed, true);
+  assert.equal(secondUseData.remainingCharges, 0);
+});
+
+test("POST /api/gaming-track/nudges/dismiss hides dismissed nudge from summary", async (t) => {
+  const { app, gamingTrackStore } = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const userId = await getCurrentUserId(app, token);
+  seedStreakRiskFixture(gamingTrackStore, userId);
+
+  const summaryBeforeResponse = await app.inject({
+    method: "GET",
+    url: "/api/gaming-track/summary?date=2026-03-08&period=week",
+    headers: authHeaders(token),
+  });
+  assert.equal(summaryBeforeResponse.statusCode, 200);
+  const summaryBefore = parsePayload(summaryBeforeResponse.payload);
+  const summaryBeforeData = summaryBefore.data as {
+    engagement: {
+      nudges: Array<{ id: string }>;
+    };
+  };
+  assert.equal(summaryBeforeData.engagement.nudges.length > 0, true);
+  const targetNudgeId = summaryBeforeData.engagement.nudges[0]!.id;
+
+  const dismissResponse = await app.inject({
+    method: "POST",
+    url: "/api/gaming-track/nudges/dismiss",
+    headers: authHeaders(token),
+    payload: {
+      date: "2026-03-08",
+      nudgeId: targetNudgeId,
+    },
+  });
+
+  assert.equal(dismissResponse.statusCode, 200);
+  const dismissPayload = parsePayload(dismissResponse.payload);
+  const dismissData = dismissPayload.data as {
+    nudgeId: string;
+    dismissedOn: string;
+    alreadyDismissed: boolean;
+  };
+  assert.equal(dismissData.nudgeId, targetNudgeId);
+  assert.equal(dismissData.dismissedOn, "2026-03-08");
+  assert.equal(dismissData.alreadyDismissed, false);
+
+  const summaryAfterResponse = await app.inject({
+    method: "GET",
+    url: "/api/gaming-track/summary?date=2026-03-08&period=week",
+    headers: authHeaders(token),
+  });
+  assert.equal(summaryAfterResponse.statusCode, 200);
+  const summaryAfter = parsePayload(summaryAfterResponse.payload);
+  const summaryAfterData = summaryAfter.data as {
+    engagement: {
+      nudges: Array<{ id: string }>;
+    };
+  };
+  assert.equal(summaryAfterData.engagement.nudges.some((nudge) => nudge.id === targetNudgeId), false);
 });
 
 test("gaming-track endpoint requires authentication", async (t) => {
