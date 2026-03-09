@@ -383,6 +383,14 @@ type RecurrenceFormValues = {
 };
 
 type TaskDialogMode = "create" | "edit";
+type TaskFilterStatus = TaskStatus | "all";
+type TaskFilterPriority = TaskPriority | "all";
+type TaskFilterValues = {
+  query: string;
+  status: TaskFilterStatus;
+  priority: TaskFilterPriority;
+  project: string;
+};
 type ApiErrorPayload = { error?: { message?: string } } | null;
 type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan";
 type DashboardLayoutConfig = {
@@ -407,6 +415,12 @@ const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
 const DAY_AFFIRMATION_MAX_LENGTH = 5000;
 const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
 const DASHBOARD_LAYOUT_STORAGE_KEY = "jotly_dashboard_layout_v1";
+const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
+  query: "",
+  status: "all",
+  priority: "all",
+  project: "",
+};
 const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "overview",
   "gamingTrack",
@@ -679,6 +693,7 @@ const dangerButtonClass =
   "inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-semibold text-red-600 transition-all duration-200 hover:border-red-300 hover:bg-red-100 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-not-allowed disabled:opacity-50";
 const textFieldClass =
   "mt-1 w-full rounded-lg border border-line bg-surface px-3 py-3 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15 focus:shadow-sm disabled:cursor-not-allowed disabled:opacity-50";
+const boardFilterFieldClass = `${textFieldClass} h-11 py-0`;
 const iconButtonClass =
   "inline-flex h-8 min-w-8 items-center justify-center rounded-lg text-muted transition-all duration-200 hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
 const controlIconButtonClass = `${controlButtonClass} h-9 w-9 px-0`;
@@ -781,6 +796,15 @@ function CopyIcon() {
     <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
       <rect x="6.2" y="6" width="9" height="10" rx="1.8" />
       <path d="M4.8 13V5.8A1.8 1.8 0 016.6 4h6.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="8.75" cy="8.75" r="4.75" />
+      <path d="M12.25 12.25L16 16" strokeLinecap="round" />
     </svg>
   );
 }
@@ -1436,6 +1460,38 @@ function normalizeOptionalTextInput(value: string): string | null {
 
 function normalizeProjectName(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function decodeCommonHtmlEntities(value: string): string {
+  return value
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'");
+}
+
+function normalizeTaskFilterText(value: string): string {
+  return decodeCommonHtmlEntities(value)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getTaskSearchableText(task: Task, locale: UserLocale): string {
+  return normalizeTaskFilterText(
+    [
+      task.title,
+      task.project ?? "",
+      task.description ?? "",
+      task.priority,
+      task.status,
+      formatPriority(task.priority, locale),
+      formatTaskStatus(task.status, locale),
+    ].join(" ")
+  );
 }
 
 function getUniqueSortedProjectNames(values: string[]): string[] {
@@ -3460,6 +3516,7 @@ export function AppShell() {
   const assistantMessagesEndRef = useRef<HTMLDivElement | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
+  const [taskFilterValues, setTaskFilterValues] = useState<TaskFilterValues>(DEFAULT_TASK_FILTER_VALUES);
 
   const [taskDialogMode, setTaskDialogMode] = useState<TaskDialogMode | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -3523,6 +3580,7 @@ export function AppShell() {
   const priorityOptions = getPriorityOptions(activeLocale);
   const recurrenceFrequencyOptions = getRecurrenceFrequencyOptions(activeLocale);
   const weekdayOptions = getWeekdayOptions(activeLocale);
+  const taskSearchQuery = normalizeTaskFilterText(taskFilterValues.query);
   const gamingTrackPeriodOptions = getGamingTrackPeriodOptions(activeLocale);
   const assistantPromptSuggestions = getAssistantPromptSuggestions(activeLocale);
   const userLocaleOptions = getUserLocaleOptions(activeLocale);
@@ -5212,6 +5270,14 @@ export function AppShell() {
     });
   }, [assistantMessages, isAssistantPanelOpen]);
 
+  const taskFilterProjectOptions = useMemo(() => {
+    return getUniqueSortedProjectNames([
+      ...projectOptions,
+      ...tasks.map((task) => task.project ?? ""),
+      taskFilterValues.project,
+    ]);
+  }, [projectOptions, taskFilterValues.project, tasks]);
+
   const tasksByStatus = useMemo(() => {
     return {
       todo: tasks.filter((task) => task.status === "todo"),
@@ -5220,8 +5286,43 @@ export function AppShell() {
       cancelled: tasks.filter((task) => task.status === "cancelled"),
     };
   }, [tasks]);
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (taskFilterValues.status !== "all" && task.status !== taskFilterValues.status) {
+        return false;
+      }
+
+      if (taskFilterValues.priority !== "all" && task.priority !== taskFilterValues.priority) {
+        return false;
+      }
+
+      if (taskFilterValues.project && normalizeProjectName(task.project ?? "") !== taskFilterValues.project) {
+        return false;
+      }
+
+      if (!taskSearchQuery) {
+        return true;
+      }
+
+      return getTaskSearchableText(task, activeLocale).includes(taskSearchQuery);
+    });
+  }, [activeLocale, taskFilterValues.priority, taskFilterValues.project, taskFilterValues.status, taskSearchQuery, tasks]);
+  const filteredTasksByStatus = useMemo(() => {
+    return {
+      todo: filteredTasks.filter((task) => task.status === "todo"),
+      in_progress: filteredTasks.filter((task) => task.status === "in_progress"),
+      done: filteredTasks.filter((task) => task.status === "done"),
+      cancelled: filteredTasks.filter((task) => task.status === "cancelled"),
+    };
+  }, [filteredTasks]);
+  const hasActiveTaskFilters =
+    taskFilterValues.query.trim().length > 0 ||
+    taskFilterValues.status !== "all" ||
+    taskFilterValues.priority !== "all" ||
+    taskFilterValues.project.length > 0;
 
   const isEmptyBoard = !isLoading && !errorMessage && tasks.length === 0;
+  const isFilteredBoardEmpty = !isLoading && !errorMessage && tasks.length > 0 && filteredTasks.length === 0;
   const taskDialogTitle = taskDialogMode === "create"
     ? isFrench
       ? "Creer une tache"
@@ -6345,6 +6446,135 @@ export function AppShell() {
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
+            <section className="mt-4 rounded-2xl border border-line bg-surface-soft/60 p-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.9fr))_auto]">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Recherche" : "Search"}
+                  <div className="relative mt-2">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 inline-flex items-center text-muted">
+                      <SearchIcon />
+                    </span>
+                    <input
+                      type="search"
+                      value={taskFilterValues.query}
+                      onChange={(event) => {
+                        setTaskFilterValues((currentValues) => ({
+                          ...currentValues,
+                          query: event.target.value,
+                        }));
+                      }}
+                      className={`${boardFilterFieldClass} mt-0 pl-10 pr-10`}
+                      placeholder={
+                        isFrench
+                          ? "Titre, projet, description..."
+                          : "Title, project, description..."
+                      }
+                    />
+                    {taskFilterValues.query ? (
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-md px-1 text-muted transition-colors hover:text-foreground"
+                        onClick={() => {
+                          setTaskFilterValues((currentValues) => ({
+                            ...currentValues,
+                            query: "",
+                          }));
+                        }}
+                        aria-label={isFrench ? "Effacer la recherche" : "Clear search"}
+                        title={isFrench ? "Effacer la recherche" : "Clear search"}
+                      >
+                        <CloseIcon />
+                      </button>
+                    ) : null}
+                  </div>
+                </label>
+
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Statut" : "Status"}
+                  <select
+                    value={taskFilterValues.status}
+                    onChange={(event) => {
+                      setTaskFilterValues((currentValues) => ({
+                        ...currentValues,
+                        status: isTaskStatus(event.target.value) ? event.target.value : "all",
+                      }));
+                    }}
+                    className={`${boardFilterFieldClass} mt-2`}
+                  >
+                    <option value="all">{isFrench ? "Tous les statuts" : "All statuses"}</option>
+                    {boardColumns.map((column) => (
+                      <option key={column.status} value={column.status}>
+                        {column.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Priorite" : "Priority"}
+                  <select
+                    value={taskFilterValues.priority}
+                    onChange={(event) => {
+                      setTaskFilterValues((currentValues) => ({
+                        ...currentValues,
+                        priority: isTaskPriority(event.target.value) ? event.target.value : "all",
+                      }));
+                    }}
+                    className={`${boardFilterFieldClass} mt-2`}
+                  >
+                    <option value="all">{isFrench ? "Toutes les priorites" : "All priorities"}</option>
+                    {priorityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Projet" : "Project"}
+                  <select
+                    value={taskFilterValues.project}
+                    onChange={(event) => {
+                      setTaskFilterValues((currentValues) => ({
+                        ...currentValues,
+                        project: event.target.value,
+                      }));
+                    }}
+                    className={`${boardFilterFieldClass} mt-2`}
+                  >
+                    <option value="">{isFrench ? "Tous les projets" : "All projects"}</option>
+                    {taskFilterProjectOptions.map((projectName) => (
+                      <option key={projectName} value={projectName}>
+                        {projectName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    className={`w-full xl:w-auto ${controlButtonClass}`}
+                    onClick={() => setTaskFilterValues(DEFAULT_TASK_FILTER_VALUES)}
+                    disabled={!hasActiveTaskFilters}
+                  >
+                    {isFrench ? "Reinitialiser" : "Reset"}
+                  </button>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-muted">
+                {hasActiveTaskFilters
+                  ? isFrench
+                    ? `${filteredTasks.length} tache${filteredTasks.length === 1 ? "" : "s"} visible${filteredTasks.length === 1 ? "" : "s"} sur ${tasks.length}.`
+                    : `${filteredTasks.length} task${filteredTasks.length === 1 ? "" : "s"} shown out of ${tasks.length}.`
+                  : isFrench
+                  ? "Filtrez rapidement par texte, statut, priorite ou projet."
+                  : "Quickly filter by text, status, priority, or project."}
+              </p>
+            </section>
+
             {isEmptyBoard ? (
               <section className="mt-4 rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted shadow-sm">
                 <p className="font-semibold text-foreground">
@@ -6360,6 +6590,21 @@ export function AppShell() {
               </section>
             ) : null}
 
+            {isFilteredBoardEmpty ? (
+              <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm">
+                <p className="font-semibold">
+                  {isFrench
+                    ? "Aucune tache ne correspond aux filtres actifs."
+                    : "No tasks match the active filters."}
+                </p>
+                <p className="mt-1">
+                  {isFrench
+                    ? "Ajustez la recherche ou reinitialisez les filtres pour revoir tout le planning."
+                    : "Adjust the search or reset filters to show the full schedule again."}
+                </p>
+              </section>
+            ) : null}
+
             <DndContext
               sensors={sensors}
               collisionDetection={pointerWithin}
@@ -6369,7 +6614,8 @@ export function AppShell() {
             >
               <main className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {boardColumns.map((column) => {
-                  const columnTasks = tasksByStatus[column.status];
+                  const columnTasks = filteredTasksByStatus[column.status];
+                  const totalColumnTasks = tasksByStatus[column.status];
 
                   return (
                     <section
@@ -6381,8 +6627,8 @@ export function AppShell() {
                           <h2 className="text-xs font-semibold text-foreground">
                             {column.label}
                           </h2>
-                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-surface text-[10px] font-semibold text-muted">
-                            {columnTasks.length}
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-surface px-1.5 text-[10px] font-semibold text-muted">
+                            {hasActiveTaskFilters ? `${columnTasks.length}/${totalColumnTasks.length}` : columnTasks.length}
                           </span>
                         </div>
                         <button
@@ -6424,7 +6670,11 @@ export function AppShell() {
                           })
                         ) : (
                           <div className="rounded-2xl border border-dashed border-line bg-surface-soft px-3 py-4 text-sm text-muted">
-                            {column.emptyLabel}
+                            {hasActiveTaskFilters
+                              ? isFrench
+                                ? "Aucune tache visible avec ces filtres."
+                                : "No visible tasks with these filters."
+                              : column.emptyLabel}
                           </div>
                         )}
                       </TaskColumn>
