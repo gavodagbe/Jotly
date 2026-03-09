@@ -1,4 +1,4 @@
-import { Task, TaskStatus } from "@prisma/client";
+import { Task, TaskPriority, TaskStatus } from "@prisma/client";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
@@ -33,6 +33,7 @@ const createTaskBodySchema = z.object({
   description: z.string().trim().optional().nullable(),
   status: taskStatusSchema.optional(),
   targetDate: targetDateSchema,
+  dueDate: targetDateSchema.optional(),
   priority: taskPrioritySchema.optional(),
   project: z.string().trim().optional().nullable(),
   plannedTime: z.number().int().nonnegative().optional().nullable()
@@ -44,6 +45,7 @@ const updateTaskBodySchema = z
     description: z.string().trim().optional().nullable(),
     status: taskStatusSchema.optional(),
     targetDate: targetDateSchema.optional(),
+    dueDate: targetDateSchema.optional(),
     priority: taskPrioritySchema.optional(),
     project: z.string().trim().optional().nullable(),
     plannedTime: z.number().int().nonnegative().optional().nullable()
@@ -57,6 +59,10 @@ const taskIdParamsSchema = z.object({
 });
 
 const listTasksQuerySchema = z.object({
+  date: targetDateSchema
+});
+
+const listTaskAlertsQuerySchema = z.object({
   date: targetDateSchema
 });
 
@@ -94,6 +100,7 @@ function serializeTask(task: Task) {
     description: task.description,
     status: task.status,
     targetDate: formatDateOnly(task.targetDate),
+    dueDate: task.dueDate ? formatDateOnly(task.dueDate) : null,
     priority: task.priority,
     project: task.project,
     plannedTime: task.plannedTime,
@@ -160,11 +167,59 @@ function getPreviousDate(date: Date): Date {
   return previousDate;
 }
 
+function addUtcDays(date: Date, offsetDays: number): Date {
+  const nextDate = new Date(date);
+  nextDate.setUTCDate(nextDate.getUTCDate() + offsetDays);
+  return nextDate;
+}
+
 function shouldCarryOverTask(task: Task): boolean {
   return (
     (task.status === "todo" || task.status === "in_progress") &&
     task.recurrenceSourceTaskId === null
   );
+}
+
+function isTaskDueSoonStatus(status: TaskStatus): boolean {
+  return status === "todo" || status === "in_progress";
+}
+
+function getPrioritySortRank(priority: TaskPriority): number {
+  if (priority === "high") {
+    return 0;
+  }
+
+  if (priority === "medium") {
+    return 1;
+  }
+
+  return 2;
+}
+
+function compareDueSoonTasks(left: Task, right: Task): number {
+  const leftDueAt = left.dueDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  const rightDueAt = right.dueDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+
+  if (leftDueAt !== rightDueAt) {
+    return leftDueAt - rightDueAt;
+  }
+
+  const priorityDiff = getPrioritySortRank(left.priority) - getPrioritySortRank(right.priority);
+  if (priorityDiff !== 0) {
+    return priorityDiff;
+  }
+
+  return left.createdAt.getTime() - right.createdAt.getTime();
+}
+
+function getCarryOverDueDate(task: Task, nextTargetDate: Date): Date | null {
+  if (!task.dueDate) {
+    return nextTargetDate;
+  }
+
+  return formatDateOnly(task.dueDate) === formatDateOnly(task.targetDate)
+    ? nextTargetDate
+    : task.dueDate;
 }
 
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
@@ -245,6 +300,77 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     }
   });
 
+  app.get("/api/tasks/alerts", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const queryResult = listTaskAlertsQuerySchema.safeParse(request.query);
+
+    if (!queryResult.success) {
+      const details = zodIssuesToStrings(queryResult.error);
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        details[0] ?? "Invalid request query",
+        details
+      );
+    }
+
+    const anchorDate = parseDateOnly(queryResult.data.date);
+
+    if (!anchorDate) {
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        "date must be a valid date in YYYY-MM-DD format"
+      );
+    }
+
+    const tomorrowDate = addUtcDays(anchorDate, 1);
+    const endExclusive = addUtcDays(anchorDate, 2);
+
+    try {
+      const dueSoonTasks = (await taskStore.listByUser(authUserId))
+        .filter(
+          (task) =>
+            task.dueDate !== null &&
+            isTaskDueSoonStatus(task.status) &&
+            task.dueDate.getTime() >= anchorDate.getTime() &&
+            task.dueDate.getTime() < endExclusive.getTime()
+        )
+        .sort(compareDueSoonTasks);
+
+      const dueTodayCount = dueSoonTasks.filter(
+        (task) => task.dueDate && formatDateOnly(task.dueDate) === formatDateOnly(anchorDate)
+      ).length;
+      const dueTomorrowCount = dueSoonTasks.filter(
+        (task) => task.dueDate && formatDateOnly(task.dueDate) === formatDateOnly(tomorrowDate)
+      ).length;
+
+      return reply.send({
+        data: {
+          count: dueSoonTasks.length,
+          dueTodayCount,
+          dueTomorrowCount,
+          tasks: dueSoonTasks.map(serializeTask),
+        },
+      });
+    } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
+      request.log.error(error, "Failed to list task alerts");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list task alerts");
+    }
+  });
+
   app.post("/api/tasks", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
 
@@ -276,6 +402,19 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
       );
     }
 
+    const parsedDueDate = bodyResult.data.dueDate
+      ? parseDateOnly(bodyResult.data.dueDate)
+      : parsedDate;
+
+    if (!parsedDueDate) {
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        "dueDate must be a valid date in YYYY-MM-DD format"
+      );
+    }
+
     const status = bodyResult.data.status ?? "todo";
     const now = new Date();
 
@@ -286,6 +425,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         description: normalizeNullableText(bodyResult.data.description) ?? null,
         status,
         targetDate: parsedDate,
+        dueDate: parsedDueDate,
         priority: bodyResult.data.priority ?? "medium",
         project: normalizeNullableText(bodyResult.data.project) ?? null,
         plannedTime: bodyResult.data.plannedTime ?? null,
@@ -354,6 +494,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
             description: sourceTask.description,
             status: sourceTask.status,
             targetDate,
+            dueDate: getCarryOverDueDate(sourceTask, targetDate),
             priority: sourceTask.priority,
             project: sourceTask.project,
             plannedTime: sourceTask.plannedTime,
@@ -498,6 +639,21 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         }
 
         updateInput.targetDate = parsedDate;
+      }
+
+      if (updateBody.dueDate !== undefined) {
+        const parsedDueDate = parseDateOnly(updateBody.dueDate);
+
+        if (!parsedDueDate) {
+          return sendError(
+            reply,
+            400,
+            "VALIDATION_ERROR",
+            "dueDate must be a valid date in YYYY-MM-DD format"
+          );
+        }
+
+        updateInput.dueDate = parsedDueDate;
       }
 
       if (updateBody.priority !== undefined) {

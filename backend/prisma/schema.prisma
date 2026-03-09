@@ -65,6 +65,7 @@ model Task {
   description              String?
   status                   TaskStatus
   targetDate               DateTime            @db.Date
+  dueDate                  DateTime?           @db.Date
   priority                 TaskPriority
   project                  String?
   plannedTime              Int?
@@ -84,8 +85,10 @@ model Task {
   recurrenceInstances      Task[]              @relation("TaskRecurrenceInstances")
 
   @@index([userId, targetDate])
+  @@index([userId, dueDate])
   @@index([userId, status])
   @@index([targetDate])
+  @@index([dueDate])
   @@index([status])
   @@index([updatedAt])
   @@index([rolledFromTaskId])

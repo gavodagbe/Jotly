@@ -7,6 +7,7 @@ export type TaskCreateInput = {
   description: string | null;
   status: TaskStatus;
   targetDate: Date;
+  dueDate: Date | null;
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;

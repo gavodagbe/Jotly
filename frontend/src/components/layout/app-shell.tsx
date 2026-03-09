@@ -33,6 +33,7 @@ type Task = {
   description: string | null;
   status: TaskStatus;
   targetDate: string;
+  dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;
@@ -46,9 +47,17 @@ type TaskMutationInput = {
   description: string | null;
   status: TaskStatus;
   targetDate: string;
+  dueDate: string;
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;
+};
+
+type TaskAlertsSummary = {
+  count: number;
+  dueTodayCount: number;
+  dueTomorrowCount: number;
+  tasks: Task[];
 };
 
 type TaskComment = {
@@ -369,6 +378,7 @@ type TaskFormValues = {
   description: string;
   status: TaskStatus;
   targetDate: string;
+  dueDate: string;
   priority: TaskPriority;
   project: string;
   plannedTime: string;
@@ -809,6 +819,15 @@ function SearchIcon() {
   );
 }
 
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M10 3.5a3.2 3.2 0 00-3.2 3.2v1.1c0 .8-.2 1.6-.6 2.3l-.8 1.5a1 1 0 00.9 1.5h7.4a1 1 0 00.9-1.5l-.8-1.5a4.7 4.7 0 01-.6-2.3V6.7A3.2 3.2 0 0010 3.5z" />
+      <path d="M8.2 15a1.9 1.9 0 003.6 0" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function PlusIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
@@ -918,6 +937,20 @@ function toDateInputValue(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentDateInputValue(timeZone?: string | null): string {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  });
+  const parts = formatter.formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
   return `${year}-${month}-${day}`;
 }
 
@@ -1038,6 +1071,18 @@ function formatDateOnlyForLocale(value: string, locale: UserLocale): string {
     day: "numeric",
     year: "numeric",
   }).format(parseDateInput(value));
+}
+
+function formatTaskAlertDueLabel(value: string, todayValue: string, locale: UserLocale): string {
+  if (value === todayValue) {
+    return locale === "fr" ? "Aujourd'hui" : "Today";
+  }
+
+  if (value === shiftDate(todayValue, 1)) {
+    return locale === "fr" ? "Demain" : "Tomorrow";
+  }
+
+  return formatDateOnlyForLocale(value, locale);
 }
 
 function formatSignedDelta(value: number): string {
@@ -1747,6 +1792,7 @@ function getDefaultTaskFormValues(targetDate: string): TaskFormValues {
     description: "",
     status: "todo",
     targetDate,
+    dueDate: targetDate,
     priority: "medium",
     project: "",
     plannedTime: "",
@@ -1854,6 +1900,7 @@ function getTaskFormValues(task: Task): TaskFormValues {
     description: task.description ?? "",
     status: task.status,
     targetDate: task.targetDate,
+    dueDate: task.dueDate ?? task.targetDate,
     priority: task.priority,
     project: task.project ?? "",
     plannedTime: typeof task.plannedTime === "number" ? String(task.plannedTime) : "",
@@ -1875,6 +1922,14 @@ function buildTaskMutationInput(
       error: isFrench
         ? "La date cible doit respecter le format AAAA-MM-JJ."
         : "Target date must be in YYYY-MM-DD format.",
+    };
+  }
+
+  if (!isDateOnly(values.dueDate)) {
+    return {
+      error: isFrench
+        ? "La date d'echeance doit respecter le format AAAA-MM-JJ."
+        : "Due date must be in YYYY-MM-DD format.",
     };
   }
 
@@ -1908,6 +1963,7 @@ function buildTaskMutationInput(
       description: normalizeOptionalTextInput(values.description),
       status: values.status,
       targetDate: values.targetDate,
+      dueDate: values.dueDate,
       priority: values.priority,
       project: normalizeOptionalTextInput(values.project),
       plannedTime,
@@ -2177,6 +2233,29 @@ async function loadTasksByDate(date: string, token: string, signal?: AbortSignal
   }
 
   return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function loadTaskAlerts(date: string, token: string, signal?: AbortSignal): Promise<TaskAlertsSummary> {
+  const response = await fetch(`/backend-api/tasks/alerts?date=${encodeURIComponent(date)}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskAlertsSummary; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load task alerts"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to load task alerts.");
+  }
+
+  return payload.data;
 }
 
 async function createTask(input: TaskMutationInput, token: string): Promise<Task> {
@@ -2728,6 +2807,9 @@ type AppNavbarProps = {
   onLogout?: () => void;
   onOpenProfile?: () => void;
   onLogin?: () => void;
+  taskAlertsSummary?: TaskAlertsSummary | null;
+  isTaskAlertsPanelOpen?: boolean;
+  onOpenTaskAlerts?: () => void;
   isBusy?: boolean;
 };
 
@@ -2750,11 +2832,23 @@ function ProfileGlyph({ isLoggedIn }: { isLoggedIn: boolean }) {
   );
 }
 
-function AppNavbar({ locale, user, onLogout, onOpenProfile, onLogin, isBusy = false }: AppNavbarProps) {
+function AppNavbar({
+  locale,
+  user,
+  onLogout,
+  onOpenProfile,
+  onLogin,
+  taskAlertsSummary,
+  isTaskAlertsPanelOpen = false,
+  onOpenTaskAlerts,
+  isBusy = false,
+}: AppNavbarProps) {
   const isLoggedIn = user !== null;
   const isFrench = locale === "fr";
   const profileLabel = user?.displayName ?? user?.email ?? (isFrench ? "Invite" : "Guest");
   const initials = profileLabel.slice(0, 2).toUpperCase();
+  const taskAlertsCount = taskAlertsSummary?.count ?? 0;
+  const taskAlertsLabel = isFrench ? "Alertes d'echeance" : "Due alerts";
 
   return (
     <>
@@ -2779,6 +2873,26 @@ function AppNavbar({ locale, user, onLogout, onOpenProfile, onLogin, isBusy = fa
               <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
               {isFrench ? "Tableau Kanban" : "Kanban Board"}
             </a>
+            <button
+              type="button"
+              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ${
+                isTaskAlertsPanelOpen
+                  ? "bg-accent-soft text-accent"
+                  : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
+              }`}
+              onClick={onOpenTaskAlerts}
+              disabled={isBusy || !onOpenTaskAlerts}
+            >
+              <span className="relative inline-flex items-center justify-center text-muted">
+                <BellIcon />
+                {taskAlertsCount > 0 ? (
+                  <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
+                    {taskAlertsCount > 9 ? "9+" : taskAlertsCount}
+                  </span>
+                ) : null}
+              </span>
+              <span className="flex-1">{taskAlertsLabel}</span>
+            </button>
             <a href="#affirmation" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
               <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
               {isFrench ? "Affirmation" : "Affirmation"}
@@ -2836,6 +2950,22 @@ function AppNavbar({ locale, user, onLogout, onOpenProfile, onLogin, isBusy = fa
         <div className="flex items-center gap-2">
           {isLoggedIn ? (
             <>
+              <button
+                type="button"
+                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                  isTaskAlertsPanelOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-soft hover:text-foreground"
+                }`}
+                onClick={onOpenTaskAlerts}
+                disabled={isBusy || !onOpenTaskAlerts}
+                aria-label={taskAlertsLabel}
+              >
+                <BellIcon />
+                {taskAlertsCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
+                    {taskAlertsCount > 9 ? "9+" : taskAlertsCount}
+                  </span>
+                ) : null}
+              </button>
               <button
                 type="button"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
@@ -3212,6 +3342,11 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
         >
           {formatPriority(task.priority, locale)}
         </span>
+        {task.dueDate ? (
+          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+            {isFrench ? "Echeance" : "Due"} {formatDateOnlyForLocale(task.dueDate, locale)}
+          </span>
+        ) : null}
         {task.project ? (
           <span className="rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
             {task.project}
@@ -3514,6 +3649,11 @@ export function AppShell() {
   const [assistantErrorMessage, setAssistantErrorMessage] = useState<string | null>(null);
   const [isAssistantLoading, setIsAssistantLoading] = useState(false);
   const assistantMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [taskAlertsSummary, setTaskAlertsSummary] = useState<TaskAlertsSummary | null>(null);
+  const [taskAlertsErrorMessage, setTaskAlertsErrorMessage] = useState<string | null>(null);
+  const [isTaskAlertsLoading, setIsTaskAlertsLoading] = useState(false);
+  const [isTaskAlertsPanelOpen, setIsTaskAlertsPanelOpen] = useState(false);
+  const [taskAlertsReloadKey, setTaskAlertsReloadKey] = useState(0);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
   const [taskFilterValues, setTaskFilterValues] = useState<TaskFilterValues>(DEFAULT_TASK_FILTER_VALUES);
@@ -3585,6 +3725,7 @@ export function AppShell() {
   const assistantPromptSuggestions = getAssistantPromptSuggestions(activeLocale);
   const userLocaleOptions = getUserLocaleOptions(activeLocale);
   const activeTimeZone = authUser?.preferredTimeZone ?? null;
+  const taskAlertsAnchorDate = getCurrentDateInputValue(activeTimeZone ?? getBrowserTimeZone());
   const dashboardIconButtonClass = `${iconButtonClass} h-9 w-9 rounded-xl px-0`;
   const dashboardBlockOrderIndex = useMemo(() => {
     const fallbackIndex = Object.fromEntries(
@@ -4101,6 +4242,15 @@ export function AppShell() {
     setDashboardDropTargetId(null);
   }
 
+  function refreshTaskAlerts() {
+    setTaskAlertsReloadKey((currentValue) => currentValue + 1);
+  }
+
+  function toggleTaskAlertsPanel() {
+    setIsAssistantPanelOpen(false);
+    setIsTaskAlertsPanelOpen((isOpen) => !isOpen);
+  }
+
   async function handleAssistantSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -4138,6 +4288,7 @@ export function AppShell() {
       timestamp: new Date().toISOString(),
     };
 
+    setIsTaskAlertsPanelOpen(false);
     setIsAssistantPanelOpen(true);
     setAssistantMessages((currentMessages) => [...currentMessages, userMessage]);
     setAssistantQuestion("");
@@ -4213,6 +4364,8 @@ export function AppShell() {
             : `Carry-over complete: ${result.copiedCount} copied, ${result.skippedCount} skipped.`
         );
       }
+
+      refreshTaskAlerts();
     } catch (error) {
       setCarryOverErrorMessage(
         error instanceof Error
@@ -4454,10 +4607,20 @@ export function AppShell() {
   }
 
   function updateTaskFormField(field: keyof TaskFormValues, value: string) {
-    setTaskFormValues((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setTaskFormValues((current) => {
+      if (field === "targetDate") {
+        return {
+          ...current,
+          targetDate: value,
+          dueDate: current.dueDate === current.targetDate ? value : current.dueDate,
+        };
+      }
+
+      return {
+        ...current,
+        [field]: value,
+      };
+    });
 
     if (field === "project") {
       setProjectFormErrorMessage(null);
@@ -4812,6 +4975,8 @@ export function AppShell() {
         savedTask = updatedTask;
       }
 
+      refreshTaskAlerts();
+
       if (!savedTask.recurrenceSourceTaskId) {
         if (recurrenceResult.data) {
           try {
@@ -4886,6 +5051,7 @@ export function AppShell() {
       }
 
       setTaskToDelete(null);
+      refreshTaskAlerts();
     } catch (error) {
       setDeleteErrorMessage(
         error instanceof Error
@@ -5077,6 +5243,54 @@ export function AppShell() {
 
     return () => controller.abort();
   }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken || !authUser) {
+      setTaskAlertsSummary(null);
+      setTaskAlertsErrorMessage(null);
+      setIsTaskAlertsLoading(false);
+      setIsTaskAlertsPanelOpen(false);
+      return;
+    }
+
+    setIsTaskAlertsLoading(true);
+    setTaskAlertsErrorMessage(null);
+    const controller = new AbortController();
+
+    loadTaskAlerts(taskAlertsAnchorDate, authToken, controller.signal)
+      .then((nextTaskAlerts) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setTaskAlertsSummary(nextTaskAlerts);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setTaskAlertsSummary(null);
+        setTaskAlertsErrorMessage(
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger les alertes d'echeance."
+            : "Unable to load due alerts."
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsTaskAlertsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, isFrench, taskAlertsAnchorDate, taskAlertsReloadKey]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -5431,6 +5645,7 @@ export function AppShell() {
       setTasks((currentTasks) =>
         currentTasks.map((task) => (task.id === taskId ? { ...task, ...updatedTask } : task))
       );
+      refreshTaskAlerts();
     } catch (error) {
       setTasks((currentTasks) =>
         currentTasks.map((task) =>
@@ -5492,6 +5707,9 @@ export function AppShell() {
         user={authUser}
         onLogout={handleLogout}
         onOpenProfile={openProfileDialog}
+        taskAlertsSummary={taskAlertsSummary}
+        isTaskAlertsPanelOpen={isTaskAlertsPanelOpen}
+        onOpenTaskAlerts={toggleTaskAlertsPanel}
         isBusy={isMutationPending || isLoading}
       />
 
@@ -6990,13 +7208,25 @@ export function AppShell() {
                 </label>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block text-sm font-semibold text-foreground">
                   {isFrench ? "Date cible" : "Target Date"}
                   <input
                     type="date"
                     value={taskFormValues.targetDate}
                     onChange={(event) => updateTaskFormField("targetDate", event.target.value)}
+                    className={textFieldClass}
+                    required
+                    disabled={isSubmittingTask}
+                  />
+                </label>
+
+                <label className="block text-sm font-semibold text-foreground">
+                  {isFrench ? "Date d'echeance" : "End date"}
+                  <input
+                    type="date"
+                    value={taskFormValues.dueDate}
+                    onChange={(event) => updateTaskFormField("dueDate", event.target.value)}
                     className={textFieldClass}
                     required
                     disabled={isSubmittingTask}
@@ -7665,6 +7895,107 @@ export function AppShell() {
         </div>
       ) : null}
 
+      {isTaskAlertsPanelOpen ? (
+        <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[380px]">
+          <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-7 w-7 place-items-center rounded-lg bg-amber-50 text-amber-700">
+                <BellIcon />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {isFrench ? "Alertes d'echeance" : "Due alerts"}
+                </p>
+                <p className="text-[11px] text-muted">
+                  {taskAlertsSummary
+                    ? isFrench
+                      ? `${taskAlertsSummary.dueTodayCount} aujourd'hui · ${taskAlertsSummary.dueTomorrowCount} demain`
+                      : `${taskAlertsSummary.dueTodayCount} today · ${taskAlertsSummary.dueTomorrowCount} tomorrow`
+                    : isFrench
+                    ? "Suivi des echeances proches"
+                    : "Tracking upcoming due dates"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+              onClick={() => setIsTaskAlertsPanelOpen(false)}
+              aria-label={isFrench ? "Fermer les alertes d'echeance" : "Close due alerts"}
+            >
+              <CloseIcon />
+            </button>
+          </header>
+
+          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+            {isTaskAlertsLoading ? (
+              <p className="rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
+                {isFrench ? "Chargement des alertes..." : "Loading alerts..."}
+              </p>
+            ) : null}
+
+            {taskAlertsErrorMessage ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {taskAlertsErrorMessage}
+              </p>
+            ) : null}
+
+            {!isTaskAlertsLoading && !taskAlertsErrorMessage && taskAlertsSummary?.tasks.length ? (
+              taskAlertsSummary.tasks.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  className="w-full rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3 text-left transition-colors hover:border-accent/30 hover:bg-surface-soft"
+                  onClick={() => {
+                    setIsTaskAlertsPanelOpen(false);
+
+                    if (task.targetDate === selectedDate) {
+                      openEditTaskDialog(task);
+                      return;
+                    }
+
+                    handleDateChange(task.targetDate);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-foreground">{task.title}</p>
+                      <p className="mt-1 text-xs text-muted">
+                        {task.dueDate
+                          ? `${formatTaskAlertDueLabel(task.dueDate, taskAlertsAnchorDate, activeLocale)} · ${formatDateOnlyForLocale(
+                              task.dueDate,
+                              activeLocale
+                            )}`
+                          : isFrench
+                          ? "Aucune date d'echeance"
+                          : "No due date"}
+                      </p>
+                      <p className="mt-1 text-[11px] text-muted">
+                        {isFrench ? "Planifiee" : "Scheduled"} {formatDateOnlyForLocale(task.targetDate, activeLocale)}
+                        {task.project ? ` · ${task.project}` : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[task.priority]}`}
+                    >
+                      {formatPriority(task.priority, activeLocale)}
+                    </span>
+                  </div>
+                </button>
+              ))
+            ) : null}
+
+            {!isTaskAlertsLoading && !taskAlertsErrorMessage && (taskAlertsSummary?.tasks.length ?? 0) === 0 ? (
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                {isFrench
+                  ? "Aucune echeance aujourd'hui ou demain."
+                  : "No due dates today or tomorrow."}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {isAssistantPanelOpen ? (
         <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[400px]">
           <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
@@ -7779,7 +8110,10 @@ export function AppShell() {
       <button
         type="button"
         className="animate-pulse-soft fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-strong text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-        onClick={() => setIsAssistantPanelOpen((isOpen) => !isOpen)}
+        onClick={() => {
+          setIsTaskAlertsPanelOpen(false);
+          setIsAssistantPanelOpen((isOpen) => !isOpen);
+        }}
         aria-label={
           isAssistantPanelOpen
             ? isFrench

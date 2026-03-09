@@ -88,6 +88,19 @@ function getStatusForGeneratedInstance(): TaskStatus {
   return "todo";
 }
 
+function getGeneratedDueDate(task: Task, occurrenceDate: Date): Date | null {
+  const normalizedOccurrenceDate = toUtcDateOnly(occurrenceDate);
+
+  if (!task.dueDate) {
+    return normalizedOccurrenceDate;
+  }
+
+  const dueDateOffsetDays = getDayDiff(task.targetDate, task.dueDate);
+  const nextDueDate = new Date(normalizedOccurrenceDate);
+  nextDueDate.setUTCDate(nextDueDate.getUTCDate() + dueDateOffsetDays);
+  return nextDueDate;
+}
+
 function buildGeneratedTaskInput(task: Task, occurrenceDate: Date): TaskCreateInput {
   return {
     userId: task.userId,
@@ -95,6 +108,7 @@ function buildGeneratedTaskInput(task: Task, occurrenceDate: Date): TaskCreateIn
     description: task.description,
     status: getStatusForGeneratedInstance(),
     targetDate: toUtcDateOnly(occurrenceDate),
+    dueDate: getGeneratedDueDate(task, occurrenceDate),
     priority: task.priority,
     project: task.project,
     plannedTime: task.plannedTime,

@@ -48,6 +48,7 @@ class InMemoryTaskStore implements TaskStore {
       description: input.description,
       status: input.status,
       targetDate: input.targetDate,
+      dueDate: input.dueDate,
       priority: input.priority,
       project: input.project,
       plannedTime: input.plannedTime,
@@ -222,8 +223,90 @@ test("POST /api/tasks creates a task with defaults", async (t) => {
   assert.equal(data.status, "todo");
   assert.equal(data.priority, "medium");
   assert.equal(data.targetDate, "2026-03-06");
+  assert.equal(data.dueDate, "2026-03-06");
   assert.equal(data.completedAt, null);
   assert.equal(data.cancelledAt, null);
+});
+
+test("GET /api/tasks/alerts returns actionable tasks due today and tomorrow", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Due today",
+      targetDate: "2026-03-06",
+      dueDate: "2026-03-08",
+      status: "todo",
+      priority: "high",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Due tomorrow",
+      targetDate: "2026-03-07",
+      dueDate: "2026-03-09",
+      status: "in_progress",
+      priority: "medium",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Done today",
+      targetDate: "2026-03-06",
+      dueDate: "2026-03-08",
+      status: "done",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Due later",
+      targetDate: "2026-03-10",
+      dueDate: "2026-03-10",
+      status: "todo",
+    },
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/tasks/alerts?date=2026-03-08",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as {
+    count: number;
+    dueTodayCount: number;
+    dueTomorrowCount: number;
+    tasks: Array<{ title: string; dueDate: string }>;
+  };
+
+  assert.equal(data.count, 2);
+  assert.equal(data.dueTodayCount, 1);
+  assert.equal(data.dueTomorrowCount, 1);
+  assert.deepEqual(
+    data.tasks.map((task) => task.title),
+    ["Due today", "Due tomorrow"]
+  );
 });
 
 test("GET /api/tasks filters tasks by selected date", async (t) => {

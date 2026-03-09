@@ -38,6 +38,7 @@ class InMemoryTaskStore implements TaskStore {
       description: input.description,
       status: input.status,
       targetDate: input.targetDate,
+      dueDate: input.dueDate,
       priority: input.priority,
       project: input.project,
       plannedTime: input.plannedTime,

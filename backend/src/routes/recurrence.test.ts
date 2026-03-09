@@ -39,6 +39,7 @@ class InMemoryTaskStore implements TaskStore {
       description: input.description,
       status: input.status,
       targetDate: input.targetDate,
+      dueDate: input.dueDate,
       priority: input.priority,
       project: input.project,
       plannedTime: input.plannedTime,
@@ -325,10 +326,15 @@ test("recurrence rules can be upserted and auto-generate future task instances",
 
   assert.equal(listFutureResponse.statusCode, 200);
   const listFuturePayload = parsePayload(listFutureResponse.payload);
-  const futureTasks = listFuturePayload.data as Array<{ id: string; recurrenceSourceTaskId: string | null }>;
+  const futureTasks = listFuturePayload.data as Array<{
+    id: string;
+    recurrenceSourceTaskId: string | null;
+    dueDate: string | null;
+  }>;
 
   assert.equal(futureTasks.length, 1);
   assert.equal(futureTasks[0].recurrenceSourceTaskId, taskId);
+  assert.equal(futureTasks[0].dueDate, "2026-03-07");
 
   const listFutureAgainResponse = await app.inject({
     method: "GET",
