@@ -644,10 +644,10 @@ const statusChipClassByStatus: Record<TaskStatus, string> = {
 };
 
 const statusColumnClassByStatus: Record<TaskStatus, string> = {
-  todo: "border-t-sky-300",
-  in_progress: "border-t-amber-300",
-  done: "border-t-emerald-300",
-  cancelled: "border-t-slate-300",
+  todo: "border-t-sky-400",
+  in_progress: "border-t-amber-400",
+  done: "border-t-emerald-400",
+  cancelled: "border-t-slate-400",
 };
 
 const statusDropClassByStatus: Record<TaskStatus, string> = {
@@ -664,15 +664,15 @@ const priorityChipClassByPriority: Record<TaskPriority, string> = {
 };
 
 const controlButtonClass =
-  "inline-flex items-center justify-center rounded-xl border border-line bg-surface-soft px-3.5 py-2 text-sm font-semibold text-foreground/85 transition hover:border-accent/45 hover:bg-accent-soft/40 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-55";
+  "inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent px-3.5 py-2 text-sm font-medium text-foreground/80 transition-all duration-200 hover:border-line hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
 const primaryButtonClass =
-  "inline-flex items-center justify-center rounded-xl border border-accent/70 bg-accent px-3.5 py-2 text-sm font-semibold text-white transition hover:border-accent-strong hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-55";
+  "inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-accent to-accent-strong px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:brightness-110 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50";
 const dangerButtonClass =
-  "inline-flex items-center justify-center rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-400 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200 disabled:cursor-not-allowed disabled:opacity-55";
+  "inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-semibold text-red-600 transition-all duration-200 hover:border-red-300 hover:bg-red-100 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-not-allowed disabled:opacity-50";
 const textFieldClass =
-  "mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55";
+  "mt-1 w-full rounded-lg border border-line bg-surface px-3 py-3 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15 focus:shadow-sm disabled:cursor-not-allowed disabled:opacity-50";
 const iconButtonClass =
-  "inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-line bg-surface px-2 text-xs font-semibold text-foreground/85 transition hover:border-accent/40 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-55";
+  "inline-flex h-8 min-w-8 items-center justify-center rounded-lg text-muted transition-all duration-200 hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
 const controlIconButtonClass = `${controlButtonClass} h-9 w-9 px-0`;
 
 function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale): string {
@@ -2597,57 +2597,115 @@ function AppNavbar({ locale, user, onLogout, onOpenProfile, onLogin, isBusy = fa
   const isLoggedIn = user !== null;
   const isFrench = locale === "fr";
   const profileLabel = user?.displayName ?? user?.email ?? (isFrench ? "Invite" : "Guest");
+  const initials = profileLabel.slice(0, 2).toUpperCase();
 
   return (
-    <nav className="mb-4 flex items-center justify-between rounded-2xl border border-line bg-surface/92 px-4 py-3 shadow-[0_18px_45px_-34px_rgba(16,34,48,0.7)] backdrop-blur">
-      <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-sm font-bold text-white shadow-sm">J</div>
-        <div>
-          <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
-          <p className="text-xs text-muted">
-            {isLoggedIn
-              ? isFrench
-                ? "Espace de planification"
-                : "Planner workspace"
-              : isFrench
-              ? "Connectez-vous pour continuer"
-              : "Sign in to continue"}
-          </p>
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-[260px] flex-col border-r border-line bg-surface lg:flex">
+        <div className="flex items-center gap-3 px-5 py-6">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-sm font-bold text-white">J</div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
+            <p className="text-[11px] text-muted">{isFrench ? "Planification quotidienne" : "Daily planner"}</p>
+          </div>
         </div>
-      </div>
 
-      <div className="flex items-center gap-2">
-        <div className="inline-flex items-center gap-2 rounded-full border border-line bg-surface-soft px-2 py-1">
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-surface text-muted">
-            <ProfileGlyph isLoggedIn={isLoggedIn} />
-          </span>
-          <span className="max-w-[180px] truncate pr-1 text-xs font-semibold text-foreground">{profileLabel}</span>
+        <div className="flex-1 overflow-y-auto px-3">
+          <nav className="space-y-0.5">
+            <p className="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{isFrench ? "Navigation" : "Navigation"}</p>
+            <a href="#overview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
+              {isFrench ? "Vue d'ensemble" : "Overview"}
+            </a>
+            <a href="#board" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
+              {isFrench ? "Tableau Kanban" : "Kanban Board"}
+            </a>
+            <a href="#affirmation" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
+              {isFrench ? "Affirmation" : "Affirmation"}
+            </a>
+            <a href="#bilan" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
+              {isFrench ? "Bilan du jour" : "Day Bilan"}
+            </a>
+            <a href="#gaming" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
+              Gaming Track
+            </a>
+          </nav>
         </div>
 
         {isLoggedIn ? (
-          <>
-            <button
-              type="button"
-              className={controlButtonClass}
-              onClick={onOpenProfile}
-              disabled={isBusy || !onOpenProfile}
-            >
-              <ProfileGlyph isLoggedIn />
-              {isFrench ? "Profil" : "Profile"}
+          <div className="border-t border-line px-3 py-4">
+            <div className="flex items-center gap-3 rounded-lg px-2.5 py-2">
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{profileLabel}</p>
+              </div>
+            </div>
+            <div className="mt-1 flex items-center gap-1 px-1">
+              <button
+                type="button"
+                className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                onClick={onOpenProfile}
+                disabled={isBusy || !onOpenProfile}
+              >
+                {isFrench ? "Profil" : "Settings"}
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-red-50 hover:text-red-500"
+                onClick={onLogout}
+                disabled={isBusy || !onLogout}
+              >
+                {isFrench ? "Deconnexion" : "Logout"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </aside>
+
+      {/* Mobile Navbar */}
+      <nav className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-3 backdrop-blur-sm lg:hidden">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-xs font-bold text-white">J</div>
+          <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {isLoggedIn ? (
+            <>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                onClick={onOpenProfile}
+                disabled={isBusy || !onOpenProfile}
+                aria-label={isFrench ? "Profil" : "Profile"}
+              >
+                <ProfileGlyph isLoggedIn />
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                onClick={onLogout}
+                disabled={isBusy || !onLogout}
+                aria-label={isFrench ? "Deconnexion" : "Logout"}
+              >
+                <ArrowRightIcon />
+              </button>
+            </>
+          ) : (
+            <button type="button" className={controlButtonClass} onClick={onLogin} disabled={isBusy || !onLogin}>
+              {isFrench ? "Connexion" : "Login"}
             </button>
-            <button type="button" className={controlButtonClass} onClick={onLogout} disabled={isBusy || !onLogout}>
-              <ArrowRightIcon />
-              {isFrench ? "Deconnexion" : "Logout"}
-            </button>
-          </>
-        ) : (
-          <button type="button" className={controlButtonClass} onClick={onLogin} disabled={isBusy || !onLogin}>
-            <ArrowRightIcon />
-            {isFrench ? "Connexion" : "Login"}
-          </button>
-        )}
-      </div>
-    </nav>
+          )}
+        </div>
+      </nav>
+    </>
   );
 }
 
@@ -2849,25 +2907,25 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
     <article
       ref={setNodeRef}
       style={style}
-      className={`rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-[0_12px_30px_-24px_rgba(16,34,48,0.6)] transition ${
-        isDragging ? "scale-[0.985] opacity-75 shadow-lg" : "hover:-translate-y-0.5 hover:border-accent/35"
+      className={`group relative rounded-xl bg-surface px-4 py-3.5 shadow-sm transition-all duration-200 ${
+        isDragging ? "scale-[0.97] opacity-70 shadow-lg ring-2 ring-accent/20" : "hover:-translate-y-0.5 hover:shadow-md"
       } ${isSaving ? "cursor-wait opacity-80" : "cursor-grab active:cursor-grabbing"}`}
       aria-busy={isSaving}
       {...attributes}
       {...listeners}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.11em] text-muted">
-            {isFrench ? "Glisser" : "Drag"}
-          </div>
-          <h3 className="text-sm font-semibold text-foreground">{task.title}</h3>
+      <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-full ${
+        task.priority === "high" ? "bg-red-400" : task.priority === "medium" ? "bg-indigo-400" : "bg-slate-300"
+      }`} />
+      <div className="flex items-start justify-between gap-2 pl-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-medium text-foreground">{task.title}</h3>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
           <button
             type="button"
-            className={`${iconButtonClass} h-8 w-8 rounded-xl px-0`}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onEdit(task)}
             disabled={isSaving}
@@ -2878,7 +2936,7 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
           </button>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-200 bg-rose-50/80 px-0 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-red-50 hover:text-red-500"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onDelete(task)}
             disabled={isSaving}
@@ -2892,34 +2950,29 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
 
       {task.description ? (
         <div
-          className="rich-text-render mt-2 text-sm leading-6 text-muted"
+          className="rich-text-render mt-1.5 pl-2 text-[13px] leading-5 text-muted"
           dangerouslySetInnerHTML={{ __html: renderDescriptionHtml(task.description) }}
         />
       ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-2.5 flex flex-wrap gap-1.5 pl-2">
         <span
-          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${priorityChipClassByPriority[task.priority]}`}
+          className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[task.priority]}`}
         >
           {formatPriority(task.priority, locale)}
         </span>
-        <span
-          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${statusChipClassByStatus[task.status]}`}
-        >
-          {formatTaskStatus(task.status, locale)}
-        </span>
         {task.project ? (
-          <span className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[11px] text-muted">
-            {isFrench ? "Projet" : "Project"}: {task.project}
+          <span className="rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
+            {task.project}
           </span>
         ) : null}
         {typeof task.plannedTime === "number" ? (
-          <span className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[11px] text-muted">
-            {isFrench ? "Temps" : "Time"}: {formatPlannedTime(task.plannedTime)}
+          <span className="rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
+            {formatPlannedTime(task.plannedTime)}
           </span>
         ) : null}
         {task.recurrenceSourceTaskId ? (
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] text-emerald-700">
+          <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
             {isFrench ? "Recurrente" : "Recurring"}
           </span>
         ) : null}
@@ -2990,45 +3043,71 @@ function AuthPanel({
       : "Create account";
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[1080px] flex-col justify-center px-4 py-8 sm:px-8">
-      <AppNavbar locale={locale} user={null} onLogin={() => onModeChange("login")} isBusy={isSubmitting} />
+    <div className="flex min-h-screen animate-fade-in">
+      {/* Left branding panel */}
+      <div className="hidden w-1/2 flex-col justify-between bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 p-12 lg:flex">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/20 text-lg font-bold text-white backdrop-blur-sm">J</div>
+            <p className="text-xl font-semibold text-white">{APP_NAME}</p>
+          </div>
+          <h1 className="mt-12 max-w-md text-4xl font-semibold leading-tight text-white">
+            {isFrench
+              ? "Organisez chaque journee avec intention."
+              : "Organize every day with intention."}
+          </h1>
+          <p className="mt-4 max-w-md text-base leading-7 text-indigo-200">{APP_TAGLINE}</p>
 
-      <section className="grid w-full overflow-hidden rounded-[2rem] border border-line bg-surface/95 shadow-[0_36px_80px_-52px_rgba(16,34,48,0.8)] backdrop-blur lg:grid-cols-[1.12fr_1fr]">
-        <div className="border-b border-line bg-gradient-to-br from-accent-soft via-[#e8f6f4] to-surface-soft p-8 lg:border-b-0 lg:border-r lg:p-10">
-          <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
-            {isFrench ? "Espace de planification quotidienne" : "Daily Planning Workspace"}
-          </p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{APP_NAME}</h1>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted sm:text-base">{APP_TAGLINE}</p>
-
-          <div className="mt-7 space-y-3 text-sm text-foreground/90">
-            <p className="flex items-start gap-2">
-              <span className="mt-1 h-2.5 w-2.5 rounded-full bg-accent" />
-              {isFrench
-                ? "Planifiez le travail par jour et gardez les priorites visibles."
-                : "Plan work by day and keep priorities visible."}
-            </p>
-            <p className="flex items-start gap-2">
-              <span className="mt-1 h-2.5 w-2.5 rounded-full bg-accent" />
-              {isFrench
-                ? "Deplacez les taches entre les statuts au fil de la progression."
-                : "Drag tasks across statuses as work progresses."}
-            </p>
-            <p className="flex items-start gap-2">
-              <span className="mt-1 h-2.5 w-2.5 rounded-full bg-accent" />
-              {isFrench
-                ? "Gardez une vue fiable de ce qui demande de l'attention maintenant."
-                : "Keep a reliable view of what needs attention now."}
-            </p>
+          <div className="mt-10 space-y-4">
+            <div className="flex items-center gap-3 text-sm text-indigo-100">
+              <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/15">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l3.5 3.5L13 4.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              {isFrench ? "Planifiez par jour, gardez les priorites visibles" : "Plan by day, keep priorities visible"}
+            </div>
+            <div className="flex items-center gap-3 text-sm text-indigo-100">
+              <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/15">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l3.5 3.5L13 4.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              {isFrench ? "Glissez les taches entre les statuts" : "Drag tasks across statuses"}
+            </div>
+            <div className="flex items-center gap-3 text-sm text-indigo-100">
+              <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/15">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l3.5 3.5L13 4.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              {isFrench ? "Suivez votre progression et consistance" : "Track progress and consistency"}
+            </div>
           </div>
         </div>
+        <p className="text-xs text-indigo-300">&copy; {new Date().getFullYear()} {APP_NAME}</p>
+      </div>
 
-        <div className="p-6 sm:p-8 lg:p-10">
-          <div className="inline-flex rounded-xl border border-line bg-surface-soft p-1">
+      {/* Right form panel */}
+      <div className="flex w-full flex-col items-center justify-center px-6 py-10 lg:w-1/2 lg:px-16">
+        <div className="w-full max-w-md">
+          <div className="mb-8 lg:hidden">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-sm font-bold text-white">J</div>
+              <p className="text-lg font-semibold text-foreground">{APP_NAME}</p>
+            </div>
+          </div>
+
+          <h2 className="text-2xl font-semibold text-foreground">
+            {mode === "login"
+              ? isFrench ? "Bon retour" : "Welcome back"
+              : isFrench ? "Creer un compte" : "Create your account"}
+          </h2>
+          <p className="mt-1.5 text-sm text-muted">
+            {mode === "login"
+              ? isFrench ? "Connectez-vous pour acceder a votre tableau." : "Sign in to access your daily board."
+              : isFrench ? "Commencez a suivre vos taches maintenant." : "Start tracking your tasks today."}
+          </p>
+
+          <div className="mt-6 inline-flex rounded-lg bg-surface-soft p-1">
             <button
               type="button"
-              className={`min-w-[110px] rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                mode === "login" ? "bg-surface text-accent shadow-sm" : "text-muted hover:text-foreground"
+              className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
+                mode === "login" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
               }`}
               onClick={() => onModeChange("login")}
               disabled={isSubmitting}
@@ -3037,8 +3116,8 @@ function AuthPanel({
             </button>
             <button
               type="button"
-              className={`min-w-[110px] rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                mode === "register" ? "bg-surface text-accent shadow-sm" : "text-muted hover:text-foreground"
+              className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
+                mode === "register" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
               }`}
               onClick={() => onModeChange("register")}
               disabled={isSubmitting}
@@ -3048,7 +3127,7 @@ function AuthPanel({
           </div>
 
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
-            <label className="block text-sm font-semibold text-foreground">
+            <label className="block text-sm font-medium text-foreground">
               {isFrench ? "Email" : "Email"}
               <input
                 type="email"
@@ -3062,7 +3141,7 @@ function AuthPanel({
               />
             </label>
 
-            <label className="block text-sm font-semibold text-foreground">
+            <label className="block text-sm font-medium text-foreground">
               {isFrench ? "Mot de passe" : "Password"}
               <input
                 type="password"
@@ -3077,7 +3156,7 @@ function AuthPanel({
             </label>
 
             {mode === "register" ? (
-              <label className="block text-sm font-semibold text-foreground">
+              <label className="block text-sm font-medium text-foreground">
                 {isFrench ? "Nom affiche (optionnel)" : "Display Name (optional)"}
                 <input
                   type="text"
@@ -3092,26 +3171,17 @@ function AuthPanel({
             ) : null}
 
             {errorMessage ? (
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
                 {errorMessage}
               </p>
             ) : null}
 
-            <button type="submit" className={`w-full ${primaryButtonClass}`} disabled={isSubmitting}>
+            <button type="submit" className={`w-full py-3 ${primaryButtonClass}`} disabled={isSubmitting}>
               {submitLabel}
             </button>
-            <p className="text-xs leading-5 text-muted">
-              {mode === "login"
-                ? isFrench
-                  ? "Utilisez votre compte pour continuer vers votre tableau quotidien."
-                  : "Use your account to continue to your daily board."
-                : isFrench
-                ? "Creez un compte pour commencer a suivre vos taches quotidiennes immediatement."
-                : "Create an account to start tracking daily tasks immediately."}
-            </p>
           </form>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
@@ -5090,9 +5160,12 @@ export function AppShell() {
 
   if (!isAuthReady) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-[720px] items-center justify-center px-4 py-10 sm:px-8">
-        <div className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm font-medium text-muted shadow-sm">
-          {isFrench ? "Initialisation de la session securisee..." : "Initializing secure session..."}
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center gap-3">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+          <p className="text-sm text-muted">
+            {isFrench ? "Initialisation..." : "Initializing..."}
+          </p>
         </div>
       </div>
     );
@@ -5117,7 +5190,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[1320px] flex-col gap-5 px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
+    <div className="min-h-screen bg-background">
       <AppNavbar
         locale={activeLocale}
         user={authUser}
@@ -5126,7 +5199,9 @@ export function AppShell() {
         isBusy={isMutationPending || isLoading}
       />
 
-      <div className="flex justify-end">
+    <div className="flex min-h-screen flex-col gap-6 px-4 py-6 sm:px-8 lg:ml-[260px] lg:px-10 lg:py-8">
+      <div className="flex items-center justify-between">
+        <div />
         <button
           type="button"
           className={controlIconButtonClass}
@@ -5139,22 +5214,18 @@ export function AppShell() {
       </div>
 
       <header
-        className={`rounded-[1.8rem] border border-line bg-surface/95 px-6 py-6 shadow-[0_34px_80px_-60px_rgba(16,34,48,0.95)] backdrop-blur sm:px-8 ${getDashboardDropClassName(
-          "overview"
-        )}`}
+        id="overview"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("overview")}`}
         style={{ order: getDashboardBlockVisualOrder("overview") }}
         onDragOver={(event) => handleDashboardBlockDragOver("overview", event)}
         onDrop={(event) => handleDashboardBlockDrop("overview", event)}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">
-              {isFrench ? "Operations quotidiennes des taches" : "Daily Task Operations"}
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{APP_NAME}</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">{APP_TAGLINE}</p>
+            <h1 className="text-xl font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</h1>
+            <p className="mt-0.5 text-sm text-muted">{APP_TAGLINE}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               className={dashboardIconButtonClass}
@@ -5180,45 +5251,50 @@ export function AppShell() {
         </div>
 
         {dashboardBlockCollapsed.overview ? (
-          <p className="mt-4 text-xs text-muted">{collapsedHintLabel}</p>
+          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                {isFrench ? "Total taches" : "Total Tasks"}
-              </p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{tasks.length}</p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-500">
+                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="14" height="11" rx="2"/><path d="M7 3v4M13 3v4M3 9h14" strokeLinecap="round"/></svg>
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-foreground">{tasks.length}</p>
+                <p className="text-xs text-muted">{isFrench ? "Total taches" : "Total Tasks"}</p>
+              </div>
             </div>
-            <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                {isFrench ? "Actionnables" : "Actionable"}
-              </p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{actionableTaskCount}</p>
+            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-500">
+                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3v14M5 8l5-5 5 5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-foreground">{actionableTaskCount}</p>
+                <p className="text-xs text-muted">{isFrench ? "Actionnables" : "Actionable"}</p>
+              </div>
             </div>
-            <div className="rounded-2xl border border-line bg-surface-soft px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                {isFrench ? "Temps planifie" : "Planned Time"}
-              </p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
+            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-500">
+                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.5l2.8 1.7" strokeLinecap="round"/></svg>
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
+                <p className="text-xs text-muted">{isFrench ? "Temps planifie" : "Planned Time"}</p>
+              </div>
             </div>
           </div>
         )}
       </header>
 
       <section
-        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
-          "gamingTrack"
-        )}`}
-        style={{ order: getDashboardBlockVisualOrder("gamingTrack") }}
+        id="gaming"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("gamingTrack")}`}
+        style={{ order: getDashboardBlockVisualOrder("gamingTrack"), animationDelay: "0.05s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("gamingTrack", event)}
         onDrop={(event) => handleDashboardBlockDrop("gamingTrack", event)}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">Gaming Track</p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">
-              {isFrench ? "Progression et regularite" : "Progress and consistency"}
-            </h2>
+            <h2 className="text-base font-semibold text-foreground">Gaming Track</h2>
             <p className="text-sm text-muted">
               {gamingTrackRangeLabel
                 ? `${gamingTrackPeriodLabel} · ${gamingTrackRangeLabel}`
@@ -5230,13 +5306,13 @@ export function AppShell() {
 
           <div className="flex flex-wrap items-center gap-2">
             {!dashboardBlockCollapsed.gamingTrack ? (
-              <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-line bg-surface-soft p-1.5">
+              <div className="inline-flex items-center gap-0.5 rounded-lg bg-surface-soft p-1">
                 {gamingTrackPeriodOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className={`${controlButtonClass} ${
-                      gamingTrackPeriod === option.value ? "border-accent bg-accent-soft/60 text-accent" : ""
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                      gamingTrackPeriod === option.value ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
                     }`}
                     onClick={() => {
                       setGamingTrackPeriod(option.value);
@@ -5284,45 +5360,45 @@ export function AppShell() {
 
         {!dashboardBlockCollapsed.gamingTrack && gamingTrackSummary ? (
           <>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-              <div className="rounded-2xl border border-accent/25 bg-accent-soft/30 px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                  {isFrench ? "Score global" : "Overall score"}
-                </p>
-                <p className="mt-1 text-3xl font-semibold text-foreground">
-                  {gamingTrackSummary.scores.overall}
-                  <span className="ml-1 text-sm text-muted">/100</span>
-                </p>
-                <p className="mt-1 text-xs font-medium text-muted">
-                  {isFrench ? "Tendance" : "Trend"} {formatSignedDelta(gamingTrackOverallDelta)}
-                  {isFrench ? " pts" : " pts"}
-                </p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+              <div className="flex items-center gap-5 rounded-xl bg-accent-soft/40 px-5 py-5">
+                <div className="relative h-20 w-20 shrink-0">
+                  <svg viewBox="0 0 36 36" className="score-ring h-20 w-20">
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-line" />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray={`${gamingTrackSummary.scores.overall * 0.974} 97.4`} strokeLinecap="round" className="text-accent transition-all duration-700" />
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-lg font-bold text-foreground">
+                    {gamingTrackSummary.scores.overall}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{isFrench ? "Score global" : "Overall Score"}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {isFrench ? "Tendance" : "Trend"} {formatSignedDelta(gamingTrackOverallDelta)} pts
+                  </p>
+                </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                    {isFrench ? "Execution" : "Execution"}
-                  </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-line p-3">
+                  <p className="text-[11px] font-medium text-muted">{isFrench ? "Execution" : "Execution"}</p>
                   <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.execution}</p>
+                  <div className="mt-1.5 h-1 rounded-full bg-surface-soft"><div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${gamingTrackSummary.scores.execution}%` }} /></div>
                 </div>
-                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                    {isFrench ? "Reflection" : "Reflection"}
-                  </p>
+                <div className="rounded-xl border border-line p-3">
+                  <p className="text-[11px] font-medium text-muted">{isFrench ? "Reflection" : "Reflection"}</p>
                   <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.reflection}</p>
+                  <div className="mt-1.5 h-1 rounded-full bg-surface-soft"><div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${gamingTrackSummary.scores.reflection}%` }} /></div>
                 </div>
-                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                    {isFrench ? "Consistance" : "Consistency"}
-                  </p>
+                <div className="rounded-xl border border-line p-3">
+                  <p className="text-[11px] font-medium text-muted">{isFrench ? "Consistance" : "Consistency"}</p>
                   <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.consistency}</p>
+                  <div className="mt-1.5 h-1 rounded-full bg-surface-soft"><div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${gamingTrackSummary.scores.consistency}%` }} /></div>
                 </div>
-                <div className="rounded-xl border border-line bg-surface-soft px-3 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
-                    {isFrench ? "Momentum" : "Momentum"}
-                  </p>
+                <div className="rounded-xl border border-line p-3">
+                  <p className="text-[11px] font-medium text-muted">{isFrench ? "Momentum" : "Momentum"}</p>
                   <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.momentum}</p>
+                  <div className="mt-1.5 h-1 rounded-full bg-surface-soft"><div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${gamingTrackSummary.scores.momentum}%` }} /></div>
                 </div>
               </div>
             </div>
@@ -5747,24 +5823,16 @@ export function AppShell() {
       </section>
 
       <section
-        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
-          "dailyControls"
-        )}`}
-        style={{ order: getDashboardBlockVisualOrder("dailyControls") }}
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("dailyControls")}`}
+        style={{ order: getDashboardBlockVisualOrder("dailyControls"), animationDelay: "0.1s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("dailyControls", event)}
         onDrop={(event) => handleDashboardBlockDrop("dailyControls", event)}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
-              {isFrench ? "Pilotage du jour" : "Day controls"}
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</h2>
-            <p className="text-sm text-muted">
-              {isFrench ? "Navigation, actions et creation rapide." : "Navigation, actions, and quick create."}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground">
+            {isFrench ? "Pilotage du jour" : "Day Controls"}
+          </h2>
+          <div className="flex items-center gap-1">
             <button
               type="button"
               className={dashboardIconButtonClass}
@@ -5793,41 +5861,49 @@ export function AppShell() {
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-soft p-1.5">
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-1 rounded-lg bg-surface-soft p-1">
                 <button
                   type="button"
-                  className={controlIconButtonClass}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
                   onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
                   disabled={isMutationPending}
                   aria-label={isFrench ? "Jour precedent" : "Previous day"}
-                  title={isFrench ? "Jour precedent" : "Previous day"}
                 >
                   <ArrowLeftIcon />
                 </button>
                 <button
                   type="button"
-                  className={controlIconButtonClass}
+                  className="inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-foreground"
                   onClick={() => handleDateChange(toDateInputValue(new Date()))}
                   disabled={isMutationPending}
-                  aria-label={isFrench ? "Aujourd'hui" : "Today"}
-                  title={isFrench ? "Aujourd'hui" : "Today"}
                 >
-                  <CalendarIcon />
+                  {isFrench ? "Aujourd'hui" : "Today"}
                 </button>
                 <button
                   type="button"
-                  className={controlIconButtonClass}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
                   onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
                   disabled={isMutationPending}
                   aria-label={isFrench ? "Jour suivant" : "Next day"}
-                  title={isFrench ? "Jour suivant" : "Next day"}
                 >
                   <ArrowRightIcon />
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  if (event.target.value) {
+                    handleDateChange(event.target.value);
+                  }
+                }}
+                disabled={isMutationPending}
+                className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-foreground outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
+              />
+
+              <div className="ml-auto flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   className={controlButtonClass}
@@ -5840,8 +5916,8 @@ export function AppShell() {
                       ? "Copie..."
                       : "Carrying..."
                     : isFrench
-                    ? "Copier les taches d'hier"
-                    : "Carry Over Yesterday"}
+                    ? "Copier d'hier"
+                    : "Carry Over"}
                 </button>
                 <button
                   type="button"
@@ -5853,25 +5929,10 @@ export function AppShell() {
                   {isFrench ? "Nouvelle tache" : "New Task"}
                 </button>
               </div>
-
-              <label className="flex min-w-[210px] flex-col gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                {isFrench ? "Date selectionnee" : "Selected Date"}
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(event) => {
-                    if (event.target.value) {
-                      handleDateChange(event.target.value);
-                    }
-                  }}
-                  disabled={isMutationPending}
-                  className={textFieldClass}
-                />
-              </label>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
-              <p className="font-medium">
+            <div className="mt-4 flex items-center gap-3 rounded-lg bg-surface-soft px-4 py-2.5">
+              <p className="flex-1 text-sm text-muted">
                 {isLoading
                   ? isFrench
                     ? "Chargement des taches..."
@@ -5880,9 +5941,12 @@ export function AppShell() {
                   ? `${tasks.length} tache${tasks.length === 1 ? "" : "s"} pour la date selectionnee`
                   : `${tasks.length} task${tasks.length === 1 ? "" : "s"} for the selected date`}
               </p>
-              <p className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-muted">
-                {isFrench ? "Completion" : "Completion"} {completionRate}%
-              </p>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-24 rounded-full bg-line">
+                  <div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${completionRate}%` }} />
+                </div>
+                <span className="text-xs font-medium text-muted">{completionRate}%</span>
+              </div>
             </div>
           </>
         )}
@@ -5907,38 +5971,38 @@ export function AppShell() {
       ) : null}
 
       <section
-        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
-          "affirmation"
-        )}`}
-        style={{ order: getDashboardBlockVisualOrder("affirmation") }}
+        id="affirmation"
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getDashboardDropClassName("affirmation")}`}
+        style={{ order: getDashboardBlockVisualOrder("affirmation"), animationDelay: "0.15s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("affirmation", event)}
         onDrop={(event) => handleDashboardBlockDrop("affirmation", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">Miracle Morning</p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">
+            <h2 className="text-base font-semibold text-foreground">
               {isFrench ? "Affirmation du jour" : "Day Affirmation"}
             </h2>
             <p className="text-sm text-muted">
               {isFrench
-                ? "Une phrase intentionnelle pour la journee. Cochez-la pour l'inclure dans la completion."
-                : "One intentional statement for the day. Mark it done to include it in completion."}
+                ? "Une phrase intentionnelle pour la journee."
+                : "One intentional statement for the day."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {!dashboardBlockCollapsed.affirmation ? (
-              <label className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm font-semibold text-foreground">
-                <input
-                  type="checkbox"
-                  checked={isAffirmationCompleted}
-                  onChange={(event) => {
-                    void saveDayAffirmation({ isCompleted: event.target.checked });
-                  }}
-                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-                />
-                {isFrench ? "Affirmation terminee" : "Affirmation completed"}
-              </label>
+              <button
+                type="button"
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${isAffirmationCompleted ? "bg-accent" : "bg-line"}`}
+                onClick={() => {
+                  void saveDayAffirmation({ isCompleted: !isAffirmationCompleted });
+                }}
+                disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                role="switch"
+                aria-checked={isAffirmationCompleted}
+                aria-label={isFrench ? "Affirmation terminee" : "Affirmation completed"}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isAffirmationCompleted ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
             ) : null}
             <button
               type="button"
@@ -6050,26 +6114,15 @@ export function AppShell() {
       ) : null}
 
       <section
-        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
-          "board"
-        )}`}
-        style={{ order: getDashboardBlockVisualOrder("board") }}
+        id="board"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("board")}`}
+        style={{ order: getDashboardBlockVisualOrder("board"), animationDelay: "0.2s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("board", event)}
         onDrop={(event) => handleDashboardBlockDrop("board", event)}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
-              {isFrench ? "Execution quotidienne" : "Daily execution"}
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">{isFrench ? "Tableau Kanban" : "Kanban board"}</h2>
-            <p className="text-sm text-muted">
-              {isFrench
-                ? "Faites glisser les taches entre les statuts."
-                : "Drag tasks across columns as work progresses."}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground">{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
+          <div className="flex items-center gap-1">
             <button
               type="button"
               className={dashboardIconButtonClass}
@@ -6127,29 +6180,27 @@ export function AppShell() {
                   return (
                     <section
                       key={column.status}
-                      className={`flex min-h-[340px] flex-col rounded-3xl border border-line border-t-4 bg-surface px-4 py-4 shadow-[0_16px_35px_-30px_rgba(16,34,48,0.9)] ${statusColumnClassByStatus[column.status]}`}
+                      className={`flex min-h-[340px] flex-col rounded-xl border-t-2 bg-surface-soft/50 px-3 py-3 ${statusColumnClassByStatus[column.status]}`}
                     >
-                      <header className="flex items-center justify-between gap-2">
-                        <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted">
-                          {column.label}
-                        </h2>
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusChipClassByStatus[column.status]}`}
-                          >
+                      <header className="flex items-center justify-between gap-2 pb-2">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xs font-semibold text-foreground">
+                            {column.label}
+                          </h2>
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-surface text-[10px] font-semibold text-muted">
                             {columnTasks.length}
                           </span>
-                          <button
-                            type="button"
-                            className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
-                            onClick={() => openCreateTaskDialog(column.status)}
-                            disabled={isMutationPending}
-                            aria-label={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
-                            title={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
-                          >
-                            <PlusIcon />
-                          </button>
                         </div>
+                        <button
+                          type="button"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
+                          onClick={() => openCreateTaskDialog(column.status)}
+                          disabled={isMutationPending}
+                          aria-label={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
+                          title={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
+                        >
+                          <PlusIcon />
+                        </button>
                       </header>
 
                       <TaskColumn status={column.status}>
@@ -6193,19 +6244,15 @@ export function AppShell() {
       </section>
 
       <section
-        className={`rounded-[1.5rem] border border-line bg-surface px-5 py-5 shadow-[0_18px_45px_-35px_rgba(16,34,48,0.9)] sm:px-6 ${getDashboardDropClassName(
-          "bilan"
-        )}`}
-        style={{ order: getDashboardBlockVisualOrder("bilan") }}
+        id="bilan"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("bilan")}`}
+        style={{ order: getDashboardBlockVisualOrder("bilan"), animationDelay: "0.25s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("bilan", event)}
         onDrop={(event) => handleDashboardBlockDrop("bilan", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
-              {isFrench ? "Fin de journee" : "End Of Day"}
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">
+            <h2 className="text-base font-semibold text-foreground">
               {isFrench ? "Bilan du jour" : "Day Bilan"}
             </h2>
             <p className="text-sm text-muted">
@@ -6260,27 +6307,27 @@ export function AppShell() {
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
                   {isFrench ? "Taches terminees" : "Done Tasks"}
                 </p>
                 <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.done.length}</p>
               </div>
-              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
                   {isFrench ? "Actionnables" : "Actionable"}
                 </p>
                 <p className="mt-1 text-xl font-semibold text-foreground">{actionableTaskCount}</p>
               </div>
-              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
                   {isFrench ? "Annulees" : "Cancelled"}
                 </p>
                 <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.cancelled.length}</p>
               </div>
-              <div className="rounded-xl border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
                   {isFrench ? "Affirmation" : "Affirmation"}
                 </p>
                 <p className="mt-1 text-xl font-semibold text-foreground">
@@ -6301,22 +6348,34 @@ export function AppShell() {
               </p>
             ) : (
               <div className="mt-4 space-y-3">
-                <label className="block text-sm font-semibold text-foreground">
-                  {isFrench ? "Humeur (1-5)" : "Mood (1-5)"}
-                  <select
-                    value={dayBilanFormValues.mood}
-                    onChange={(event) => updateDayBilanField("mood", event.target.value)}
-                    className={textFieldClass}
-                    disabled={isDayBilanSaving}
-                  >
-                    <option value="">{isFrench ? "Non defini" : "Not set"}</option>
-                    <option value="1">{isFrench ? "1 - Journee tres difficile" : "1 - Very hard day"}</option>
-                    <option value="2">{isFrench ? "2 - Journee difficile" : "2 - Hard day"}</option>
-                    <option value="3">{isFrench ? "3 - Journee neutre" : "3 - Neutral day"}</option>
-                    <option value="4">{isFrench ? "4 - Bonne journee" : "4 - Good day"}</option>
-                    <option value="5">{isFrench ? "5 - Excellente journee" : "5 - Excellent day"}</option>
-                  </select>
-                </label>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{isFrench ? "Humeur" : "Mood"}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    {[
+                      { value: "1", emoji: "\ud83d\ude2b", label: isFrench ? "Tres difficile" : "Very hard" },
+                      { value: "2", emoji: "\ud83d\ude1f", label: isFrench ? "Difficile" : "Hard" },
+                      { value: "3", emoji: "\ud83d\ude10", label: isFrench ? "Neutre" : "Neutral" },
+                      { value: "4", emoji: "\ud83d\ude0a", label: isFrench ? "Bonne" : "Good" },
+                      { value: "5", emoji: "\ud83e\udd29", label: isFrench ? "Excellente" : "Excellent" },
+                    ].map((mood) => (
+                      <button
+                        key={mood.value}
+                        type="button"
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl transition-all duration-200 ${
+                          dayBilanFormValues.mood === mood.value
+                            ? "scale-110 bg-accent-soft ring-2 ring-accent"
+                            : "bg-surface-soft hover:scale-105 hover:bg-surface"
+                        }`}
+                        onClick={() => updateDayBilanField("mood", dayBilanFormValues.mood === mood.value ? "" : mood.value)}
+                        disabled={isDayBilanSaving}
+                        title={mood.label}
+                        aria-label={mood.label}
+                      >
+                        {mood.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="block text-sm font-semibold text-foreground">
@@ -6390,7 +6449,7 @@ export function AppShell() {
 
       {isTaskDialogOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#09131f]/55 p-4 backdrop-blur-[1px]"
+          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeTaskDialog();
@@ -6401,7 +6460,7 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={taskDialogTitle}
-            className={`flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface p-4 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-5 ${taskDialogHeightClass}`}
+            className={`animate-scale-in flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${taskDialogHeightClass}`}
           >
             <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
               <div>
@@ -6990,7 +7049,7 @@ export function AppShell() {
 
       {isProfileDialogOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#09131f]/55 p-4 backdrop-blur-[1px]"
+          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeProfileDialog();
@@ -7001,7 +7060,7 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={isFrench ? "Parametres du profil" : "Profile settings"}
-            className="w-full max-w-lg rounded-3xl border border-line bg-surface p-5 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-6"
+            className="animate-scale-in w-full max-w-lg rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
           >
             <header>
               <h3 className="text-lg font-semibold text-foreground">
@@ -7107,7 +7166,7 @@ export function AppShell() {
 
       {taskToDelete ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#09131f]/55 p-4 backdrop-blur-[1px]"
+          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeDeleteDialog();
@@ -7118,7 +7177,7 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={isFrench ? "Confirmation de suppression de tache" : "Delete task confirmation"}
-            className="w-full max-w-md rounded-3xl border border-line bg-surface p-5 shadow-[0_40px_80px_-50px_rgba(0,0,0,0.95)] sm:p-6"
+            className="animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
           >
             <h3 className="text-lg font-semibold text-foreground">
               {isFrench ? "Supprimer la tache ?" : "Delete task?"}
@@ -7165,48 +7224,49 @@ export function AppShell() {
       ) : null}
 
       {isAssistantPanelOpen ? (
-        <section className="fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_24px_65px_-35px_rgba(16,34,48,0.95)] sm:left-auto sm:right-6 sm:w-[390px]">
-          <header className="flex items-center justify-between gap-2 border-b border-line bg-surface-soft px-4 py-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.11em] text-muted">
-                {isFrench ? "Assistant IA" : "AI Assistant"}
-              </p>
-              <p className="text-sm font-semibold text-foreground">
-                {isFrench ? "Toutes vos taches" : "All your tasks"}
-              </p>
+        <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[400px]">
+          <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-7 w-7 place-items-center rounded-lg bg-accent-soft text-accent">
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2l1.5 3h3l-2.5 2.5.8 3L8 9l-2.8 1.5.8-3L3.5 5h3z"/></svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {isFrench ? "Assistant IA" : "AI Assistant"}
+                </p>
+              </div>
             </div>
             <button
               type="button"
-              className={`${iconButtonClass} h-8 w-8 rounded-xl px-0 text-[11px]`}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
               onClick={() => setIsAssistantPanelOpen(false)}
               disabled={isAssistantLoading}
               aria-label={isFrench ? "Fermer l'assistant IA" : "Close AI assistant"}
-              title={isFrench ? "Fermer l'assistant IA" : "Close AI assistant"}
             >
               <CloseIcon />
             </button>
           </header>
 
-          <div className="flex-1 space-y-2 overflow-y-auto bg-surface-soft/40 px-3 py-3">
+          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {assistantMessages.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+              <p className="text-center text-sm text-muted">
                 {isFrench
-                  ? "Posez vos questions sur toutes vos taches. Appuyez sur Entree pour envoyer."
-                  : "Ask anything about your tasks across all dates. Press Enter to send."}
+                  ? "Posez vos questions sur toutes vos taches."
+                  : "Ask anything about your tasks."}
               </p>
             ) : (
               <>
                 {assistantMessages.map((message) => (
                   <article
                     key={message.id}
-                    className={`max-w-[92%] rounded-2xl px-3 py-2 ${
+                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${
                       message.role === "user"
-                        ? "ml-auto border border-accent/25 bg-accent-soft text-foreground"
-                        : "border border-line bg-surface text-foreground/90"
+                        ? "ml-auto bg-accent text-white rounded-br-md"
+                        : "bg-surface-soft text-foreground rounded-bl-md"
                     }`}
                   >
                     <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
-                    <p className="mt-1 text-[11px] text-muted">
+                    <p className={`mt-1 text-[10px] ${message.role === "user" ? "text-white/60" : "text-muted"}`}>
                       {formatDateTime(message.timestamp, activeLocale, activeTimeZone)}
                       {message.role === "assistant" && message.source ? ` · ${message.source}` : ""}
                       {message.role === "assistant" &&
@@ -7224,20 +7284,21 @@ export function AppShell() {
             )}
           </div>
 
-          <div className="border-t border-line bg-surface px-3 py-3">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div className="border-t border-line px-4 py-3">
+            <div className="mb-3 flex flex-wrap gap-1.5">
               {assistantPromptSuggestions.map((prompt) => (
                 <button
                   key={prompt}
                   type="button"
-                  className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
+                  className="inline-flex items-center gap-1 rounded-full bg-surface-soft px-2.5 py-1 text-[11px] text-muted transition-colors hover:bg-accent-soft hover:text-accent"
                   onClick={() => {
                     setAssistantQuestion(prompt);
                     setAssistantErrorMessage(null);
                   }}
                   disabled={isAssistantLoading}
                 >
-                  {prompt}
+                  <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 1l1 2.5h2.5l-2 1.5.8 2.5L6 6l-2.3 1.5.8-2.5-2-1.5H5z"/></svg>
+                  {prompt.length > 40 ? prompt.slice(0, 40) + "..." : prompt}
                 </button>
               ))}
             </div>
@@ -7250,23 +7311,22 @@ export function AppShell() {
                   setAssistantQuestion(event.target.value);
                   setAssistantErrorMessage(null);
                 }}
-                className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55"
+                className="w-full rounded-lg border border-line bg-surface-soft px-3 py-2.5 text-sm text-foreground outline-none transition-all placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15"
                 maxLength={ASSISTANT_QUESTION_MAX_LENGTH}
-                placeholder={isFrench ? "Posez une question sur vos taches..." : "Ask anything about your tasks..."}
+                placeholder={isFrench ? "Posez une question..." : "Ask a question..."}
                 disabled={isAssistantLoading}
               />
-              <button type="submit" className={primaryButtonClass} disabled={isAssistantLoading}>
+              <button
+                type="submit"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-all hover:bg-accent-strong disabled:opacity-50"
+                disabled={isAssistantLoading}
+              >
                 <SendIcon />
-                {isAssistantLoading ? "..." : isFrench ? "Envoyer" : "Send"}
               </button>
             </form>
 
-            <p className="mt-2 text-[11px] text-muted">
-              {assistantQuestion.trim().length}/{ASSISTANT_QUESTION_MAX_LENGTH}
-            </p>
-
             {assistantErrorMessage ? (
-              <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
                 {assistantErrorMessage}
               </p>
             ) : null}
@@ -7276,7 +7336,7 @@ export function AppShell() {
 
       <button
         type="button"
-        className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-accent/75 bg-accent text-lg font-semibold text-white shadow-[0_20px_45px_-25px_rgba(16,34,48,0.95)] transition hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        className="animate-pulse-soft fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-strong text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         onClick={() => setIsAssistantPanelOpen((isOpen) => !isOpen)}
         aria-label={
           isAssistantPanelOpen
@@ -7289,8 +7349,8 @@ export function AppShell() {
         }
       >
         <ChatIcon />
-        <span className="text-[10px] font-bold tracking-[0.08em]">AI</span>
       </button>
+    </div>
     </div>
   );
 }

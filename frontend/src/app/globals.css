@@ -1,18 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ecf2f7;
+  --background: #f8f9fb;
   --surface: #ffffff;
-  --surface-soft: #f7fafc;
-  --foreground: #102230;
-  --muted: #4f6270;
-  --line: #cfdbe5;
-  --accent: #0f766e;
-  --accent-strong: #115e59;
-  --accent-soft: #d7f0ed;
-  --danger: #b42336;
-  --danger-soft: #fde8eb;
-  --font-sans: "Avenir Next", "Plus Jakarta Sans", "Segoe UI", sans-serif;
+  --surface-soft: #f3f4f6;
+  --surface-elevated: #ffffff;
+  --foreground: #111827;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --accent: #6366f1;
+  --accent-strong: #4f46e5;
+  --accent-soft: #eef2ff;
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+  --success: #10b981;
+  --success-soft: #ecfdf5;
+  --warning: #f59e0b;
+  --warning-soft: #fffbeb;
+  --font-sans: "Inter", "SF Pro Display", system-ui, sans-serif;
   --font-mono: "Fira Mono", "Menlo", monospace;
   color-scheme: light;
 }
@@ -21,6 +26,7 @@
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-soft: var(--surface-soft);
+  --color-surface-elevated: var(--surface-elevated);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-line: var(--line);
@@ -29,22 +35,100 @@
   --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 }
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 12% -10%, #d9ecfa 0%, transparent 36%),
-    radial-gradient(circle at 90% 10%, #d8f4ef 0%, transparent 32%),
-    linear-gradient(180deg, #f2f7fb 0%, var(--background) 36%, #e7eef5 100%);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
 }
 
 ::selection {
-  background: #c5e7e2;
+  background: #c7d2fe;
+}
+
+/* Fade-in animation for sections */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out both;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2.5s ease-in-out infinite;
+}
+
+/* Skeleton loading shimmer */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--surface-soft) 25%, #e8eaed 50%, var(--surface-soft) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Score ring */
+.score-ring {
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+/* Progress bar gradient */
+.progress-gradient {
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+
+/* Sidebar transition */
+.sidebar-transition {
+  transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
 .rich-text-render p {
@@ -71,20 +155,20 @@ body {
 
 .rich-text-render blockquote {
   margin: 0.35rem 0;
-  border-left: 3px solid #9ec9c4;
+  border-left: 3px solid #a5b4fc;
   padding-left: 0.65rem;
-  color: #3e5663;
+  color: #4b5563;
 }
 
 .rich-text-render code {
-  border: 1px solid #cfdbe5;
+  border: 1px solid #e5e7eb;
   border-radius: 0.35rem;
-  background: #f3f7fa;
+  background: #f3f4f6;
   padding: 0.08rem 0.3rem;
   font-size: 0.85em;
 }
 
 .rich-text-render a {
-  color: #0f766e;
+  color: #6366f1;
   text-decoration: underline;
 }
