@@ -13,6 +13,14 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { type DragEvent as ReactDragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import Underline from "@tiptap/extension-underline";
+import Link from "@tiptap/extension-link";
+import Highlight from "@tiptap/extension-highlight";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app-meta";
 
 type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
@@ -880,15 +888,7 @@ function LayoutToggleIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-const markdownToolbarActions: ReadonlyArray<{ id: string; label: string; title: string }> = [
-  { id: "bold", label: "B", title: "Bold" },
-  { id: "italic", label: "I", title: "Italic" },
-  { id: "code", label: "</>", title: "Inline code" },
-  { id: "bullet", label: "- List", title: "Bulleted list" },
-  { id: "numbered", label: "1. List", title: "Numbered list" },
-  { id: "quote", label: "Quote", title: "Quote" },
-  { id: "link", label: "Link", title: "Insert link" },
-];
+// (Tiptap toolbar actions are handled inline in TiptapToolbar)
 
 function toDateInputValue(date: Date): string {
   const year = date.getFullYear();
@@ -1500,6 +1500,103 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+const allowedRichTextTags = new Set([
+  "a",
+  "blockquote",
+  "br",
+  "code",
+  "div",
+  "em",
+  "hr",
+  "input",
+  "label",
+  "li",
+  "mark",
+  "ol",
+  "p",
+  "s",
+  "span",
+  "strong",
+  "u",
+  "ul",
+]);
+
+function getHtmlAttributeValue(source: string, attributeName: string): string | null {
+  const quotedMatch = new RegExp(`${attributeName}\\s*=\\s*(['"])(.*?)\\1`, "i").exec(source);
+  if (quotedMatch?.[2]) {
+    return quotedMatch[2];
+  }
+
+  const unquotedMatch = new RegExp(`${attributeName}\\s*=\\s*([^\\s>]+)`, "i").exec(source);
+  return unquotedMatch?.[1] ?? null;
+}
+
+function sanitizeRichTextUrl(value: string): string | null {
+  const normalized = value.trim();
+  return /^https?:\/\//i.test(normalized) ? normalized : null;
+}
+
+function sanitizeRichTextTag(tag: string): string {
+  const match = /^<\s*(\/?)\s*([a-z0-9-]+)([^>]*)>/i.exec(tag);
+
+  if (!match) {
+    return "";
+  }
+
+  const [, closingSlash, rawTagName, rawAttributes] = match;
+  const tagName = rawTagName.toLowerCase();
+
+  if (!allowedRichTextTags.has(tagName)) {
+    return "";
+  }
+
+  const isClosingTag = closingSlash === "/";
+  if (isClosingTag) {
+    return tagName === "br" || tagName === "hr" || tagName === "input" ? "" : `</${tagName}>`;
+  }
+
+  if (tagName === "br" || tagName === "hr") {
+    return `<${tagName}>`;
+  }
+
+  if (tagName === "a") {
+    const href = getHtmlAttributeValue(rawAttributes, "href");
+    const safeUrl = href ? sanitizeRichTextUrl(href) : null;
+
+    return safeUrl
+      ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">`
+      : "<a>";
+  }
+
+  if (tagName === "ul") {
+    const dataType = getHtmlAttributeValue(rawAttributes, "data-type");
+    return dataType === "taskList" ? '<ul data-type="taskList">' : "<ul>";
+  }
+
+  if (tagName === "li") {
+    const checkedState = getHtmlAttributeValue(rawAttributes, "data-checked");
+    return checkedState === "true" || checkedState === "false"
+      ? `<li data-checked="${checkedState}">`
+      : "<li>";
+  }
+
+  if (tagName === "input") {
+    const type = getHtmlAttributeValue(rawAttributes, "type");
+    if (type?.toLowerCase() !== "checkbox") {
+      return "";
+    }
+
+    const isChecked = /\bchecked(?:\s*=\s*(?:"checked"|'checked'|checked))?/i.test(rawAttributes);
+    return `<input type="checkbox"${isChecked ? " checked" : ""} disabled>`;
+  }
+
+  return `<${tagName}>`;
+}
+
+function sanitizeRichTextHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, (tag) => sanitizeRichTextTag(tag));
+}
+
 function formatInlineMarkdown(value: string): string {
   let formatted = escapeHtml(value);
 
@@ -1518,6 +1615,10 @@ function renderDescriptionHtml(markdown: string): string {
 
   if (!trimmed) {
     return "";
+  }
+
+  if (/<[a-z][\s\S]*>/i.test(trimmed)) {
+    return sanitizeRichTextHtml(trimmed);
   }
 
   const lines = trimmed.split(/\r?\n/);
@@ -2503,7 +2604,7 @@ async function claimGamingTrackChallenge(date: string, token: string): Promise<{
   return payload.data;
 }
 
-async function useGamingTrackStreakProtection(date: string, token: string): Promise<{
+async function activateGamingTrackStreakProtection(date: string, token: string): Promise<{
   usedOn: string;
   remainingCharges: number;
   alreadyUsed: boolean;
@@ -2716,170 +2817,264 @@ type RichTextEditorProps = {
   onChange: (nextValue: string) => void;
 };
 
-function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorProps) {
+function RichTextContent({ value, className }: { value: string; className: string }) {
+  const html = renderDescriptionHtml(value);
+
+  if (!html) {
+    return null;
+  }
+
+  return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function TiptapToolbarButton({
+  onClick,
+  isActive,
+  disabled,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  isActive?: boolean;
+  disabled?: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-xs transition-colors duration-150 ${
+        isActive
+          ? "bg-accent/10 text-accent"
+          : "text-muted hover:bg-surface-soft hover:text-foreground"
+      } disabled:cursor-not-allowed disabled:opacity-40`}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TiptapToolbar({
+  editor,
+  disabled,
+  locale,
+}: {
+  editor: Editor | null;
+  disabled: boolean;
+  locale: UserLocale;
+}) {
+  if (!editor) {
+    return null;
+  }
+
   const isFrench = locale === "fr";
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  function updateValueAndSelection(nextValue: string, selectionStart: number, selectionEnd: number) {
-    onChange(nextValue);
-
-    requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
-      }
-
-      textarea.focus();
-      textarea.setSelectionRange(selectionStart, selectionEnd);
-    });
-  }
-
-  function applyInlineDecoration(prefix: string, suffix = prefix) {
-    if (disabled) {
+  function addLink() {
+    const previousUrl = editor?.getAttributes("link").href ?? "";
+    const url = window.prompt(isFrench ? "Entrez une URL" : "Enter a URL", previousUrl || "https://");
+    if (url === null) return;
+    if (url === "") {
+      editor?.chain().focus().extendMarkRange("link").unsetLink().run();
       return;
     }
-
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = value.slice(start, end) || (isFrench ? "texte" : "text");
-    const replacement = `${prefix}${selected}${suffix}`;
-    const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
-
-    updateValueAndSelection(nextValue, start + prefix.length, start + prefix.length + selected.length);
-  }
-
-  function applyLinePrefix(prefixForLine: (lineIndex: number) => string) {
-    if (disabled) {
-      return;
-    }
-
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
-
-    const rawStart = textarea.selectionStart;
-    const rawEnd = textarea.selectionEnd;
-    const blockStart = value.lastIndexOf("\n", Math.max(0, rawStart - 1)) + 1;
-    const lineEndIndex = value.indexOf("\n", rawEnd);
-    const blockEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
-    const block = value.slice(blockStart, blockEnd);
-    const lines = block.split("\n");
-    const updatedBlock = lines.map((line, index) => `${prefixForLine(index)}${line}`).join("\n");
-    const nextValue = `${value.slice(0, blockStart)}${updatedBlock}${value.slice(blockEnd)}`;
-
-    updateValueAndSelection(nextValue, blockStart, blockStart + updatedBlock.length);
-  }
-
-  function handleToolbarAction(actionId: string) {
-    switch (actionId) {
-      case "bold":
-        applyInlineDecoration("**");
-        break;
-      case "italic":
-        applyInlineDecoration("*");
-        break;
-      case "code":
-        applyInlineDecoration("`");
-        break;
-      case "bullet":
-        applyLinePrefix(() => "- ");
-        break;
-      case "numbered":
-        applyLinePrefix((index) => `${index + 1}. `);
-        break;
-      case "quote":
-        applyLinePrefix(() => "> ");
-        break;
-      case "link": {
-        if (disabled) {
-          return;
-        }
-
-        const textarea = textareaRef.current;
-        if (!textarea) {
-          return;
-        }
-
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const selected = value.slice(start, end) || (isFrench ? "texte du lien" : "link text");
-        const prompted = window.prompt(isFrench ? "Entrez une URL" : "Enter a URL", "https://");
-
-        if (!prompted) {
-          return;
-        }
-
-        const trimmed = prompted.trim();
-        if (!trimmed) {
-          return;
-        }
-
-        const normalizedUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-        const replacement = `[${selected}](${normalizedUrl})`;
-        const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
-
-        updateValueAndSelection(nextValue, start + 1, start + 1 + selected.length);
-        break;
-      }
-      default:
-        break;
-    }
+    const normalizedUrl = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
+    editor?.chain().focus().extendMarkRange("link").setLink({ href: normalizedUrl }).run();
   }
 
   return (
-    <div className="mt-1 overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="flex flex-wrap items-center gap-1 border-b border-line bg-surface-soft p-2">
-        {markdownToolbarActions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            className={`${iconButtonClass} h-7 px-2.5 text-[11px]`}
-            title={action.title}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => handleToolbarAction(action.id)}
-            disabled={disabled}
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
-
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="min-h-[130px] w-full resize-y border-0 bg-transparent px-3 py-2.5 text-sm leading-6 text-foreground outline-none placeholder:text-muted/65 disabled:cursor-not-allowed disabled:opacity-55"
-        placeholder={
-          isFrench
-            ? "Decrivez la tache. Utilisez la barre pour gras, listes, citations, code et liens."
-            : "Describe the task. Use the toolbar for bold, lists, quotes, code, and links."
-        }
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1.5">
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        isActive={editor.isActive("bold")}
         disabled={disabled}
-      />
+        title={isFrench ? "Gras" : "Bold"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><path d="M4 2h5a3 3 0 011.5 5.6A3.5 3.5 0 019.5 14H4V2zm2 5h3a1 1 0 100-2H6v2zm0 2v3h3.5a1.5 1.5 0 000-3H6z"/></svg>
+      </TiptapToolbarButton>
 
-      <div className="border-t border-line bg-surface-soft/60 px-3 py-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
-          {isFrench ? "Apercu" : "Preview"}
-        </p>
-        {value.trim() ? (
-          <div
-            className="rich-text-render mt-2 text-sm leading-6 text-muted"
-            dangerouslySetInnerHTML={{ __html: renderDescriptionHtml(value) }}
-          />
-        ) : (
-          <p className="mt-1 text-xs text-muted">
-            {isFrench
-              ? "Ajoutez une description pour afficher le rendu."
-              : "Add description text to preview formatting."}
-          </p>
-        )}
-      </div>
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        isActive={editor.isActive("italic")}
+        disabled={disabled}
+        title={isFrench ? "Italique" : "Italic"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><path d="M6 2h6v2h-2.2l-2.6 8H9v2H3v-2h2.2l2.6-8H6V2z"/></svg>
+      </TiptapToolbarButton>
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        isActive={editor.isActive("underline")}
+        disabled={disabled}
+        title={isFrench ? "Souligne" : "Underline"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><path d="M4 2v5a4 4 0 008 0V2h-2v5a2 2 0 01-4 0V2H4zM3 14h10v1.5H3V14z"/></svg>
+      </TiptapToolbarButton>
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        isActive={editor.isActive("strike")}
+        disabled={disabled}
+        title={isFrench ? "Barre" : "Strikethrough"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><path d="M2 7.5h12v1H2zM5.5 3C4.1 3 3 3.9 3 5.1c0 .7.3 1.2.8 1.6h2.3c-.5-.3-.8-.7-.8-1.1 0-.6.6-1 1.3-1h2.8c.7 0 1.3.4 1.3 1h2.1c0-1.3-1.3-2.4-3-2.5H5.5zM10.5 9.5H8.2c.5.3.8.7.8 1.1 0 .6-.6 1-1.3 1H5c-.7 0-1.3-.4-1.3-1H1.8c0 1.3 1.3 2.4 3 2.5h5.7c1.4 0 2.5-.9 2.5-2.1 0-.6-.3-1.1-.8-1.5H10.5z"/></svg>
+      </TiptapToolbarButton>
+
+      <div className="mx-1 h-4 w-px bg-line" />
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleHighlight().run()}
+        isActive={editor.isActive("highlight")}
+        disabled={disabled}
+        title={isFrench ? "Surligner" : "Highlight"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><path d="M2 12h12v2H2zM9.4 2.3l4.3 4.3-6.4 6.4H3v-4.3l6.4-6.4zm0 2.1L4.5 9.3v1.2h1.2L10.6 5.6 9.4 4.4z"/></svg>
+      </TiptapToolbarButton>
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleCode().run()}
+        isActive={editor.isActive("code")}
+        disabled={disabled}
+        title={isFrench ? "Code en ligne" : "Inline code"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M5.5 4L2 8l3.5 4M10.5 4L14 8l-10.5 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </TiptapToolbarButton>
+
+      <div className="mx-1 h-4 w-px bg-line" />
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        isActive={editor.isActive("bulletList")}
+        disabled={disabled}
+        title={isFrench ? "Liste a puces" : "Bullet list"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><circle cx="3" cy="4" r="1.2"/><circle cx="3" cy="8" r="1.2"/><circle cx="3" cy="12" r="1.2"/><rect x="6" y="3" width="8" height="2" rx="0.5"/><rect x="6" y="7" width="8" height="2" rx="0.5"/><rect x="6" y="11" width="8" height="2" rx="0.5"/></svg>
+      </TiptapToolbarButton>
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        isActive={editor.isActive("orderedList")}
+        disabled={disabled}
+        title={isFrench ? "Liste numerotee" : "Numbered list"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><text x="1" y="5.5" fontSize="4" fontWeight="bold">1</text><text x="1" y="9.5" fontSize="4" fontWeight="bold">2</text><text x="1" y="13.5" fontSize="4" fontWeight="bold">3</text><rect x="6" y="3" width="8" height="2" rx="0.5"/><rect x="6" y="7" width="8" height="2" rx="0.5"/><rect x="6" y="11" width="8" height="2" rx="0.5"/></svg>
+      </TiptapToolbarButton>
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleTaskList().run()}
+        isActive={editor.isActive("taskList")}
+        disabled={disabled}
+        title={isFrench ? "Liste de taches" : "Task list"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="1.5" y="2" width="4" height="4" rx="0.8"/><path d="M2.8 4l.8.8L5.2 3" strokeLinecap="round" strokeLinejoin="round"/><rect x="1.5" y="10" width="4" height="4" rx="0.8"/><line x1="8" y1="4" x2="14.5" y2="4" strokeLinecap="round"/><line x1="8" y1="12" x2="14.5" y2="12" strokeLinecap="round"/></svg>
+      </TiptapToolbarButton>
+
+      <div className="mx-1 h-4 w-px bg-line" />
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        isActive={editor.isActive("blockquote")}
+        disabled={disabled}
+        title={isFrench ? "Citation" : "Quote"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor"><path d="M3 3h4v4.5c0 2.5-1.5 4-3.5 4.5l-.5-1.5c1.2-.3 2-1.2 2-2.5H3V3zm6 0h4v4.5c0 2.5-1.5 4-3.5 4.5l-.5-1.5c1.2-.3 2-1.2 2-2.5H9V3z"/></svg>
+      </TiptapToolbarButton>
+
+      <TiptapToolbarButton
+        onClick={addLink}
+        isActive={editor.isActive("link")}
+        disabled={disabled}
+        title={isFrench ? "Lien" : "Link"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6.5 9.5a3 3 0 004.2.3l2-2a3 3 0 00-4.2-4.3l-1.2 1.1" strokeLinecap="round"/><path d="M9.5 6.5a3 3 0 00-4.2-.3l-2 2a3 3 0 004.2 4.3l1.1-1.1" strokeLinecap="round"/></svg>
+      </TiptapToolbarButton>
+
+      <div className="mx-1 h-4 w-px bg-line" />
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().setHorizontalRule().run()}
+        disabled={disabled}
+        title={isFrench ? "Separateur" : "Horizontal rule"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2" y1="8" x2="14" y2="8" strokeLinecap="round"/></svg>
+      </TiptapToolbarButton>
+    </div>
+  );
+}
+
+function isHtmlContent(text: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(text);
+}
+
+function convertMarkdownToHtml(markdown: string): string {
+  if (!markdown.trim()) return "";
+  if (isHtmlContent(markdown)) return markdown;
+  return renderDescriptionHtml(markdown);
+}
+
+function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorProps) {
+  const isFrench = locale === "fr";
+  const lastExternalValueRef = useRef(value);
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: [
+      StarterKit.configure({
+        heading: false,
+        codeBlock: false,
+      }),
+      Placeholder.configure({
+        placeholder: isFrench
+          ? "Commencez a ecrire..."
+          : "Start writing...",
+      }),
+      Underline,
+      Link.configure({
+        openOnClick: false,
+      }),
+      Highlight,
+      TaskList,
+      TaskItem.configure({
+        nested: true,
+      }),
+    ],
+    content: convertMarkdownToHtml(value),
+    editable: !disabled,
+    onUpdate: ({ editor: updatedEditor }) => {
+      const html = updatedEditor.getHTML();
+      const isEmpty = updatedEditor.isEmpty;
+      const nextValue = isEmpty ? "" : html;
+      lastExternalValueRef.current = nextValue;
+      onChange(nextValue);
+    },
+    editorProps: {
+      attributes: {
+        class:
+          "rich-text-render rich-text-editor min-h-[100px] px-3 py-2.5 text-sm leading-6 text-foreground outline-none focus:outline-none",
+      },
+    },
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
+
+  useEffect(() => {
+    if (!editor) return;
+    if (value === lastExternalValueRef.current) return;
+    lastExternalValueRef.current = value;
+    const htmlContent = convertMarkdownToHtml(value);
+    editor.commands.setContent(htmlContent, { emitUpdate: false });
+  }, [editor, value]);
+
+  return (
+    <div className={`mt-1 overflow-hidden rounded-lg border border-line bg-surface transition-all duration-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 ${disabled ? "opacity-50" : ""}`}>
+      <TiptapToolbar editor={editor} disabled={disabled} locale={locale} />
+      <EditorContent editor={editor} />
     </div>
   );
 }
@@ -2949,9 +3144,9 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
       </div>
 
       {task.description ? (
-        <div
+        <RichTextContent
+          value={task.description}
           className="rich-text-render mt-1.5 pl-2 text-[13px] leading-5 text-muted"
-          dangerouslySetInnerHTML={{ __html: renderDescriptionHtml(task.description) }}
         />
       ) : null}
 
@@ -4135,7 +4330,7 @@ export function AppShell() {
     setGamingTrackErrorMessage(null);
 
     try {
-      const result = await useGamingTrackStreakProtection(selectedDate, authToken);
+      const result = await activateGamingTrackStreakProtection(selectedDate, authToken);
       await refreshGamingTrackSummary();
       setGamingTrackActionMessage(
         result.alreadyUsed
@@ -6813,7 +7008,10 @@ export function AppShell() {
                             key={comment.id}
                             className="rounded-xl border border-line bg-surface px-3 py-2.5"
                           >
-                            <p className="text-sm text-foreground">{comment.body}</p>
+                            <RichTextContent
+                              value={comment.body}
+                              className="rich-text-render text-sm leading-6 text-foreground"
+                            />
                             <div className="mt-2 flex items-center justify-between gap-2">
                               <p className="text-xs text-muted">
                                 {formatDateTime(comment.createdAt, activeLocale, activeTimeZone)}

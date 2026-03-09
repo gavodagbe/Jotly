@@ -136,6 +136,33 @@ function clip(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 3)}...`;
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'");
+}
+
+function stripRichTextToPlainText(value: string): string {
+  const normalized = value
+    .replace(/<input\b[^>]*type=["']checkbox["'][^>]*checked[^>]*>/gi, "[x] ")
+    .replace(/<input\b[^>]*type=["']checkbox["'][^>]*>/gi, "[ ] ")
+    .replace(/<li\b[^>]*>/gi, "- ")
+    .replace(/<(?:br|hr)\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|blockquote|li|ul|ol)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+
+  return decodeHtmlEntities(normalized)
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 function buildOpenAiPrompt(input: AssistantReplyInput): string {
   const tasksBlock =
     input.tasks.length === 0
@@ -143,10 +170,14 @@ function buildOpenAiPrompt(input: AssistantReplyInput): string {
       : input.tasks
           .map((task) => {
             const summary = summarizeTask(task);
-            const description = task.description ? `desc: ${clip(task.description, 280)}` : null;
+            const plainDescription = task.description ? stripRichTextToPlainText(task.description) : "";
+            const description = plainDescription ? `desc: ${clip(plainDescription, 280)}` : null;
+            const plainComments = task.comments
+              .map((item) => stripRichTextToPlainText(item))
+              .filter((item) => item.length > 0);
             const comments =
-              task.comments.length > 0
-                ? `comments: ${task.comments.map((item) => clip(item, 200)).join(" || ")}`
+              plainComments.length > 0
+                ? `comments: ${plainComments.map((item) => clip(item, 200)).join(" || ")}`
                 : null;
 
             return [summary, description, comments]
@@ -208,8 +239,8 @@ function statusScore(status: TaskStatus): number {
 function findPotentiallyBlockedTasks(tasks: AssistantTaskContext[]): AssistantTaskContext[] {
   const blockerPattern = /\b(blocked|waiting|stuck|dependency|depends on|need review|need approval)\b/i;
   return tasks.filter((task) => {
-    const description = task.description ?? "";
-    const comments = task.comments.join(" ");
+    const description = stripRichTextToPlainText(task.description ?? "");
+    const comments = task.comments.map((item) => stripRichTextToPlainText(item)).join(" ");
     return blockerPattern.test(`${description} ${comments}`);
   });
 }

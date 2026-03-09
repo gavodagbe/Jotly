@@ -168,7 +168,58 @@ body {
   font-size: 0.85em;
 }
 
+.rich-text-render hr {
+  margin: 0.6rem 0;
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.rich-text-render mark {
+  border-radius: 0.25rem;
+  background: #fef08a;
+  padding: 0 0.15rem;
+}
+
 .rich-text-render a {
   color: #6366f1;
   text-decoration: underline;
+}
+
+.rich-text-render ul[data-type="taskList"] {
+  margin-left: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.rich-text-render ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.rich-text-render ul[data-type="taskList"] li > label {
+  margin-top: 0.1rem;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.rich-text-render ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+
+.rich-text-render ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: #6366f1;
+}
+
+.rich-text-render ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: #6b7280;
+  text-decoration: line-through;
+}
+
+.rich-text-editor .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #9ca3af;
+  pointer-events: none;
 }
