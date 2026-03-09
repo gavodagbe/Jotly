@@ -17,7 +17,7 @@
   --success-soft: #ecfdf5;
   --warning: #f59e0b;
   --warning-soft: #fffbeb;
-  --font-sans: "Inter", "SF Pro Display", system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", "SF Pro Display", system-ui, sans-serif;
   --font-mono: "Fira Mono", "Menlo", monospace;
   color-scheme: light;
 }

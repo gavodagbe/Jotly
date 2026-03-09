@@ -6042,19 +6042,18 @@ export function AppShell() {
         ) : (
           <>
             <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Phrase du jour" : "Today statement"}
-                <textarea
+              <div className="block text-sm font-semibold text-foreground">
+                <span>{isFrench ? "Phrase du jour" : "Today statement"}</span>
+                <RichTextEditor
+                  locale={activeLocale}
                   value={dayAffirmationDraft}
-                  onChange={(event) => {
-                    setDayAffirmationDraft(event.target.value);
+                  onChange={(nextValue) => {
+                    setDayAffirmationDraft(nextValue);
                     setDayAffirmationErrorMessage(null);
                   }}
-                  className={`${textFieldClass} mt-1 min-h-[94px] resize-y`}
-                  maxLength={DAY_AFFIRMATION_MAX_LENGTH}
                   disabled={isDayAffirmationLoading || isDayAffirmationSaving}
                 />
-              </label>
+              </div>
               <button
                 type="button"
                 className={primaryButtonClass}
@@ -6378,49 +6377,45 @@ export function AppShell() {
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="block text-sm font-semibold text-foreground">
-                    {isFrench ? "Victoires" : "Wins"}
-                    <textarea
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Victoires" : "Wins"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
                       value={dayBilanFormValues.wins}
-                      onChange={(event) => updateDayBilanField("wins", event.target.value)}
-                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      onChange={(nextValue) => updateDayBilanField("wins", nextValue)}
                       disabled={isDayBilanSaving}
                     />
-                  </label>
-                  <label className="block text-sm font-semibold text-foreground">
-                    {isFrench ? "Blocages" : "Blockers"}
-                    <textarea
+                  </div>
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Blocages" : "Blockers"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
                       value={dayBilanFormValues.blockers}
-                      onChange={(event) => updateDayBilanField("blockers", event.target.value)}
-                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      onChange={(nextValue) => updateDayBilanField("blockers", nextValue)}
                       disabled={isDayBilanSaving}
                     />
-                  </label>
+                  </div>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="block text-sm font-semibold text-foreground">
-                    {isFrench ? "Lecons apprises" : "Lessons learned"}
-                    <textarea
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Lecons apprises" : "Lessons learned"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
                       value={dayBilanFormValues.lessonsLearned}
-                      onChange={(event) => updateDayBilanField("lessonsLearned", event.target.value)}
-                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      onChange={(nextValue) => updateDayBilanField("lessonsLearned", nextValue)}
                       disabled={isDayBilanSaving}
                     />
-                  </label>
-                  <label className="block text-sm font-semibold text-foreground">
-                    {isFrench ? "Top 3 de demain" : "Tomorrow top 3"}
-                    <textarea
+                  </div>
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Top 3 de demain" : "Tomorrow top 3"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
                       value={dayBilanFormValues.tomorrowTop3}
-                      onChange={(event) => updateDayBilanField("tomorrowTop3", event.target.value)}
-                      className={`${textFieldClass} mt-1 min-h-[110px] resize-y`}
-                      maxLength={DAY_BILAN_FIELD_MAX_LENGTH}
+                      onChange={(nextValue) => updateDayBilanField("tomorrowTop3", nextValue)}
                       disabled={isDayBilanSaving}
                     />
-                  </label>
+                  </div>
                 </div>
               </div>
             )}
@@ -6848,11 +6843,10 @@ export function AppShell() {
                     </div>
 
                     <div className="mt-3 space-y-2">
-                      <textarea
+                      <RichTextEditor
+                        locale={activeLocale}
                         value={taskCommentDraft}
-                        onChange={(event) => setTaskCommentDraft(event.target.value)}
-                        className={`${textFieldClass} mt-0 min-h-[76px] resize-y`}
-                        placeholder={isFrench ? "Ajouter un commentaire..." : "Add a comment..."}
+                        onChange={(nextValue) => setTaskCommentDraft(nextValue)}
                         disabled={isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading}
                       />
                       {taskCommentErrorMessage ? (
