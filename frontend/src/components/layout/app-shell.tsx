@@ -9040,20 +9040,17 @@ export function AppShell() {
                 />
               </label>
 
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Description (optionnel)" : "Description (optional)"}
-                <textarea
+              <div className="block text-sm font-semibold text-foreground">
+                <span>{isFrench ? "Description (optionnel)" : "Description (optional)"}</span>
+                <RichTextEditor
+                  locale={activeLocale}
                   value={reminderFormValues.description}
-                  onChange={(event) => {
-                    setReminderFormValues((v) => ({ ...v, description: event.target.value }));
+                  onChange={(nextValue) => {
+                    setReminderFormValues((v) => ({ ...v, description: nextValue }));
                   }}
-                  className={textFieldClass}
-                  rows={2}
-                  maxLength={2000}
-                  placeholder={isFrench ? "Notes supplementaires..." : "Additional notes..."}
                   disabled={isSubmittingReminder}
                 />
-              </label>
+              </div>
 
               <label className="block text-sm font-semibold text-foreground">
                 {isFrench ? "Projet (optionnel)" : "Project (optional)"}
