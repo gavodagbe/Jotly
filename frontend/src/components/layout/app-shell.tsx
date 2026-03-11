@@ -194,6 +194,29 @@ type DayBilanMutationInput = {
   tomorrowTop3: string | null;
 };
 
+type Reminder = {
+  id: string;
+  title: string;
+  description: string | null;
+  project: string | null;
+  assignees: string | null;
+  remindAt: string;
+  isFired: boolean;
+  firedAt: string | null;
+  isDismissed: boolean;
+  dismissedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ReminderFormValues = {
+  title: string;
+  description: string;
+  project: string;
+  assignees: string;
+  remindAt: string;
+};
+
 type GamingTrackPeriod = "day" | "week" | "month" | "year";
 
 type GamingTrackSummary = {
@@ -438,7 +461,7 @@ type TaskFilterValues = {
   project: string;
 };
 type ApiErrorPayload = { error?: { message?: string } } | null;
-type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan";
+type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders";
 type DashboardLayoutConfig = {
   order: DashboardBlockId[];
   collapsed: Record<DashboardBlockId, boolean>;
@@ -472,6 +495,7 @@ const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "gamingTrack",
   "dailyControls",
   "affirmation",
+  "reminders",
   "board",
   "bilan",
 ];
@@ -480,6 +504,7 @@ const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
   gamingTrack: true,
   dailyControls: false,
   affirmation: true,
+  reminders: false,
   board: false,
   bilan: true,
 };
@@ -762,6 +787,10 @@ function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale
 
   if (blockId === "affirmation") {
     return isFrench ? "Affirmation du jour" : "Day affirmation";
+  }
+
+  if (blockId === "reminders") {
+    return isFrench ? "Rappels" : "Reminders";
   }
 
   if (blockId === "board") {
@@ -2744,6 +2773,136 @@ async function upsertDayAffirmation(
   return payload.data;
 }
 
+async function loadReminders(
+  date: string,
+  token: string,
+  signal?: AbortSignal
+): Promise<Reminder[]> {
+  const response = await fetch(`/backend-api/reminders?date=${encodeURIComponent(date)}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Reminder[]; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load reminders"));
+  }
+
+  return payload?.data ?? [];
+}
+
+async function loadPendingReminders(
+  token: string,
+  signal?: AbortSignal
+): Promise<Reminder[]> {
+  const response = await fetch("/backend-api/reminders/pending", {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Reminder[]; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load pending reminders"));
+  }
+
+  return payload?.data ?? [];
+}
+
+async function createReminderApi(
+  input: { title: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt: string },
+  token: string
+): Promise<Reminder> {
+  const response = await fetch("/backend-api/reminders", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Reminder; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create reminder"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to create reminder.");
+  }
+
+  return payload.data;
+}
+
+async function updateReminderApi(
+  id: string,
+  input: { title?: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt?: string },
+  token: string
+): Promise<Reminder> {
+  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Reminder; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update reminder"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to update reminder.");
+  }
+
+  return payload.data;
+}
+
+async function deleteReminderApi(id: string, token: string): Promise<void> {
+  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: createAuthHeaders(token, true),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete reminder"));
+  }
+}
+
+async function dismissReminderApi(id: string, token: string): Promise<Reminder> {
+  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}/dismiss`, {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({}),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Reminder; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to dismiss reminder"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to dismiss reminder.");
+  }
+
+  return payload.data;
+}
+
 async function carryOverYesterdayTasks(targetDate: string, token: string): Promise<CarryOverYesterdayPayload> {
   const response = await fetch("/backend-api/tasks/carry-over-yesterday", {
     method: "POST",
@@ -3038,6 +3197,10 @@ function AppNavbar({
             <a href="#affirmation" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
               <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
               {isFrench ? "Affirmation" : "Affirmation"}
+            </a>
+            <a href="#reminders" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 4a5 5 0 00-5 5v3l-1 2h12l-1-2V9a5 5 0 00-5-5zM8.5 16a1.5 1.5 0 003 0" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {isFrench ? "Rappels" : "Reminders"}
             </a>
             <a href="#bilan" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
               <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
@@ -3782,6 +3945,14 @@ export function AppShell() {
   const [isDayBilanSaving, setIsDayBilanSaving] = useState(false);
   const [dayBilanErrorMessage, setDayBilanErrorMessage] = useState<string | null>(null);
   const [dayBilanSuccessMessage, setDayBilanSuccessMessage] = useState<string | null>(null);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [isLoadingReminders, setIsLoadingReminders] = useState(false);
+  const [reminderDialogMode, setReminderDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [reminderFormValues, setReminderFormValues] = useState<ReminderFormValues>({ title: "", description: "", project: "", assignees: "", remindAt: "" });
+  const [reminderErrorMessage, setReminderErrorMessage] = useState<string | null>(null);
+  const [isSubmittingReminder, setIsSubmittingReminder] = useState(false);
+  const [pendingReminders, setPendingReminders] = useState<Reminder[]>([]);
   const [gamingTrackPeriod, setGamingTrackPeriod] = useState<GamingTrackPeriod>("week");
   const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
@@ -3953,9 +4124,10 @@ export function AppShell() {
     );
   }, [normalizedSelectedProject, tasks]);
 
+  const normalizedReminderProject = normalizeProjectName(reminderFormValues.project);
   const projectSelectOptions = useMemo(
-    () => getUniqueSortedProjectNames([...projectOptions, normalizedSelectedProject]),
-    [normalizedSelectedProject, projectOptions]
+    () => getUniqueSortedProjectNames([...projectOptions, normalizedSelectedProject, normalizedReminderProject]),
+    [normalizedSelectedProject, normalizedReminderProject, projectOptions]
   );
 
   const taskDialogHeightClass = taskDialogMode === "edit" ? "max-h-[76vh]" : "max-h-[82vh]";
@@ -4023,6 +4195,12 @@ export function AppShell() {
     setIsDayBilanSaving(false);
     setDayBilanErrorMessage(null);
     setDayBilanSuccessMessage(null);
+    setReminders([]);
+    setIsLoadingReminders(false);
+    setReminderDialogMode(null);
+    setEditingReminderId(null);
+    setReminderErrorMessage(null);
+    setIsSubmittingReminder(false);
     setGamingTrackPeriod("week");
     setGamingTrackSummary(null);
     setIsGamingTrackLoading(false);
@@ -4934,6 +5112,111 @@ export function AppShell() {
     }
   }
 
+  function getDefaultReminderFormValues(): ReminderFormValues {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 30);
+    const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    return { title: "", description: "", project: "", assignees: "", remindAt: localIso };
+  }
+
+  function openCreateReminderDialog() {
+    setReminderDialogMode("create");
+    setEditingReminderId(null);
+    setReminderFormValues(getDefaultReminderFormValues());
+    setReminderErrorMessage(null);
+  }
+
+  function openEditReminderDialog(reminder: Reminder) {
+    setReminderDialogMode("edit");
+    setEditingReminderId(reminder.id);
+    const remindAtLocal = new Date(new Date(reminder.remindAt).getTime() - new Date().getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setReminderFormValues({
+      title: reminder.title,
+      description: reminder.description ?? "",
+      project: reminder.project ?? "",
+      assignees: reminder.assignees ?? "",
+      remindAt: remindAtLocal,
+    });
+    setReminderErrorMessage(null);
+  }
+
+  function closeReminderDialog() {
+    setReminderDialogMode(null);
+    setEditingReminderId(null);
+    setReminderErrorMessage(null);
+  }
+
+  async function handleReminderFormSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (isSubmittingReminder || !authToken) return;
+
+    const { title, description, project, assignees, remindAt } = reminderFormValues;
+    if (!title.trim()) {
+      setReminderErrorMessage(isFrench ? "Le titre est requis." : "Title is required.");
+      return;
+    }
+    if (!remindAt) {
+      setReminderErrorMessage(isFrench ? "La date et l'heure sont requises." : "Date and time are required.");
+      return;
+    }
+
+    setIsSubmittingReminder(true);
+    setReminderErrorMessage(null);
+
+    try {
+      const remindAtIso = new Date(remindAt).toISOString();
+
+      if (reminderDialogMode === "edit" && editingReminderId) {
+        const updated = await updateReminderApi(
+          editingReminderId,
+          { title: title.trim(), description: description.trim() || null, project: normalizeProjectName(project) || null, assignees: assignees.trim() || null, remindAt: remindAtIso },
+          authToken
+        );
+        setReminders((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      } else {
+        const created = await createReminderApi(
+          { title: title.trim(), description: description.trim() || null, project: normalizeProjectName(project) || null, assignees: assignees.trim() || null, remindAt: remindAtIso },
+          authToken
+        );
+        setReminders((prev) => [...prev, created].sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()));
+      }
+      closeReminderDialog();
+    } catch (error) {
+      setReminderErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer le rappel."
+          : "Unable to save reminder."
+      );
+    } finally {
+      setIsSubmittingReminder(false);
+    }
+  }
+
+  async function handleDeleteReminder(id: string) {
+    if (!authToken) return;
+    try {
+      await deleteReminderApi(id, authToken);
+      setReminders((prev) => prev.filter((r) => r.id !== id));
+    } catch {
+      // silent
+    }
+  }
+
+  async function handleDismissReminder(id: string) {
+    if (!authToken) return;
+    try {
+      const dismissed = await dismissReminderApi(id, authToken);
+      setReminders((prev) => prev.map((r) => (r.id === dismissed.id ? dismissed : r)));
+      setPendingReminders((prev) => prev.filter((r) => r.id !== id));
+    } catch {
+      // silent
+    }
+  }
+
   async function refreshGamingTrackSummary() {
     if (!authToken) {
       return;
@@ -5741,6 +6024,82 @@ export function AppShell() {
     }
     fetchCalendarEvents(selectedDate);
   }, [authToken, authUser, isAuthReady, selectedDate, googleCalendarConnections.length]);
+
+  // Fetch reminders for the selected date
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken || !authUser) {
+      setReminders([]);
+      setIsLoadingReminders(false);
+      return;
+    }
+
+    setIsLoadingReminders(true);
+    const controller = new AbortController();
+
+    loadReminders(selectedDate, authToken, controller.signal)
+      .then((nextReminders) => {
+        if (!controller.signal.aborted) {
+          setReminders(nextReminders);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setReminders([]);
+          setReminderErrorMessage(
+            error instanceof Error
+              ? error.message
+              : isFrench
+              ? "Impossible de charger les rappels."
+              : "Unable to load reminders."
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoadingReminders(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+
+  // Poll for pending reminders every 30s
+  useEffect(() => {
+    if (!isAuthReady || !authToken || !authUser) {
+      setPendingReminders([]);
+      return;
+    }
+
+    let active = true;
+
+    const poll = () => {
+      loadPendingReminders(authToken)
+        .then((pending) => {
+          if (active) {
+            setPendingReminders((prev) => {
+              const existingIds = new Set(prev.map((r) => r.id));
+              const newOnes = pending.filter((r) => !existingIds.has(r.id));
+              return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+            });
+          }
+        })
+        .catch(() => {
+          // silent fail for polling
+        });
+    };
+
+    poll();
+    const intervalId = setInterval(poll, 30000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [authToken, authUser, isAuthReady]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -7324,6 +7683,161 @@ export function AppShell() {
         )}
       </section>
 
+      <section
+        id="reminders"
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-amber-50/40 via-surface to-orange-50/30 p-6 shadow-sm ${getDashboardDropClassName("reminders")}`}
+        style={{ order: getDashboardBlockVisualOrder("reminders"), animationDelay: "0.18s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("reminders", event)}
+        onDrop={(event) => handleDashboardBlockDrop("reminders", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Rappels" : "Reminders"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench
+                ? "Vos rappels pour la journee selectionnee."
+                : "Your reminders for the selected day."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!dashboardBlockCollapsed.reminders ? (
+              <button
+                type="button"
+                className={primaryButtonClass}
+                onClick={openCreateReminderDialog}
+                disabled={isLoadingReminders}
+              >
+                <PlusIcon />
+                {isFrench ? "Ajouter" : "Add"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("reminders", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("reminders")}
+              title={getDashboardDragHandleLabel("reminders")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("reminders")}
+              aria-expanded={!dashboardBlockCollapsed.reminders}
+              aria-label={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
+              title={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.reminders} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.reminders ? (
+          <p className="mt-3 text-xs text-muted">
+            {collapsedHintLabel}{" "}
+            {reminders.length === 0
+              ? isFrench
+                ? "Aucun rappel."
+                : "No reminders."
+              : isFrench
+              ? `${reminders.length} rappel(s).`
+              : `${reminders.length} reminder(s).`}
+          </p>
+        ) : (
+          <>
+            {isLoadingReminders ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Chargement..." : "Loading..."}
+              </p>
+            ) : reminders.length === 0 ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Aucun rappel pour cette date." : "No reminders for this date."}
+              </p>
+            ) : (
+              <ul className="mt-4 space-y-2">
+                {reminders.map((reminder) => {
+                  const remindAtDate = new Date(reminder.remindAt);
+                  const timeStr = remindAtDate.toLocaleTimeString(isFrench ? "fr-FR" : "en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: activeTimeZone ?? undefined,
+                  });
+                  const isPast = remindAtDate.getTime() <= Date.now();
+                  const statusLabel = reminder.isDismissed
+                    ? isFrench ? "Acquitte" : "Dismissed"
+                    : reminder.isFired || isPast
+                    ? isFrench ? "Declenche" : "Fired"
+                    : isFrench ? "En attente" : "Pending";
+                  const statusColor = reminder.isDismissed
+                    ? "text-emerald-600"
+                    : reminder.isFired || isPast
+                    ? "text-amber-600"
+                    : "text-muted";
+
+                  return (
+                    <li
+                      key={reminder.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white/60 px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {reminder.title}
+                          {reminder.project ? (
+                            <span className="ml-2 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{reminder.project}</span>
+                          ) : null}
+                        </p>
+                        {reminder.assignees ? (
+                          <p className="truncate text-xs text-muted">{reminder.assignees}</p>
+                        ) : null}
+                        <p className="text-xs text-muted">
+                          {timeStr} &middot; <span className={statusColor}>{statusLabel}</span>
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!reminder.isDismissed && (reminder.isFired || isPast) ? (
+                          <button
+                            type="button"
+                            className="rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-soft"
+                            onClick={() => { void handleDismissReminder(reminder.id); }}
+                          >
+                            {isFrench ? "Fermer" : "Dismiss"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                          onClick={() => openEditReminderDialog(reminder)}
+                        >
+                          {isFrench ? "Modifier" : "Edit"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50"
+                          onClick={() => { void handleDeleteReminder(reminder.id); }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {reminderErrorMessage && !reminderDialogMode ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {reminderErrorMessage}
+              </p>
+            ) : null}
+          </>
+        )}
+      </section>
+
       {errorMessage ? (
         <section
           className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
@@ -8464,6 +8978,162 @@ export function AppShell() {
         </div>
       ) : null}
 
+      {reminderDialogMode ? (
+        <div
+          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeReminderDialog();
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              reminderDialogMode === "edit"
+                ? isFrench ? "Modifier le rappel" : "Edit Reminder"
+                : isFrench ? "Ajouter un rappel" : "Add Reminder"
+            }
+            className="animate-scale-in flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+          >
+            <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">
+                  {reminderDialogMode === "edit"
+                    ? isFrench ? "Modifier le rappel" : "Edit Reminder"
+                    : isFrench ? "Ajouter un rappel" : "Add Reminder"}
+                </h2>
+                <p className="mt-1 text-sm text-muted">
+                  {isFrench
+                    ? "Definissez un titre, une description et l'heure du rappel."
+                    : "Set a title, description, and the reminder time."}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={controlIconButtonClass}
+                onClick={closeReminderDialog}
+                disabled={isSubmittingReminder}
+                aria-label={isFrench ? "Fermer" : "Close"}
+                title={isFrench ? "Fermer" : "Close"}
+              >
+                <CloseIcon />
+              </button>
+            </header>
+
+            <form className="space-y-4" onSubmit={handleReminderFormSubmit}>
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Titre" : "Title"}
+                <input
+                  type="text"
+                  value={reminderFormValues.title}
+                  onChange={(event) => {
+                    setReminderFormValues((v) => ({ ...v, title: event.target.value }));
+                    setReminderErrorMessage(null);
+                  }}
+                  className={textFieldClass}
+                  maxLength={200}
+                  placeholder={isFrench ? "Titre du rappel" : "Reminder title"}
+                  required
+                  disabled={isSubmittingReminder}
+                />
+              </label>
+
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Description (optionnel)" : "Description (optional)"}
+                <textarea
+                  value={reminderFormValues.description}
+                  onChange={(event) => {
+                    setReminderFormValues((v) => ({ ...v, description: event.target.value }));
+                  }}
+                  className={textFieldClass}
+                  rows={2}
+                  maxLength={2000}
+                  placeholder={isFrench ? "Notes supplementaires..." : "Additional notes..."}
+                  disabled={isSubmittingReminder}
+                />
+              </label>
+
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Projet (optionnel)" : "Project (optional)"}
+                <select
+                  value={reminderFormValues.project}
+                  onChange={(event) => {
+                    setReminderFormValues((v) => ({ ...v, project: event.target.value }));
+                  }}
+                  className={textFieldClass}
+                  disabled={isSubmittingReminder}
+                >
+                  <option value="">{isFrench ? "Aucun projet" : "No project"}</option>
+                  {projectSelectOptions.map((projectName) => (
+                    <option key={projectName} value={projectName}>
+                      {projectName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Assignes (optionnel)" : "Assignees (optional)"}
+                <input
+                  type="text"
+                  value={reminderFormValues.assignees}
+                  onChange={(event) => {
+                    setReminderFormValues((v) => ({ ...v, assignees: event.target.value }));
+                  }}
+                  className={textFieldClass}
+                  maxLength={500}
+                  placeholder={isFrench ? "Noms ou emails, separes par des virgules" : "Names or emails, comma-separated"}
+                  disabled={isSubmittingReminder}
+                />
+              </label>
+
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Date et heure" : "Date & Time"}
+                <input
+                  type="datetime-local"
+                  value={reminderFormValues.remindAt}
+                  onChange={(event) => {
+                    setReminderFormValues((v) => ({ ...v, remindAt: event.target.value }));
+                    setReminderErrorMessage(null);
+                  }}
+                  className={textFieldClass}
+                  required
+                  disabled={isSubmittingReminder}
+                />
+              </label>
+
+              {reminderErrorMessage ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {reminderErrorMessage}
+                </p>
+              ) : null}
+
+              <footer className="flex items-center justify-end gap-2 border-t border-line pt-3">
+                <button
+                  type="button"
+                  className={controlButtonClass}
+                  onClick={closeReminderDialog}
+                  disabled={isSubmittingReminder}
+                >
+                  <CloseIcon />
+                  {isFrench ? "Annuler" : "Cancel"}
+                </button>
+                <button type="submit" className={primaryButtonClass} disabled={isSubmittingReminder}>
+                  <SaveIcon />
+                  {isSubmittingReminder
+                    ? isFrench ? "Enregistrement..." : "Saving..."
+                    : reminderDialogMode === "edit"
+                    ? isFrench ? "Mettre a jour" : "Update"
+                    : isFrench ? "Creer le rappel" : "Create Reminder"}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
       {isProfileDialogOpen ? (
         <div
           className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
@@ -8969,6 +9639,40 @@ export function AppShell() {
       >
         <ChatIcon />
       </button>
+
+      {pendingReminders.length > 0 ? (
+        <div className="fixed bottom-24 right-6 z-50 flex max-w-sm flex-col gap-2">
+          {pendingReminders.map((reminder) => {
+            const remindAtDate = new Date(reminder.remindAt);
+            const timeStr = remindAtDate.toLocaleTimeString(isFrench ? "fr-FR" : "en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: activeTimeZone ?? undefined,
+            });
+            return (
+              <div
+                key={reminder.id}
+                className="animate-scale-in flex items-start gap-3 rounded-xl border border-amber-200 bg-white px-4 py-3 shadow-lg"
+              >
+                <span className="mt-0.5 shrink-0 text-amber-500">
+                  <BellIcon />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">{reminder.title}</p>
+                  <p className="text-xs text-muted">{timeStr}</p>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
+                  onClick={() => { void handleDismissReminder(reminder.id); }}
+                >
+                  {isFrench ? "Fermer" : "Dismiss"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
     </div>
   );

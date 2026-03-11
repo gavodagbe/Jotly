@@ -22,6 +22,7 @@ import dayBilanRoutes from "./routes/day-bilan";
 import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
+import reminderRoutes from "./routes/reminders";
 import tasksRoutes from "./routes/tasks";
 import {
   createPrismaGoogleCalendarConnectionStore,
@@ -50,6 +51,7 @@ import {
   GoogleCalendarSyncService,
 } from "./google-calendar/google-calendar-sync-service";
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
+import { createPrismaReminderStore, ReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
 
 export type BuildAppOptions = {
@@ -63,6 +65,7 @@ export type BuildAppOptions = {
   dayBilanStore?: DayBilanStore;
   gamingTrackStore?: GamingTrackStore;
   gamingTrackService?: GamingTrackService;
+  reminderStore?: ReminderStore;
   profileStore?: ProfileStore;
   assistantService?: AssistantService;
   assistantProvider?: "openai" | "heuristic";
@@ -111,6 +114,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const dayBilanStore =
     options.dayBilanStore ??
     (options.taskStore ? undefined : createPrismaDayBilanStore());
+  const reminderStore =
+    options.reminderStore ??
+    (options.taskStore ? undefined : createPrismaReminderStore());
   const gamingTrackStore =
     options.gamingTrackStore ??
     (options.taskStore ? undefined : createPrismaGamingTrackStore());
@@ -201,6 +207,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (dayBilanStore) {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
+  if (reminderStore) {
+    app.register(reminderRoutes, { reminderStore, authService });
+  }
   if (gamingTrackService) {
     app.register(gamingTrackRoutes, { gamingTrackService, authService });
   }
@@ -282,6 +291,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (gamingTrackStore?.close) {
       await gamingTrackStore.close();
+    }
+
+    if (reminderStore?.close) {
+      await reminderStore.close();
     }
 
     if (profileStore?.close) {
