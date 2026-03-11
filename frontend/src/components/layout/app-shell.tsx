@@ -8995,7 +8995,7 @@ export function AppShell() {
                 ? isFrench ? "Modifier le rappel" : "Edit Reminder"
                 : isFrench ? "Ajouter un rappel" : "Add Reminder"
             }
-            className="animate-scale-in flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+            className="animate-scale-in flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
           >
             <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
               <div>
@@ -9022,7 +9022,8 @@ export function AppShell() {
               </button>
             </header>
 
-            <form className="space-y-4" onSubmit={handleReminderFormSubmit}>
+            <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleReminderFormSubmit}>
+            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
               <label className="block text-sm font-semibold text-foreground">
                 {isFrench ? "Titre" : "Title"}
                 <input
@@ -9107,7 +9108,8 @@ export function AppShell() {
                 </p>
               ) : null}
 
-              <footer className="flex items-center justify-end gap-2 border-t border-line pt-3">
+            </div>
+              <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-line pt-3 mt-3">
                 <button
                   type="button"
                   className={controlButtonClass}
