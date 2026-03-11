@@ -6,7 +6,7 @@ This repository currently contains the MVP foundation:
 - `frontend/` Next.js app shell
 - `backend/` Fastify API foundation
 - Docker Compose local stack with PostgreSQL
-- Authenticated task board with comments, attachments, recurrence, AI assistant, day affirmations, carry-over, and day bilan
+- Authenticated task board with comments, attachments, recurrence, AI assistant, day affirmations, carry-over, day bilan, and Google Calendar event sync
 
 ## Daily Workflow APIs
 
@@ -36,6 +36,50 @@ Profile preferences:
 - assistant requests can include `locale`; backend defaults to authenticated user profile locale
 - frontend UI language follows `preferredLocale` after login (with browser-language fallback before login)
 
+## Google Calendar Integration
+
+Google Calendar is currently implemented as a read-only integration layer:
+- connect one or more Google accounts from the profile dialog
+- sync calendar events into PostgreSQL
+- show synced events for the selected day directly in the dashboard
+
+Routes are registered only when all backend Google env vars are configured:
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`
+- `GOOGLE_CALENDAR_ENCRYPTION_KEY`
+
+OAuth redirect target:
+- `FRONTEND_ORIGIN` controls where callback success/error redirects land
+
+Authenticated endpoints:
+- `GET /api/google-calendar/auth-url`
+- `GET /api/google-calendar/status`
+- `DELETE /api/google-calendar/connection/:connectionId`
+- `POST /api/google-calendar/sync`
+- `GET /api/google-calendar/events?date=YYYY-MM-DD`
+- `GET /api/google-calendar/events?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- `GET /api/google-calendar/events/:id`
+- `PUT /api/google-calendar/events/:id/note`
+- `DELETE /api/google-calendar/events/:id/note`
+
+OAuth callback:
+- `GET /api/google-calendar/callback?code=...&state=...`
+
+Current integration conventions:
+- access and refresh tokens are encrypted at rest with AES-256-GCM using `GOOGLE_CALENDAR_ENCRYPTION_KEY`
+- OAuth `state` is now a short-lived signed payload bound to the issuing authenticated session
+- one Jotly user can connect multiple Google accounts
+- first sync performs a full import window of the last 30 days and next 90 days
+- later syncs use Google sync tokens and fall back to a full sync if the token expires
+- synced events can carry internal Jotly-only notes
+- tasks can be created from synced events and linked back through `Task.calendarEventId`
+- Google itself remains read-only in this slice
+
+Current limits:
+- no calendar write-back to Google yet
+- no background/webhook sync yet
+
 ## Repository Layout
 - `frontend/` - frontend application workspace
 - `backend/` - backend API workspace
@@ -62,6 +106,7 @@ Services:
 - PostgreSQL: `localhost:5432` (data persisted in named volume `postgres_data`)
 
 Note: inside Docker Compose, backend connects to PostgreSQL via service hostname `postgres` using `DATABASE_URL_DOCKER`.
+If you want to use Google Calendar locally, set the four Google env vars in `.env` before starting the stack, and override `FRONTEND_ORIGIN` if your frontend is not served from `http://localhost:3000`.
 
 ## AI Assistant Configuration
 
@@ -145,6 +190,8 @@ Update `.env.prod`:
 - keep `FRONTEND_HOST_PORT=3100` (or choose another free port)
 - keep `FRONTEND_BACKEND_API_BASE_URL=http://backend:3001`
 - set `NEXT_PUBLIC_API_BASE_URL=https://jotly.godwinavodagbe.com/backend-api`
+- set `FRONTEND_ORIGIN=https://jotly.godwinavodagbe.com`
+- set Google OAuth env vars if you want the integration enabled in production
 
 ### 2. Deploy from GitHub
 

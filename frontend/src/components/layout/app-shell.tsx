@@ -40,6 +40,7 @@ type Task = {
   rolledFromTaskId: string | null;
   recurrenceSourceTaskId: string | null;
   recurrenceOccurrenceDate: string | null;
+  calendarEventId: string | null;
 };
 
 type TaskMutationInput = {
@@ -51,6 +52,40 @@ type TaskMutationInput = {
   priority: TaskPriority;
   project: string | null;
   plannedTime: number | null;
+  calendarEventId?: string | null;
+};
+
+type CalendarEventLinkedTask = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  targetDate: string;
+  dueDate: string | null;
+  priority: TaskPriority;
+  project: string | null;
+};
+
+type CalendarEventNote = {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CalendarEventSummary = {
+  id: string;
+  connectionId: string;
+  title: string;
+  description: string | null;
+  startTime: string;
+  endTime: string;
+  isAllDay: boolean;
+  startDate: string | null;
+  endDate: string | null;
+  location: string | null;
+  htmlLink: string | null;
+  note: CalendarEventNote | null;
+  linkedTasks: CalendarEventLinkedTask[];
 };
 
 type TaskAlertsSummary = {
@@ -382,6 +417,7 @@ type TaskFormValues = {
   priority: TaskPriority;
   project: string;
   plannedTime: string;
+  calendarEventId: string | null;
 };
 
 type RecurrenceFormValues = {
@@ -704,6 +740,7 @@ const dangerButtonClass =
 const textFieldClass =
   "mt-1 w-full rounded-lg border border-line bg-surface px-3 py-3 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15 focus:shadow-sm disabled:cursor-not-allowed disabled:opacity-50";
 const boardFilterFieldClass = `${textFieldClass} h-11 py-0`;
+const sectionHeaderClass = "text-base font-semibold text-foreground pl-3 border-l-[3px] border-accent";
 const iconButtonClass =
   "inline-flex h-8 min-w-8 items-center justify-center rounded-lg text-muted transition-all duration-200 hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
 const controlIconButtonClass = `${controlButtonClass} h-9 w-9 px-0`;
@@ -954,6 +991,20 @@ function getCurrentDateInputValue(timeZone?: string | null): string {
   return `${year}-${month}-${day}`;
 }
 
+function formatDateInputForTimeZone(date: Date, timeZone?: string | null): string {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+}
+
 function parseDateInput(value: string): Date {
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) {
@@ -1071,6 +1122,53 @@ function formatDateOnlyForLocale(value: string, locale: UserLocale): string {
     day: "numeric",
     year: "numeric",
   }).format(parseDateInput(value));
+}
+
+function formatCalendarEventTimeLabel(
+  event: CalendarEventSummary,
+  locale: UserLocale,
+  timeZone: string | null
+): string {
+  if (event.isAllDay) {
+    return locale === "fr" ? "Toute la journee" : "All day";
+  }
+
+  const formatter = new Intl.DateTimeFormat(getLocaleForFormatting(locale), {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  });
+  return `${formatter.format(new Date(event.startTime))} - ${formatter.format(new Date(event.endTime))}`;
+}
+
+function buildTaskDescriptionFromCalendarEvent(
+  event: CalendarEventSummary,
+  locale: UserLocale
+): string {
+  const lines = [
+    event.description?.trim() || null,
+    event.location ? `${locale === "fr" ? "Lieu" : "Location"}: ${event.location}` : null,
+    event.htmlLink ? `${locale === "fr" ? "Lien" : "Link"}: ${event.htmlLink}` : null,
+  ].filter((value): value is string => Boolean(value && value.trim() !== ""));
+
+  return lines.join("\n\n");
+}
+
+function getTaskDateFromCalendarEvent(
+  event: CalendarEventSummary,
+  fallbackDate: string,
+  timeZone: string | null
+): string {
+  if (event.startDate && isDateOnly(event.startDate)) {
+    return event.startDate;
+  }
+
+  const parsedStartTime = new Date(event.startTime);
+  if (!Number.isNaN(parsedStartTime.getTime())) {
+    return formatDateInputForTimeZone(parsedStartTime, timeZone);
+  }
+
+  return fallbackDate;
 }
 
 function formatTaskAlertDueLabel(value: string, todayValue: string, locale: UserLocale): string {
@@ -1796,6 +1894,7 @@ function getDefaultTaskFormValues(targetDate: string): TaskFormValues {
     priority: "medium",
     project: "",
     plannedTime: "",
+    calendarEventId: null,
   };
 }
 
@@ -1904,6 +2003,7 @@ function getTaskFormValues(task: Task): TaskFormValues {
     priority: task.priority,
     project: task.project ?? "",
     plannedTime: typeof task.plannedTime === "number" ? String(task.plannedTime) : "",
+    calendarEventId: task.calendarEventId,
   };
 }
 
@@ -1967,6 +2067,7 @@ function buildTaskMutationInput(
       priority: values.priority,
       project: normalizeOptionalTextInput(values.project),
       plannedTime,
+      calendarEventId: values.calendarEventId,
     },
   };
 }
@@ -2300,6 +2401,47 @@ async function updateTask(taskId: string, input: TaskMutationInput, token: strin
   }
 
   return payload.data;
+}
+
+async function saveCalendarEventNote(
+  eventId: string,
+  body: string,
+  token: string
+): Promise<CalendarEventNote> {
+  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note`, {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({ body }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: CalendarEventNote; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save calendar event note"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to save calendar event note.");
+  }
+
+  return payload.data;
+}
+
+async function deleteCalendarEventNote(eventId: string, token: string): Promise<void> {
+  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note`, {
+    method: "DELETE",
+    headers: createAuthHeaders(token, false),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { deleted: boolean }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete calendar event note"));
+  }
 }
 
 async function deleteTaskById(taskId: string, token: string): Promise<void> {
@@ -3575,13 +3717,7 @@ function AuthPanel({
 export function AppShell() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [guestLocale, setGuestLocale] = useState<UserLocale>(() =>
-    getPreferredLocale(
-      typeof window === "undefined"
-        ? "en"
-        : window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en"
-    )
-  );
+  const [guestLocale, setGuestLocale] = useState<UserLocale>("en");
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authFormValues, setAuthFormValues] = useState<AuthFormValues>({
@@ -3598,6 +3734,22 @@ export function AppShell() {
   const [profileErrorMessage, setProfileErrorMessage] = useState<string | null>(null);
   const [profileSuccessMessage, setProfileSuccessMessage] = useState<string | null>(null);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [googleCalendarConnections, setGoogleCalendarConnections] = useState<
+    Array<{ id: string; email: string; color: string; calendarId: string; lastSyncedAt: string | null }>
+  >([]);
+  const [isGoogleCalendarLoading, setIsGoogleCalendarLoading] = useState(false);
+  const [isGoogleCalendarSyncing, setIsGoogleCalendarSyncing] = useState(false);
+  const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEventSummary[]>([]);
+  const [isCalendarEventsLoading, setIsCalendarEventsLoading] = useState(false);
+  const [calendarEventNoteDrafts, setCalendarEventNoteDrafts] = useState<Record<string, string>>({});
+  const [pendingCalendarEventNoteIds, setPendingCalendarEventNoteIds] = useState<string[]>([]);
+  const [pendingCalendarEventTaskIds, setPendingCalendarEventTaskIds] = useState<string[]>([]);
+  const [expandedCalendarEventId, setExpandedCalendarEventId] = useState<string | null>(null);
+  const [calendarEventSearchQuery, setCalendarEventSearchQuery] = useState("");
+  const [connectionCalendarOptions, setConnectionCalendarOptions] = useState<
+    Record<string, Array<{ id: string; summary: string; primary: boolean }>>
+  >({});
 
   const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -3617,14 +3769,7 @@ export function AppShell() {
   const [dashboardDropTargetId, setDashboardDropTargetId] = useState<DashboardBlockId | null>(null);
   const [dayAffirmation, setDayAffirmation] = useState<DayAffirmation | null>(null);
   const [dayAffirmationDraft, setDayAffirmationDraft] = useState(() =>
-    getDefaultAffirmationText(
-      toDateInputValue(new Date()),
-      getPreferredLocale(
-        typeof window === "undefined"
-          ? "en"
-          : window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en"
-      )
-    )
+    getDefaultAffirmationText(toDateInputValue(new Date()), "en")
   );
   const [isDayAffirmationLoading, setIsDayAffirmationLoading] = useState(false);
   const [isDayAffirmationSaving, setIsDayAffirmationSaving] = useState(false);
@@ -3703,6 +3848,25 @@ export function AppShell() {
       },
     })
   );
+
+  const connectionColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const conn of googleCalendarConnections) {
+      map.set(conn.id, conn.color);
+    }
+    return map;
+  }, [googleCalendarConnections]);
+
+  const filteredCalendarEvents = useMemo(() => {
+    if (!calendarEventSearchQuery.trim()) return calendarEvents;
+    const q = calendarEventSearchQuery.toLowerCase();
+    return calendarEvents.filter(
+      (e) =>
+        e.title.toLowerCase().includes(q) ||
+        (e.description && e.description.toLowerCase().includes(q)) ||
+        (e.location && e.location.toLowerCase().includes(q))
+    );
+  }, [calendarEvents, calendarEventSearchQuery]);
 
   const editingTask = useMemo(() => {
     if (!editingTaskId) {
@@ -3939,11 +4103,259 @@ export function AppShell() {
     }
   }
 
+  async function fetchGoogleCalendarStatus() {
+    if (!authToken) return;
+    setIsGoogleCalendarLoading(true);
+    setGoogleCalendarError(null);
+    try {
+      const response = await fetch("/backend-api/google-calendar/status", {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        setGoogleCalendarConnections(payload.data.connections ?? []);
+      }
+    } catch {
+      // Non-critical — connections will stay empty
+    } finally {
+      setIsGoogleCalendarLoading(false);
+    }
+  }
+
+  async function handleConnectGoogleCalendar() {
+    if (!authToken) return;
+    setGoogleCalendarError(null);
+    try {
+      const response = await fetch("/backend-api/google-calendar/auth-url", {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        setGoogleCalendarError(
+          isFrench
+            ? "Impossible de demarrer la connexion Google Calendar."
+            : "Unable to start Google Calendar connection."
+        );
+        return;
+      }
+      const payload = await response.json();
+      window.location.href = payload.data.url;
+    } catch {
+      setGoogleCalendarError(
+        isFrench
+          ? "Impossible de demarrer la connexion Google Calendar."
+          : "Unable to start Google Calendar connection."
+      );
+    }
+  }
+
+  async function handleDisconnectGoogleCalendar(connectionId: string) {
+    if (!authToken) return;
+    setGoogleCalendarError(null);
+    try {
+      const response = await fetch(`/backend-api/google-calendar/connection/${connectionId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        setGoogleCalendarConnections((prev) => prev.filter((c) => c.id !== connectionId));
+      } else {
+        setGoogleCalendarError(
+          isFrench ? "Impossible de deconnecter Google Calendar." : "Unable to disconnect Google Calendar."
+        );
+      }
+    } catch {
+      setGoogleCalendarError(
+        isFrench ? "Impossible de deconnecter Google Calendar." : "Unable to disconnect Google Calendar."
+      );
+    }
+  }
+
+  async function handleUpdateConnectionColor(connectionId: string, color: string) {
+    if (!authToken) return;
+    try {
+      const response = await fetch(`/backend-api/google-calendar/connection/${connectionId}/color`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ color }),
+      });
+      if (response.ok) {
+        setGoogleCalendarConnections((prev) =>
+          prev.map((c) => (c.id === connectionId ? { ...c, color } : c))
+        );
+      }
+    } catch {
+      // Non-critical
+    }
+  }
+
+  async function fetchConnectionCalendars(connectionId: string) {
+    if (!authToken) return;
+    try {
+      const response = await fetch(`/backend-api/google-calendar/connection/${connectionId}/calendars`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        setConnectionCalendarOptions((prev) => ({ ...prev, [connectionId]: payload.data ?? [] }));
+      }
+    } catch {
+      // Non-critical
+    }
+  }
+
+  async function handleUpdateCalendarId(connectionId: string, calendarId: string) {
+    if (!authToken) return;
+    try {
+      const response = await fetch(`/backend-api/google-calendar/connection/${connectionId}/calendar`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ calendarId }),
+      });
+      if (response.ok) {
+        setGoogleCalendarConnections((prev) =>
+          prev.map((c) => (c.id === connectionId ? { ...c, calendarId } : c))
+        );
+        // Re-sync after calendar change
+        handleSyncGoogleCalendar();
+      }
+    } catch {
+      // Non-critical
+    }
+  }
+
+  async function fetchCalendarEvents(date: string, forceLoad = false) {
+    if (!authToken || (!forceLoad && googleCalendarConnections.length === 0)) {
+      setCalendarEvents([]);
+      setCalendarEventNoteDrafts({});
+      setExpandedCalendarEventId(null);
+      return;
+    }
+    setIsCalendarEventsLoading(true);
+    try {
+      const response = await fetch(`/backend-api/google-calendar/events?date=${date}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        const nextEvents = (payload.data ?? []) as CalendarEventSummary[];
+        setCalendarEvents(nextEvents);
+        setCalendarEventNoteDrafts(
+          Object.fromEntries(nextEvents.map((event) => [event.id, event.note?.body ?? ""]))
+        );
+        setExpandedCalendarEventId(null);
+      } else {
+        setCalendarEvents([]);
+        setCalendarEventNoteDrafts({});
+        setExpandedCalendarEventId(null);
+      }
+    } catch {
+      setCalendarEvents([]);
+      setCalendarEventNoteDrafts({});
+      setExpandedCalendarEventId(null);
+    } finally {
+      setIsCalendarEventsLoading(false);
+    }
+  }
+
+  async function handleSyncGoogleCalendar() {
+    if (!authToken) return;
+    setGoogleCalendarError(null);
+    setIsGoogleCalendarSyncing(true);
+    try {
+      const response = await fetch("/backend-api/google-calendar/sync", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        await fetchGoogleCalendarStatus();
+        await fetchCalendarEvents(selectedDate, true);
+      } else {
+        setGoogleCalendarError(
+          isFrench ? "La synchronisation a echoue." : "Sync failed."
+        );
+      }
+    } catch {
+      setGoogleCalendarError(
+        isFrench ? "La synchronisation a echoue." : "Sync failed."
+      );
+    } finally {
+      setIsGoogleCalendarSyncing(false);
+    }
+  }
+
+  async function handleSaveCalendarEventNote(eventId: string) {
+    if (!authToken) return;
+    const draft = (calendarEventNoteDrafts[eventId] ?? "").trim();
+    if (!draft) {
+      setGoogleCalendarError(
+        isFrench ? "La note de l'evenement ne peut pas etre vide." : "Calendar event note cannot be empty."
+      );
+      return;
+    }
+
+    setGoogleCalendarError(null);
+    setPendingCalendarEventNoteIds((current) =>
+      current.includes(eventId) ? current : [...current, eventId]
+    );
+
+    try {
+      const note = await saveCalendarEventNote(eventId, draft, authToken);
+      setCalendarEvents((current) =>
+        current.map((event) => (event.id === eventId ? { ...event, note } : event))
+      );
+      setCalendarEventNoteDrafts((current) => ({
+        ...current,
+        [eventId]: note.body,
+      }));
+    } catch (error) {
+      setGoogleCalendarError(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer la note de l'evenement."
+          : "Unable to save calendar event note."
+      );
+    } finally {
+      setPendingCalendarEventNoteIds((current) => current.filter((candidate) => candidate !== eventId));
+    }
+  }
+
+  async function handleDeleteCalendarEventNote(eventId: string) {
+    if (!authToken) return;
+
+    setGoogleCalendarError(null);
+    setPendingCalendarEventNoteIds((current) =>
+      current.includes(eventId) ? current : [...current, eventId]
+    );
+
+    try {
+      await deleteCalendarEventNote(eventId, authToken);
+      setCalendarEvents((current) =>
+        current.map((event) => (event.id === eventId ? { ...event, note: null } : event))
+      );
+      setCalendarEventNoteDrafts((current) => ({
+        ...current,
+        [eventId]: "",
+      }));
+    } catch (error) {
+      setGoogleCalendarError(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de supprimer la note de l'evenement."
+          : "Unable to delete calendar event note."
+      );
+    } finally {
+      setPendingCalendarEventNoteIds((current) => current.filter((candidate) => candidate !== eventId));
+    }
+  }
+
   function openProfileDialog() {
     setProfileFormValues(getProfileFormValues(authUser));
     setProfileErrorMessage(null);
     setProfileSuccessMessage(null);
     setIsProfileDialogOpen(true);
+    fetchGoogleCalendarStatus();
   }
 
   function closeProfileDialog() {
@@ -4067,12 +4479,16 @@ export function AppShell() {
     setPendingAttachmentIds([]);
   }
 
-  function openCreateTaskDialog(initialStatus: TaskStatus = "todo") {
+  function openCreateTaskDialog(
+    initialStatus: TaskStatus = "todo",
+    overrides?: Partial<TaskFormValues>
+  ) {
     setTaskDialogMode("create");
     setEditingTaskId(null);
     setTaskFormValues({
       ...getDefaultTaskFormValues(selectedDate),
       status: initialStatus,
+      ...overrides,
     });
     setRecurrenceFormValues(getDefaultRecurrenceFormValues());
     setTaskFormErrorMessage(null);
@@ -4080,6 +4496,21 @@ export function AppShell() {
     setNewProjectDraft("");
     setDeleteErrorMessage(null);
     resetTaskDetailsState();
+  }
+
+  function handleCreateTaskFromCalendarEvent(event: CalendarEventSummary) {
+    setGoogleCalendarError(null);
+    setPendingCalendarEventTaskIds((current) =>
+      current.includes(event.id) ? current : [...current, event.id]
+    );
+    openCreateTaskDialog("todo", {
+      title: event.title,
+      description: buildTaskDescriptionFromCalendarEvent(event, activeLocale),
+      targetDate: getTaskDateFromCalendarEvent(event, selectedDate, activeTimeZone),
+      dueDate: getTaskDateFromCalendarEvent(event, selectedDate, activeTimeZone),
+      calendarEventId: event.id,
+    });
+    setPendingCalendarEventTaskIds((current) => current.filter((candidate) => candidate !== event.id));
   }
 
   function openEditTaskDialog(task: Task) {
@@ -4606,13 +5037,13 @@ export function AppShell() {
     }
   }
 
-  function updateTaskFormField(field: keyof TaskFormValues, value: string) {
+  function updateTaskFormField(field: keyof TaskFormValues, value: string | null) {
     setTaskFormValues((current) => {
       if (field === "targetDate") {
         return {
           ...current,
-          targetDate: value,
-          dueDate: current.dueDate === current.targetDate ? value : current.dueDate,
+          targetDate: value ?? current.targetDate,
+          dueDate: current.dueDate === current.targetDate ? value ?? current.targetDate : current.dueDate,
         };
       }
 
@@ -4976,6 +5407,7 @@ export function AppShell() {
       }
 
       refreshTaskAlerts();
+      await fetchCalendarEvents(selectedDate, true);
 
       if (!savedTask.recurrenceSourceTaskId) {
         if (recurrenceResult.data) {
@@ -5052,6 +5484,7 @@ export function AppShell() {
 
       setTaskToDelete(null);
       refreshTaskAlerts();
+      await fetchCalendarEvents(selectedDate, true);
     } catch (error) {
       setDeleteErrorMessage(
         error instanceof Error
@@ -5188,6 +5621,37 @@ export function AppShell() {
     };
   }, [authToken, clearAuthSession, isAuthReady, isFrench]);
 
+  // Handle Google Calendar OAuth callback redirect + auto-fetch status
+  useEffect(() => {
+    if (!isAuthReady || !authToken) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const gcalResult = params.get("google-calendar");
+    if (gcalResult) {
+      params.delete("google-calendar");
+      const newUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+
+      if (gcalResult === "connected") {
+        // Fetch status then auto-sync to pull events from Google
+        fetchGoogleCalendarStatus().then(() => {
+          handleSyncGoogleCalendar();
+        });
+      } else if (gcalResult === "error") {
+        setGoogleCalendarError(
+          isFrench
+            ? "La connexion Google Calendar a echoue. Veuillez reessayer."
+            : "Google Calendar connection failed. Please try again."
+        );
+      }
+    } else {
+      // Always fetch status when auth is ready
+      fetchGoogleCalendarStatus();
+    }
+  }, [isAuthReady, authToken]);
+
   useEffect(() => {
     document.documentElement.lang = activeLocale;
   }, [activeLocale]);
@@ -5243,6 +5707,15 @@ export function AppShell() {
 
     return () => controller.abort();
   }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+
+  // Fetch calendar events for the selected date
+  useEffect(() => {
+    if (!isAuthReady || !authToken || !authUser) {
+      setCalendarEvents([]);
+      return;
+    }
+    fetchCalendarEvents(selectedDate);
+  }, [authToken, authUser, isAuthReady, selectedDate, googleCalendarConnections.length]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -5646,6 +6119,7 @@ export function AppShell() {
         currentTasks.map((task) => (task.id === taskId ? { ...task, ...updatedTask } : task))
       );
       refreshTaskAlerts();
+      await fetchCalendarEvents(selectedDate, true);
     } catch (error) {
       setTasks((currentTasks) =>
         currentTasks.map((task) =>
@@ -5808,7 +6282,7 @@ export function AppShell() {
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold text-foreground">Gaming Track</h2>
+            <h2 className={sectionHeaderClass}>Gaming Track</h2>
             <p className="text-sm text-muted">
               {gamingTrackRangeLabel
                 ? `${gamingTrackPeriodLabel} · ${gamingTrackRangeLabel}`
@@ -6343,7 +6817,7 @@ export function AppShell() {
         onDrop={(event) => handleDashboardBlockDrop("dailyControls", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-foreground">
+          <h2 className={sectionHeaderClass}>
             {isFrench ? "Pilotage du jour" : "Day Controls"}
           </h2>
           <div className="flex items-center gap-1">
@@ -6462,6 +6936,223 @@ export function AppShell() {
                 <span className="text-xs font-medium text-muted">{completionRate}%</span>
               </div>
             </div>
+
+            {googleCalendarConnections.length > 0 ? (
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {isFrench ? "Evenements du calendrier" : "Calendar Events"}
+                  </h3>
+                  <span className="text-xs text-muted">
+                    {isCalendarEventsLoading
+                      ? (isFrench ? "Chargement..." : "Loading...")
+                      : calendarEventSearchQuery.trim()
+                        ? `${filteredCalendarEvents.length}/${calendarEvents.length}`
+                        : `${calendarEvents.length} ${isFrench ? "evenement" : "event"}${calendarEvents.length === 1 ? "" : "s"}`}
+                  </span>
+                </div>
+                {calendarEvents.length > 1 ? (
+                  <div className="relative mt-2">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true">
+                      <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={calendarEventSearchQuery}
+                      onChange={(e) => setCalendarEventSearchQuery(e.target.value)}
+                      placeholder={isFrench ? "Rechercher un evenement..." : "Search events..."}
+                      className="w-full rounded-lg border border-line bg-surface px-3 py-2 pl-9 pr-8 text-sm text-foreground outline-none transition-all placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    />
+                    {calendarEventSearchQuery ? (
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                        onClick={() => setCalendarEventSearchQuery("")}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+                          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                        </svg>
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {filteredCalendarEvents.length > 0 ? (
+                  <div className="mt-2 rounded-lg border border-line bg-surface-soft overflow-hidden divide-y divide-line">
+                    {filteredCalendarEvents.map((event) => {
+                      const isExpanded = expandedCalendarEventId === event.id;
+                      const hasNote = !!(event.note || (calendarEventNoteDrafts[event.id] ?? "").trim());
+                      const hasLinkedTasks = event.linkedTasks.length > 0;
+
+                      return (
+                        <div key={event.id}>
+                          {/* Compact row — always visible */}
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface"
+                            onClick={() => setExpandedCalendarEventId(isExpanded ? null : event.id)}
+                          >
+                            <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: connectionColorMap.get(event.connectionId) ?? "#6366f1" }} />
+                            <span className="shrink-0 text-xs tabular-nums text-muted">
+                              {formatCalendarEventTimeLabel(event, activeLocale, activeTimeZone)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                              {event.title}
+                            </span>
+                            {hasNote ? (
+                              <span className="shrink-0 text-xs text-accent" title={isFrench ? "Note interne" : "Internal note"}>
+                                <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
+                                  <path d="M3.505 2.365A41.369 41.369 0 0 1 9 2c1.863 0 3.697.124 5.495.365 1.247.167 2.18 1.249 2.18 2.487V11.5a2.5 2.5 0 0 1-2.5 2.5h-1.862l-3.27 3.27a.75.75 0 0 1-1.293-.519V14h-.5A2.5 2.5 0 0 1 4.75 11.5V4.852c0-1.238.933-2.32 2.18-2.487h-3.425Z" />
+                                </svg>
+                              </span>
+                            ) : null}
+                            {hasLinkedTasks ? (
+                              <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                                {event.linkedTasks.length}
+                              </span>
+                            ) : null}
+                            <svg
+                              viewBox="0 0 20 20"
+                              aria-hidden="true"
+                              className={`h-4 w-4 shrink-0 text-muted transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                            >
+                              <path
+                                d="M5.75 7.75L10 12.25L14.25 7.75"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="1.75"
+                              />
+                            </svg>
+                          </button>
+
+                          {/* Expanded detail panel */}
+                          {isExpanded ? (
+                            <div className="border-t border-line bg-surface px-4 py-3 space-y-3">
+                              {/* Title + link + location + create task */}
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  {event.htmlLink ? (
+                                    <a
+                                      href={event.htmlLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm font-medium text-accent hover:underline"
+                                    >
+                                      {event.title} &#8599;
+                                    </a>
+                                  ) : null}
+                                  {event.location ? (
+                                    <p className="mt-0.5 text-xs text-muted truncate">
+                                      <svg viewBox="0 0 20 20" fill="currentColor" className="mr-1 inline h-3 w-3 align-[-1px]" aria-hidden="true">
+                                        <path fillRule="evenodd" d="m9.69 18.933.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 0 0 .281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 9A7 7 0 1 0 3 9c0 3.492 1.698 5.988 3.355 7.584a13.731 13.731 0 0 0 2.273 1.765 11.842 11.842 0 0 0 .976.544l.062.029.018.008.006.003ZM10 11.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Z" clipRule="evenodd" />
+                                      </svg>
+                                      {event.location}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  className={controlButtonClass}
+                                  onClick={() => handleCreateTaskFromCalendarEvent(event)}
+                                  disabled={pendingCalendarEventTaskIds.includes(event.id)}
+                                >
+                                  <PlusIcon />
+                                  {isFrench ? "Nouvelle tache" : "New Task"}
+                                </button>
+                              </div>
+
+                              {/* Description */}
+                              {event.description ? (
+                                <p className="text-xs text-muted whitespace-pre-wrap leading-relaxed">
+                                  {event.description}
+                                </p>
+                              ) : null}
+
+                              {/* Linked tasks */}
+                              {hasLinkedTasks ? (
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                    {isFrench ? "Taches liees" : "Linked Tasks"}
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">
+                                    {event.linkedTasks.map((linkedTask) => (
+                                      <button
+                                        key={linkedTask.id}
+                                        type="button"
+                                        className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-xs text-foreground hover:bg-surface"
+                                        onClick={() => {
+                                          const task = tasks.find((candidate) => candidate.id === linkedTask.id);
+                                          if (task) {
+                                            openEditTaskDialog(task);
+                                          }
+                                        }}
+                                      >
+                                        {linkedTask.title}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {/* Internal Note — Rich Text Editor */}
+                              <div className="space-y-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                  {isFrench ? "Note interne" : "Internal Note"}
+                                </p>
+                                <RichTextEditor
+                                  locale={activeLocale}
+                                  value={calendarEventNoteDrafts[event.id] ?? ""}
+                                  disabled={pendingCalendarEventNoteIds.includes(event.id)}
+                                  onChange={(nextValue) =>
+                                    setCalendarEventNoteDrafts((current) => ({
+                                      ...current,
+                                      [event.id]: nextValue,
+                                    }))
+                                  }
+                                />
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    className={controlButtonClass}
+                                    onClick={() => handleSaveCalendarEventNote(event.id)}
+                                    disabled={pendingCalendarEventNoteIds.includes(event.id)}
+                                  >
+                                    <SaveIcon />
+                                    {pendingCalendarEventNoteIds.includes(event.id)
+                                      ? isFrench
+                                        ? "Enregistrement..."
+                                        : "Saving..."
+                                      : isFrench
+                                      ? "Enregistrer la note"
+                                      : "Save Note"}
+                                  </button>
+                                  {hasNote ? (
+                                    <button
+                                      type="button"
+                                      className={dangerButtonClass}
+                                      onClick={() => handleDeleteCalendarEventNote(event.id)}
+                                      disabled={pendingCalendarEventNoteIds.includes(event.id)}
+                                    >
+                                      <TrashIcon />
+                                      {isFrench ? "Supprimer la note" : "Delete Note"}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : !isCalendarEventsLoading ? (
+                  <p className="mt-2 text-xs text-muted">
+                    {isFrench ? "Aucun evenement pour cette date." : "No events for this date."}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </>
         )}
       </section>
@@ -6493,7 +7184,7 @@ export function AppShell() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-foreground">
+            <h2 className={sectionHeaderClass}>
               {isFrench ? "Affirmation du jour" : "Day Affirmation"}
             </h2>
             <p className="text-sm text-muted">
@@ -6634,7 +7325,7 @@ export function AppShell() {
         onDrop={(event) => handleDashboardBlockDrop("board", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-foreground">{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
+          <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -6914,7 +7605,7 @@ export function AppShell() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-foreground">
+            <h2 className={sectionHeaderClass}>
               {isFrench ? "Bilan du jour" : "Day Bilan"}
             </h2>
             <p className="text-sm text-muted">
@@ -7247,6 +7938,35 @@ export function AppShell() {
                   />
                 </label>
               </div>
+
+              {googleCalendarConnections.length > 0 ? (
+                <label className="block text-sm font-semibold text-foreground">
+                  {isFrench ? "Evenement calendrier lie" : "Linked Calendar Event"}
+                  <select
+                    value={taskFormValues.calendarEventId ?? ""}
+                    onChange={(event) =>
+                      updateTaskFormField("calendarEventId", event.target.value || null)
+                    }
+                    className={textFieldClass}
+                    disabled={isSubmittingTask}
+                  >
+                    <option value="">
+                      {isFrench ? "Aucun evenement lie" : "No linked event"}
+                    </option>
+                    {taskFormValues.calendarEventId &&
+                    !calendarEvents.some((calendarEvent) => calendarEvent.id === taskFormValues.calendarEventId) ? (
+                      <option value={taskFormValues.calendarEventId}>
+                        {isFrench ? "Evenement deja lie" : "Previously linked event"}
+                      </option>
+                    ) : null}
+                    {calendarEvents.map((calendarEvent) => (
+                      <option key={calendarEvent.id} value={calendarEvent.id}>
+                        {calendarEvent.title} · {formatCalendarEventTimeLabel(calendarEvent, activeLocale, activeTimeZone)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
 
               <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -7797,6 +8517,104 @@ export function AppShell() {
                 <TimeZoneIcon />
                 {isFrench ? "Utiliser le fuseau du navigateur" : "Use Browser Time Zone"}
               </button>
+
+              <div className="border-t border-line pt-3">
+                <h4 className="text-sm font-semibold text-foreground">
+                  Google Calendar
+                </h4>
+                {isGoogleCalendarLoading ? (
+                  <p className="mt-2 text-sm text-muted">
+                    {isFrench ? "Chargement..." : "Loading..."}
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {googleCalendarConnections.map((conn) => (
+                      <div key={conn.id} className="rounded-lg border border-line px-3 py-2 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={conn.color}
+                              onChange={(e) => handleUpdateConnectionColor(conn.id, e.target.value)}
+                              className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
+                              title={isFrench ? "Couleur du calendrier" : "Calendar color"}
+                            />
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{conn.email}</p>
+                              {conn.lastSyncedAt ? (
+                                <p className="text-xs text-muted">
+                                  {isFrench ? "Derniere synchronisation :" : "Last synced:"}{" "}
+                                  {new Date(conn.lastSyncedAt).toLocaleString()}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="text-xs text-muted hover:text-foreground"
+                            onClick={() => handleDisconnectGoogleCalendar(conn.id)}
+                          >
+                            {isFrench ? "Deconnecter" : "Disconnect"}
+                          </button>
+                        </div>
+                        <select
+                          value={conn.calendarId}
+                          onFocus={() => {
+                            if (!connectionCalendarOptions[conn.id]) {
+                              fetchConnectionCalendars(conn.id);
+                            }
+                          }}
+                          onChange={(e) => handleUpdateCalendarId(conn.id, e.target.value)}
+                          className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent/15"
+                        >
+                          {connectionCalendarOptions[conn.id] ? (
+                            connectionCalendarOptions[conn.id].map((cal) => (
+                              <option key={cal.id} value={cal.id}>
+                                {cal.summary}{cal.primary ? (isFrench ? " (principal)" : " (primary)") : ""}
+                              </option>
+                            ))
+                          ) : (
+                            <option value={conn.calendarId}>
+                              {conn.calendarId === "primary"
+                                ? (isFrench ? "Calendrier principal" : "Primary calendar")
+                                : conn.calendarId}
+                            </option>
+                          )}
+                        </select>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className={controlButtonClass}
+                        onClick={handleConnectGoogleCalendar}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        {isFrench
+                          ? (googleCalendarConnections.length > 0 ? "Ajouter un compte Google" : "Connecter Google Calendar")
+                          : (googleCalendarConnections.length > 0 ? "Add Google Account" : "Connect Google Calendar")}
+                      </button>
+                      {googleCalendarConnections.length > 0 ? (
+                        <button
+                          type="button"
+                          className={controlButtonClass}
+                          onClick={handleSyncGoogleCalendar}
+                          disabled={isGoogleCalendarSyncing}
+                        >
+                          {isGoogleCalendarSyncing
+                            ? (isFrench ? "Synchronisation..." : "Syncing...")
+                            : (isFrench ? "Synchroniser" : "Sync")}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+                {googleCalendarError ? (
+                  <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {googleCalendarError}
+                  </p>
+                ) : null}
+              </div>
 
               {profileErrorMessage ? (
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">

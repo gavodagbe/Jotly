@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AuthSession, AuthStore, AuthUser, CreateAuthSessionInput, CreateAuthUserInput } from "../auth/auth-store";
 import { buildApp } from "../app";
+import {
+  CalendarEventStore,
+  CalendarEventUpsertInput,
+} from "../google-calendar/calendar-event-store";
 import { formatDateOnly, TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
 class InMemoryTaskStore implements TaskStore {
@@ -58,7 +62,8 @@ class InMemoryTaskStore implements TaskStore {
       createdAt: now,
       updatedAt: now,
       completedAt: input.completedAt,
-      cancelledAt: input.cancelledAt
+      cancelledAt: input.cancelledAt,
+      calendarEventId: input.calendarEventId ?? null,
     };
 
     this.tasks.set(task.id, task);
@@ -165,15 +170,71 @@ class InMemoryAuthStore implements AuthStore {
   }
 }
 
+class InMemoryCalendarEventStore implements CalendarEventStore {
+  private readonly now = new Date("2026-03-11T09:00:00.000Z");
+
+  constructor(private readonly events: Array<{ id: string; userId: string }> = []) {}
+
+  async listByDate(): Promise<never[]> {
+    return [];
+  }
+
+  async listByDateRange(): Promise<never[]> {
+    return [];
+  }
+
+  async getById(id: string, userId: string) {
+    return (
+      this.events.find((event) => event.id === id && event.userId === userId) ?? null
+    ) as Awaited<ReturnType<CalendarEventStore["getById"]>>;
+  }
+
+  async getByGoogleEventId() {
+    return null;
+  }
+
+  async upsertFromGoogle(input: CalendarEventUpsertInput) {
+    return {
+      id: "calendar-event-store-result",
+      userId: input.userId,
+      connectionId: input.connectionId,
+      googleEventId: input.googleEventId,
+      title: input.title,
+      description: input.description,
+      location: input.location,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      isAllDay: input.isAllDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      status: input.status,
+      htmlLink: input.htmlLink,
+      attendees: input.attendees,
+      organizer: input.organizer,
+      recurringEventId: input.recurringEventId,
+      syncedAt: this.now,
+      createdAt: this.now,
+      updatedAt: this.now,
+    };
+  }
+
+  async markCancelled() {
+    return null;
+  }
+
+  async deleteByConnectionId(): Promise<void> {}
+}
+
 function parsePayload(payload: string) {
   return JSON.parse(payload) as Record<string, unknown>;
 }
 
-function createAppForTest() {
+function createAppForTest(options?: { calendarEventStore?: CalendarEventStore }) {
   return buildApp({
     logLevel: "silent",
     taskStore: new InMemoryTaskStore(),
-    authStore: new InMemoryAuthStore()
+    authStore: new InMemoryAuthStore(),
+    calendarEventStore: options?.calendarEventStore,
   });
 }
 
@@ -473,6 +534,97 @@ test("PATCH /api/tasks manages status timestamps consistently", async (t) => {
   assert.equal(todoData.status, "todo");
   assert.equal(todoData.completedAt, null);
   assert.equal(todoData.cancelledAt, null);
+});
+
+test("POST /api/tasks links an owned calendar event", async (t) => {
+  const app = createAppForTest({
+    calendarEventStore: new InMemoryCalendarEventStore([{ id: "calendar-event-1", userId: "user-1" }]),
+  });
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Follow up on meeting",
+      targetDate: "2026-03-06",
+      calendarEventId: "calendar-event-1",
+    },
+  });
+
+  assert.equal(response.statusCode, 201);
+  const body = parsePayload(response.payload);
+  const data = body.data as Record<string, unknown>;
+  assert.equal(data.calendarEventId, "calendar-event-1");
+});
+
+test("POST /api/tasks rejects linking a foreign calendar event", async (t) => {
+  const app = createAppForTest({
+    calendarEventStore: new InMemoryCalendarEventStore([{ id: "calendar-event-1", userId: "user-2" }]),
+  });
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Should fail",
+      targetDate: "2026-03-06",
+      calendarEventId: "calendar-event-1",
+    },
+  });
+
+  assert.equal(response.statusCode, 404);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "NOT_FOUND",
+    message: "Calendar event not found",
+  });
+});
+
+test("PATCH /api/tasks can unlink a linked calendar event", async (t) => {
+  const app = createAppForTest({
+    calendarEventStore: new InMemoryCalendarEventStore([{ id: "calendar-event-1", userId: "user-1" }]),
+  });
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Linked task",
+      targetDate: "2026-03-06",
+      calendarEventId: "calendar-event-1",
+    },
+  });
+  const createdBody = parsePayload(created.payload);
+  const taskId = (createdBody.data as Record<string, unknown>).id as string;
+
+  const response = await app.inject({
+    method: "PATCH",
+    url: `/api/tasks/${taskId}`,
+    headers: authHeaders(token),
+    payload: {
+      calendarEventId: null,
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as Record<string, unknown>;
+  assert.equal(data.calendarEventId, null);
 });
 
 test("DELETE /api/tasks removes a task", async (t) => {

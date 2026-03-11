@@ -11,6 +11,11 @@ async function start(): Promise<void> {
     openAiModel: env.OPENAI_MODEL,
     openAiBaseUrl: env.OPENAI_API_BASE_URL,
     assistantRequestTimeoutMs: env.AI_ASSISTANT_TIMEOUT_MS,
+    frontendOrigin: env.FRONTEND_ORIGIN,
+    googleClientId: env.GOOGLE_CLIENT_ID,
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+    googleRedirectUri: env.GOOGLE_REDIRECT_URI,
+    googleCalendarEncryptionKey: env.GOOGLE_CALENDAR_ENCRYPTION_KEY,
   });
 
   try {

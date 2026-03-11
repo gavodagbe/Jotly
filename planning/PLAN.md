@@ -31,7 +31,7 @@ Historical JOT-10 out-of-scope (ticket-level):
 - adding full schema for future modules
 - broad refactors unrelated to documentation clarity
 
-## Current implementation status (as of 2026-03-08)
+## Current implementation status (as of 2026-03-11)
 Completed:
 - JOT-1 to JOT-10 baseline deliverables
 - authentication/session flow (`register`, `login`, `me`, `logout`)
@@ -48,6 +48,11 @@ Completed:
 - user profile/preferences module (display name + preferred locale + preferred timezone)
 - assistant request locale now defaults from user profile preference
 - frontend internationalization for core UX (`en`/`fr`) using profile locale with browser fallback
+- Google Calendar OAuth connection flow (connect, callback, status, disconnect)
+- Google Calendar multi-account support per Jotly user
+- Google Calendar event sync and persisted read model in PostgreSQL
+- selected-date Google Calendar event preview in the dashboard
+- profile modal controls for Google Calendar connection and manual sync
 - gaming track phase 1 (backend summary API + frontend score card with `D/W/M/Y` period selector)
 - gaming track phase 2 (weekly missions + personal bests in summary API and dashboard)
 - gaming track phase 3 (levels/badges, streak protection, and historical trend views)
@@ -78,6 +83,26 @@ Latest AI assistant conventions:
 - provider modes: `heuristic` (default) or `openai`
 - automatic fallback to heuristic when OpenAI is unavailable
 
+Latest Google Calendar conventions:
+- routes are enabled only when all Google OAuth env vars are present:
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+  - `GOOGLE_REDIRECT_URI`
+  - `GOOGLE_CALENDAR_ENCRYPTION_KEY`
+- callback redirects use `FRONTEND_ORIGIN` instead of assuming `http://localhost:3000`
+- profile settings can connect, disconnect, and sync multiple Google accounts
+- tokens are encrypted at rest before being stored in `GoogleCalendarConnection`
+- OAuth `state` is a short-lived signed payload bound to the issuing authenticated session
+- sync endpoint aggregates all connected accounts for the authenticated user
+- first sync imports a rolling window of the previous 30 days and next 90 days
+- later syncs use Google sync tokens and fall back to a full sync when needed
+- dashboard reads synced events by selected date from local PostgreSQL data
+- dashboard supports internal event notes and linked-task previews
+- task forms can link/unlink a task to a synced calendar event
+- current Google-side slice is still read-only:
+  - no calendar write-back
+  - no webhook/background sync yet
+
 Gaming Track status:
 - Phase 1-5 implemented:
   - `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
@@ -103,6 +128,8 @@ Gaming Track status:
 Still not implemented:
 - reporting
 - gaming track phase 6+ collaborative/social engagement layer
+- calendar event note workflows
+- calendar write-back to Google
 - notifications
 - mobile client
 - real-time sync

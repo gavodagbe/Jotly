@@ -16,7 +16,7 @@ Monorepo structure:
 - `backend/` -> Fastify API and business logic
 - `planning/` -> technical guidance and review docs
 
-## Current Sprint 1 implementation snapshot
+## Current implementation snapshot
 This section reflects the current repository implementation.
 
 ### Frontend
@@ -25,6 +25,8 @@ This section reflects the current repository implementation.
 - Tailwind CSS
 - dnd-kit for Kanban drag and drop
 - Feature surface currently centered in `frontend/src/components/layout/app-shell.tsx`
+- Profile settings include Google Calendar connect/disconnect/sync controls
+- Daily dashboard can display synced Google Calendar events for the selected date
 
 ### Backend
 - Fastify
@@ -40,15 +42,23 @@ This section reflects the current repository implementation.
 - Day bilan endpoints in `backend/src/routes/day-bilan.ts`
 - Profile endpoints in `backend/src/routes/profile.ts`
 - AI assistant endpoint in `backend/src/routes/assistant.ts`
+- Google Calendar OAuth routes in `backend/src/routes/google-calendar-oauth.ts`
+- Google Calendar sync/read routes in `backend/src/routes/google-calendar-events.ts`
+- Google OAuth client factory in `backend/src/google-auth/`
+- Google Calendar services and stores in `backend/src/google-calendar/`
 
 ### Database
 - PostgreSQL
-- Prisma `Task` model with status, priority, date, lifecycle timestamps, and carry-over linkage
+- Prisma `Task` model with status, priority, date, lifecycle timestamps, carry-over linkage, and optional calendar-event linkage
 - Prisma `DayAffirmation` and `DayBilan` models (one row per user per date)
+- Prisma `GoogleCalendarConnection` for encrypted OAuth token storage and per-account sync metadata
+- Prisma `CalendarEvent` for synced Google events
+- Prisma `CalendarEventNote` reserved for future event-note workflows
 
 ### Testing
 - Node test runner tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan routes
 - Node test runner tests include profile route coverage
+- Node test runner tests include Google Calendar OAuth route coverage
 
 ### Infrastructure
 - Docker
@@ -72,6 +82,7 @@ Current task fields:
 - `priority`
 - `project` (optional)
 - `plannedTime` (optional)
+- `calendarEventId` (optional, reserved for future calendar-linked tasks)
 - `createdAt`
 - `updatedAt`
 - `completedAt` (optional)
@@ -113,12 +124,25 @@ Implemented endpoints:
 - `GET /api/profile`
 - `PATCH /api/profile`
 - `POST /api/assistant/reply`
+- `GET /api/google-calendar/auth-url`
+- `GET /api/google-calendar/callback?code=...&state=...`
+- `GET /api/google-calendar/status`
+- `DELETE /api/google-calendar/connection/:connectionId`
+- `POST /api/google-calendar/sync`
+- `GET /api/google-calendar/events?date=YYYY-MM-DD`
+- `GET /api/google-calendar/events?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- `GET /api/google-calendar/events/:id`
+- `PUT /api/google-calendar/events/:id/note`
+- `DELETE /api/google-calendar/events/:id/note`
 
 Rules:
 - JSON-only API
 - validate writes with Zod
 - return structured errors
 - keep route handlers explicit and simple
+- Google Calendar routes are registered only when Google OAuth env vars are configured
+- Google Calendar callback redirects should use `FRONTEND_ORIGIN`, not a hard-coded frontend URL
+- task payloads may optionally carry `calendarEventId` when linking a Jotly task to a synced event
 
 Example error shape:
 
@@ -141,6 +165,8 @@ Main UI currently includes:
 - day bilan panel
 - AI assistant chatbot (FAB) using global user task context
 - profile settings dialog with persisted language/timezone preferences
+- profile settings dialog with Google Calendar account connection controls
+- selected-date Google Calendar event preview on the main dashboard
 - create/edit task dialog
 - delete confirmation dialog
 - empty states and API error states
@@ -218,6 +244,31 @@ The modules below define intended boundaries without pre-building abstractions.
   - `PUT /api/day-bilan`
 - Current fields: `mood`, `wins`, `blockers`, `lessonsLearned`, `tomorrowTop3`.
 - Current status: implemented.
+
+### Google Calendar
+- Relation to daily workflow: read-only imported events enrich the selected-day view and future task-linking flows.
+- Current backend ownership:
+  - `backend/src/google-auth/` for OAuth client creation
+  - `backend/src/google-calendar/` for token storage, sync, and event persistence
+- Current API surface:
+  - `GET /api/google-calendar/auth-url`
+  - `GET /api/google-calendar/callback?code=...&state=...`
+  - `GET /api/google-calendar/status`
+  - `DELETE /api/google-calendar/connection/:connectionId`
+  - `POST /api/google-calendar/sync`
+  - `GET /api/google-calendar/events?date=YYYY-MM-DD`
+  - `GET /api/google-calendar/events?start=YYYY-MM-DD&end=YYYY-MM-DD`
+  - `GET /api/google-calendar/events/:id`
+- Current behavior:
+  - supports multiple Google accounts per Jotly user
+  - encrypts access and refresh tokens at rest
+  - stores synced events in PostgreSQL for date-based querying
+  - surfaces selected-date events in the main dashboard
+- Current limits:
+  - no calendar write-back
+  - no task creation from events yet
+  - `CalendarEventNote` and `Task.calendarEventId` remain reserved extension points
+- Current status: implemented as a read-only integration foundation.
 
 ### AI assistant
 - Relation to task history: read-oriented assistant over tasks, status transitions, and dates.
