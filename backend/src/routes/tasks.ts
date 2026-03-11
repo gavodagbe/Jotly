@@ -2,6 +2,7 @@ import { Task, TaskPriority, TaskStatus } from "@prisma/client";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
+import { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { RecurrenceStore } from "../recurrence/recurrence-store";
 import { materializeRecurringTasksForDate } from "../recurrence/recurrence-service";
 import {
@@ -17,6 +18,7 @@ type TasksRouteOptions = {
   taskStore: TaskStore;
   authService: AuthService;
   recurrenceStore?: RecurrenceStore;
+  calendarEventStore?: CalendarEventStore;
 };
 
 const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -36,7 +38,8 @@ const createTaskBodySchema = z.object({
   dueDate: targetDateSchema.optional(),
   priority: taskPrioritySchema.optional(),
   project: z.string().trim().optional().nullable(),
-  plannedTime: z.number().int().nonnegative().optional().nullable()
+  plannedTime: z.number().int().nonnegative().optional().nullable(),
+  calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
 });
 
 const updateTaskBodySchema = z
@@ -48,7 +51,8 @@ const updateTaskBodySchema = z
     dueDate: targetDateSchema.optional(),
     priority: taskPrioritySchema.optional(),
     project: z.string().trim().optional().nullable(),
-    plannedTime: z.number().int().nonnegative().optional().nullable()
+    plannedTime: z.number().int().nonnegative().optional().nullable(),
+    calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field must be provided"
@@ -109,6 +113,7 @@ function serializeTask(task: Task) {
     recurrenceOccurrenceDate: task.recurrenceOccurrenceDate
       ? formatDateOnly(task.recurrenceOccurrenceDate)
       : null,
+    calendarEventId: task.calendarEventId ?? null,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
     completedAt: task.completedAt?.toISOString() ?? null,
@@ -230,8 +235,37 @@ function getAuthenticatedUserId(request: { authUserId?: string }): string | null
   return request.authUserId;
 }
 
+async function resolveCalendarEventId(
+  calendarEventId: string | null | undefined,
+  userId: string,
+  calendarEventStore?: CalendarEventStore
+): Promise<
+  | { ok: true; hasValue: false }
+  | { ok: true; hasValue: true; value: string | null }
+  | { ok: false; reason: "NOT_AVAILABLE" | "NOT_FOUND" }
+> {
+  if (calendarEventId === undefined) {
+    return { ok: true, hasValue: false };
+  }
+
+  if (calendarEventId === null) {
+    return { ok: true, hasValue: true, value: null };
+  }
+
+  if (!calendarEventStore) {
+    return { ok: false, reason: "NOT_AVAILABLE" };
+  }
+
+  const calendarEvent = await calendarEventStore.getById(calendarEventId, userId);
+  if (!calendarEvent) {
+    return { ok: false, reason: "NOT_FOUND" };
+  }
+
+  return { ok: true, hasValue: true, value: calendarEvent.id };
+}
+
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore, authService, recurrenceStore } = options;
+  const { taskStore, authService, recurrenceStore, calendarEventStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -419,6 +453,18 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     const now = new Date();
 
     try {
+      const linkedCalendarEvent = await resolveCalendarEventId(
+        bodyResult.data.calendarEventId,
+        authUserId,
+        calendarEventStore
+      );
+      if (!linkedCalendarEvent.ok) {
+        if (linkedCalendarEvent.reason === "NOT_AVAILABLE") {
+          return sendError(reply, 400, "VALIDATION_ERROR", "Calendar event linking is not available");
+        }
+        return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
+      }
+
       const task = await taskStore.create({
         userId: authUserId,
         title: bodyResult.data.title,
@@ -429,6 +475,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         priority: bodyResult.data.priority ?? "medium",
         project: normalizeNullableText(bodyResult.data.project) ?? null,
         plannedTime: bodyResult.data.plannedTime ?? null,
+        calendarEventId: linkedCalendarEvent.hasValue ? linkedCalendarEvent.value : null,
         ...getTimestampsForNewStatus(status, now)
       });
 
@@ -666,6 +713,23 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       if (updateBody.plannedTime !== undefined) {
         updateInput.plannedTime = updateBody.plannedTime;
+      }
+
+      if (updateBody.calendarEventId !== undefined) {
+        const linkedCalendarEvent = await resolveCalendarEventId(
+          updateBody.calendarEventId,
+          authUserId,
+          calendarEventStore
+        );
+        if (!linkedCalendarEvent.ok) {
+          if (linkedCalendarEvent.reason === "NOT_AVAILABLE") {
+            return sendError(reply, 400, "VALIDATION_ERROR", "Calendar event linking is not available");
+          }
+          return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
+        }
+        if (linkedCalendarEvent.hasValue) {
+          updateInput.calendarEventId = linkedCalendarEvent.value;
+        }
       }
 
       const nextStatus = updateBody.status ?? existingTask.status;

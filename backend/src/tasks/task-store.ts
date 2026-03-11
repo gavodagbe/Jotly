@@ -15,6 +15,7 @@ export type TaskCreateInput = {
   recurrenceOccurrenceDate?: Date | null;
   completedAt: Date | null;
   cancelledAt: Date | null;
+  calendarEventId?: string | null;
 };
 
 export type TaskUpdateInput = Partial<Omit<TaskCreateInput, "userId">>;

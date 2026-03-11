@@ -23,6 +23,32 @@ import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
 import tasksRoutes from "./routes/tasks";
+import {
+  createPrismaGoogleCalendarConnectionStore,
+  GoogleCalendarConnectionStore,
+} from "./google-calendar/google-calendar-store";
+import {
+  createGoogleCalendarOAuthService,
+  GoogleCalendarOAuthService,
+} from "./google-calendar/google-calendar-oauth-service";
+import {
+  createGoogleOAuth2ClientFactory,
+  GoogleOAuth2ClientFactory,
+} from "./google-auth/google-oauth2-client-factory";
+import googleCalendarOAuthRoutes from "./routes/google-calendar-oauth";
+import googleCalendarEventsRoutes from "./routes/google-calendar-events";
+import {
+  createPrismaCalendarEventStore,
+  CalendarEventStore,
+} from "./google-calendar/calendar-event-store";
+import {
+  createPrismaCalendarEventNoteStore,
+  CalendarEventNoteStore,
+} from "./google-calendar/calendar-event-note-store";
+import {
+  createGoogleCalendarSyncService,
+  GoogleCalendarSyncService,
+} from "./google-calendar/google-calendar-sync-service";
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
 
@@ -45,6 +71,17 @@ export type BuildAppOptions = {
   openAiBaseUrl?: string;
   assistantRequestTimeoutMs?: number;
   authSessionTtlHours?: number;
+  googleCalendarConnectionStore?: GoogleCalendarConnectionStore;
+  googleCalendarOAuthService?: GoogleCalendarOAuthService;
+  googleOAuth2ClientFactory?: GoogleOAuth2ClientFactory;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  googleRedirectUri?: string;
+  googleCalendarEncryptionKey?: string;
+  frontendOrigin?: string;
+  calendarEventStore?: CalendarEventStore;
+  calendarEventNoteStore?: CalendarEventNoteStore;
+  googleCalendarSyncService?: GoogleCalendarSyncService;
 };
 
 const APP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
@@ -92,6 +129,50 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       openAiBaseUrl: options.openAiBaseUrl ?? "https://api.openai.com/v1",
       requestTimeoutMs: options.assistantRequestTimeoutMs ?? 10000,
     });
+  const googleCalendarConnectionStore =
+    options.googleCalendarConnectionStore ??
+    (options.googleClientId ? createPrismaGoogleCalendarConnectionStore() : undefined);
+  const googleOAuth2ClientFactory =
+    options.googleOAuth2ClientFactory ??
+    (options.googleClientId &&
+    options.googleClientSecret &&
+    options.googleRedirectUri
+      ? createGoogleOAuth2ClientFactory({
+          clientId: options.googleClientId,
+          clientSecret: options.googleClientSecret,
+          redirectUri: options.googleRedirectUri,
+        })
+      : undefined);
+  const googleCalendarOAuthService =
+    options.googleCalendarOAuthService ??
+    (googleCalendarConnectionStore &&
+    googleOAuth2ClientFactory &&
+    options.googleCalendarEncryptionKey
+      ? createGoogleCalendarOAuthService({
+          oauth2ClientFactory: googleOAuth2ClientFactory,
+          encryptionKey: options.googleCalendarEncryptionKey,
+          connectionStore: googleCalendarConnectionStore,
+        })
+      : undefined);
+  const calendarEventStore =
+    options.calendarEventStore ??
+    (googleCalendarConnectionStore ? createPrismaCalendarEventStore() : undefined);
+  const calendarEventNoteStore =
+    options.calendarEventNoteStore ??
+    (calendarEventStore ? createPrismaCalendarEventNoteStore() : undefined);
+  const googleCalendarSyncService =
+    options.googleCalendarSyncService ??
+    (googleCalendarOAuthService &&
+    googleOAuth2ClientFactory &&
+    googleCalendarConnectionStore &&
+    calendarEventStore
+      ? createGoogleCalendarSyncService({
+          oauthService: googleCalendarOAuthService,
+          oauth2ClientFactory: googleOAuth2ClientFactory,
+          connectionStore: googleCalendarConnectionStore,
+          eventStore: calendarEventStore,
+        })
+      : undefined);
   const authService = createAuthService({
     authStore,
     sessionTtlMs: (options.authSessionTtlHours ?? 168) * 60 * 60 * 1000
@@ -102,7 +183,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (profileStore) {
     app.register(profileRoutes, { authService, profileStore });
   }
-  app.register(tasksRoutes, { taskStore, authService, recurrenceStore });
+  app.register(tasksRoutes, { taskStore, authService, recurrenceStore, calendarEventStore });
   if (commentStore) {
     app.register(commentsRoutes, { taskStore, commentStore, authService });
   }
@@ -122,6 +203,24 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }
   if (gamingTrackService) {
     app.register(gamingTrackRoutes, { gamingTrackService, authService });
+  }
+  if (googleCalendarOAuthService) {
+    app.register(googleCalendarOAuthRoutes, {
+      authService,
+      googleCalendarOAuthService,
+      googleCalendarConnectionStore,
+      calendarEventStore,
+      frontendOrigin: options.frontendOrigin,
+    });
+  }
+  if (googleCalendarSyncService && calendarEventStore) {
+    app.register(googleCalendarEventsRoutes, {
+      authService,
+      calendarEventStore,
+      calendarEventNoteStore,
+      taskStore,
+      googleCalendarSyncService,
+    });
   }
   app.register(assistantRoutes, { taskStore, commentStore, authService, assistantService });
 
@@ -185,6 +284,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (profileStore?.close) {
       await profileStore.close();
+    }
+
+    if (googleCalendarConnectionStore?.close) {
+      await googleCalendarConnectionStore.close();
+    }
+
+    if (calendarEventStore?.close) {
+      await calendarEventStore.close();
+    }
+
+    if (calendarEventNoteStore?.close) {
+      await calendarEventNoteStore.close();
     }
   });
 

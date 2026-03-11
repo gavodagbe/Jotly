@@ -40,6 +40,8 @@ model User {
   gamingTrackChallengeClaims GamingTrackChallengeClaim[]
   gamingTrackStreakProtectionUsages GamingTrackStreakProtectionUsage[]
   gamingTrackNudgeDismissals GamingTrackNudgeDismissal[]
+  googleCalendarConnections GoogleCalendarConnection[]
+  calendarEvents CalendarEvent[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -71,6 +73,7 @@ model Task {
   plannedTime              Int?
   recurrenceSourceTaskId   String?
   recurrenceOccurrenceDate DateTime?           @db.Date
+  calendarEventId          String?
   createdAt                DateTime            @default(now())
   updatedAt                DateTime            @updatedAt
   completedAt              DateTime?
@@ -79,6 +82,7 @@ model Task {
   attachments              TaskAttachment[]
   recurrenceRule           TaskRecurrenceRule?
   user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarEvent            CalendarEvent?      @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
   rolledFromTask           Task?               @relation("TaskCarryOverInstances", fields: [rolledFromTaskId], references: [id], onDelete: SetNull)
   carryOverInstances       Task[]              @relation("TaskCarryOverInstances")
   sourceTask               Task?               @relation("TaskRecurrenceInstances", fields: [recurrenceSourceTaskId], references: [id], onDelete: SetNull)
@@ -93,6 +97,7 @@ model Task {
   @@index([updatedAt])
   @@index([rolledFromTaskId])
   @@index([recurrenceSourceTaskId])
+  @@index([calendarEventId])
   @@unique([rolledFromTaskId, targetDate])
   @@unique([recurrenceSourceTaskId, recurrenceOccurrenceDate])
 }
@@ -201,4 +206,68 @@ model GamingTrackNudgeDismissal {
 
   @@unique([userId, nudgeId, dismissedOn])
   @@index([userId, dismissedOn])
+}
+
+model GoogleCalendarConnection {
+  id                 String    @id @default(cuid())
+  userId             String
+  googleAccountEmail String
+  accessToken        String
+  refreshToken       String
+  tokenExpiresAt     DateTime
+  calendarId         String    @default("primary")
+  color              String    @default("#6366f1")
+  lastSyncToken      String?
+  lastSyncedAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events             CalendarEvent[]
+
+  @@unique([userId, googleAccountEmail])
+  @@index([userId])
+}
+
+model CalendarEvent {
+  id               String             @id @default(cuid())
+  userId           String
+  connectionId     String
+  googleEventId    String
+  title            String
+  description      String?
+  location         String?
+  startTime        DateTime
+  endTime          DateTime
+  isAllDay         Boolean            @default(false)
+  startDate        DateTime?          @db.Date
+  endDate          DateTime?          @db.Date
+  status           String             @default("confirmed")
+  htmlLink         String?
+  attendees        String?
+  organizer        String?
+  recurringEventId String?
+  syncedAt         DateTime           @default(now())
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection       GoogleCalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  notes            CalendarEventNote[]
+  linkedTasks      Task[]
+
+  @@unique([connectionId, googleEventId])
+  @@index([connectionId])
+  @@index([userId, startTime])
+  @@index([userId, startDate])
+}
+
+model CalendarEventNote {
+  id              String        @id @default(cuid())
+  calendarEventId String        @unique
+  userId          String
+  body            String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  calendarEvent   CalendarEvent @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
