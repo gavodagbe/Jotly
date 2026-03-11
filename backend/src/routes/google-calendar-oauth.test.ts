@@ -13,6 +13,7 @@ import {
   GoogleCalendarConnectionStore,
   GoogleCalendarConnectionUpsertInput,
 } from "../google-calendar/google-calendar-store";
+import { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { GoogleCalendarOAuthService } from "../google-calendar/google-calendar-oauth-service";
 import { TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
@@ -86,6 +87,10 @@ class InMemoryAuthStore implements AuthStore {
     return this.sessionsByTokenHash.get(tokenHash) ?? null;
   }
 
+  async findSessionById(sessionId: string): Promise<AuthSession | null> {
+    return this.sessions.get(sessionId) ?? null;
+  }
+
   async revokeSession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
@@ -107,6 +112,12 @@ class InMemoryAuthStore implements AuthStore {
 class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionStore {
   private readonly connections = new Map<string, GoogleCalendarConnection>();
   private idCounter = 1;
+
+  constructor(connections: GoogleCalendarConnection[] = []) {
+    for (const connection of connections) {
+      this.connections.set(connection.id, connection);
+    }
+  }
 
   async listByUserId(userId: string): Promise<GoogleCalendarConnection[]> {
     const results: GoogleCalendarConnection[] = [];
@@ -185,12 +196,74 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     return updated;
   }
 
-  async updateColor(): Promise<GoogleCalendarConnection | null> {
+  async updateColor(connectionId: string, color: string): Promise<GoogleCalendarConnection | null> {
+    const conn = this.connections.get(connectionId);
+    if (!conn) return null;
+    const updated = { ...conn, color, updatedAt: new Date() };
+    this.connections.set(connectionId, updated);
+    return updated;
+  }
+
+  async updateCalendarId(connectionId: string, calendarId: string): Promise<GoogleCalendarConnection | null> {
+    const conn = this.connections.get(connectionId);
+    if (!conn) return null;
+    const updated = {
+      ...conn,
+      calendarId,
+      lastSyncToken: null,
+      lastSyncedAt: null,
+      updatedAt: new Date(),
+    };
+    this.connections.set(connectionId, updated);
+    return updated;
+  }
+}
+
+class TrackingCalendarEventStore implements CalendarEventStore {
+  readonly deletedConnectionIds: string[] = [];
+
+  constructor(
+    private readonly events: Array<{ id: string; userId: string; connectionId: string }> = []
+  ) {}
+
+  async listByDate(): Promise<never[]> {
+    return [];
+  }
+
+  async listByDateRange(): Promise<never[]> {
+    return [];
+  }
+
+  async getById(id: string, userId: string) {
+    return (
+      this.events.find((event) => event.id === id && event.userId === userId) ?? null
+    ) as Awaited<ReturnType<CalendarEventStore["getById"]>>;
+  }
+
+  async getByGoogleEventId() {
     return null;
   }
 
-  async updateCalendarId(): Promise<GoogleCalendarConnection | null> {
+  async upsertFromGoogle() {
+    throw new Error("Not implemented");
+  }
+
+  async markCancelled() {
     return null;
+  }
+
+  async deleteByConnectionId(connectionId: string): Promise<void> {
+    this.deletedConnectionIds.push(connectionId);
+  }
+}
+
+class StaticTaskStore extends NoopTaskStore {
+  constructor(private readonly tasks: Task[]) {
+    super();
+  }
+
+  async listByUser(userId: string): Promise<Task[]> {
+    return this.tasks.filter((task) => task.userId === userId);
   }
 }
 
@@ -313,12 +386,18 @@ function getStateFromAuthorizationUrl(url: string): string {
 function createAppForTest(options?: {
   oauthService?: GoogleCalendarOAuthService;
   frontendOrigin?: string;
+  taskStore?: TaskStore;
+  authStore?: AuthStore;
+  googleCalendarConnectionStore?: GoogleCalendarConnectionStore;
+  calendarEventStore?: CalendarEventStore;
 }) {
   return buildApp({
     logLevel: "silent",
-    taskStore: new NoopTaskStore(),
-    authStore: new InMemoryAuthStore(),
-    googleCalendarConnectionStore: new InMemoryGoogleCalendarConnectionStore(),
+    taskStore: options?.taskStore ?? new NoopTaskStore(),
+    authStore: options?.authStore ?? new InMemoryAuthStore(),
+    googleCalendarConnectionStore:
+      options?.googleCalendarConnectionStore ?? new InMemoryGoogleCalendarConnectionStore(),
+    calendarEventStore: options?.calendarEventStore,
     googleCalendarOAuthService: options?.oauthService ?? createMockOAuthService().service,
     frontendOrigin: options?.frontendOrigin,
   });
@@ -444,6 +523,39 @@ test("GET /api/google-calendar/callback does not require Bearer auth", async (t)
   assert.equal(response.statusCode, 302);
 });
 
+test("GET /api/google-calendar/callback rejects a revoked issuing session", async (t) => {
+  const oauth = createMockOAuthService();
+  const app = createAppForTest({ oauthService: oauth.service });
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const authUrlResponse = await app.inject({
+    method: "GET",
+    url: "/api/google-calendar/auth-url",
+    headers: authHeaders(token),
+  });
+  const authUrlPayload = parsePayload(authUrlResponse.payload);
+  const state = getStateFromAuthorizationUrl((authUrlPayload.data as { url: string }).url);
+
+  const logoutResponse = await app.inject({
+    method: "POST",
+    url: "/api/auth/logout",
+    headers: authHeaders(token),
+  });
+  assert.equal(logoutResponse.statusCode, 200);
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/api/google-calendar/callback?code=test-auth-code&state=${encodeURIComponent(state)}`,
+  });
+
+  assert.equal(response.statusCode, 302);
+  assert.ok((response.headers.location as string).includes("google-calendar=error"));
+  assert.deepEqual(oauth.exchangeCalls, []);
+});
+
 test("DELETE /api/google-calendar/connection/:connectionId disconnects", async (t) => {
   const oauth = createMockOAuthService([
     {
@@ -565,6 +677,78 @@ test("DELETE /api/google-calendar/connection/:connectionId disconnects one of mu
   const data = body.data as { connections: Array<{ id: string; email: string }> };
   assert.equal(data.connections.length, 1);
   assert.equal(data.connections[0].email, "work@company.com");
+});
+
+test("PATCH /api/google-calendar/connection/:connectionId/calendar rejects switching when tasks are linked", async (t) => {
+  const now = new Date("2026-03-11T09:00:00.000Z");
+  const connectionStore = new InMemoryGoogleCalendarConnectionStore([
+    {
+      id: "gcal-conn-1",
+      userId: "user-1",
+      googleAccountEmail: "test@gmail.com",
+      accessToken: "encrypted-access-token",
+      refreshToken: "encrypted-refresh-token",
+      tokenExpiresAt: new Date("2026-03-11T10:00:00.000Z"),
+      calendarId: "primary",
+      color: "#6366f1",
+      lastSyncToken: "sync-token",
+      lastSyncedAt: new Date("2026-03-10T08:00:00.000Z"),
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]);
+  const calendarEventStore = new TrackingCalendarEventStore([
+    { id: "calendar-event-1", userId: "user-1", connectionId: "gcal-conn-1" },
+  ]);
+  const taskStore = new StaticTaskStore([
+    {
+      id: "task-1",
+      userId: "user-1",
+      title: "Linked task",
+      description: null,
+      status: "todo",
+      targetDate: new Date("2026-03-11T00:00:00.000Z"),
+      dueDate: null,
+      priority: "medium",
+      project: null,
+      plannedTime: null,
+      rolledFromTaskId: null,
+      recurrenceSourceTaskId: null,
+      recurrenceOccurrenceDate: null,
+      calendarEventId: "calendar-event-1",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+      cancelledAt: null,
+    },
+  ]);
+  const app = createAppForTest({
+    taskStore,
+    googleCalendarConnectionStore: connectionStore,
+    calendarEventStore,
+  });
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const response = await app.inject({
+    method: "PATCH",
+    url: "/api/google-calendar/connection/gcal-conn-1/calendar",
+    headers: authHeaders(token),
+    payload: {
+      calendarId: "work-calendar",
+    },
+  });
+
+  assert.equal(response.statusCode, 409);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "VALIDATION_ERROR",
+    message: "Unlink tasks from this Google Calendar connection before changing calendars",
+  });
+  assert.deepEqual(calendarEventStore.deletedConnectionIds, []);
+  assert.equal((await connectionStore.getById("gcal-conn-1"))?.calendarId, "primary");
 });
 
 test("GET /api/google-calendar/callback redirects to the configured frontend origin", async (t) => {

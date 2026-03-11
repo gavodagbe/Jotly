@@ -72,6 +72,24 @@ function isSyncTokenExpiredError(error: unknown): boolean {
   );
 }
 
+function addUtcDays(date: Date, offsetDays: number): Date {
+  const nextDate = new Date(date);
+  nextDate.setUTCDate(nextDate.getUTCDate() + offsetDays);
+  return nextDate;
+}
+
+function getStartOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+export function getFullSyncWindow(referenceDate = new Date()): { timeMin: Date; timeMax: Date } {
+  const startOfToday = getStartOfUtcDay(referenceDate);
+  return {
+    timeMin: addUtcDays(startOfToday, -FULL_SYNC_DAYS_BACK),
+    timeMax: addUtcDays(startOfToday, FULL_SYNC_DAYS_AHEAD + 1),
+  };
+}
+
 export function createGoogleCalendarSyncService(
   options: GoogleCalendarSyncServiceOptions
 ): GoogleCalendarSyncService {
@@ -103,6 +121,7 @@ export function createGoogleCalendarSyncService(
       let pageToken: string | undefined;
       let nextSyncToken: string | undefined;
       let attemptSyncedCount = 0;
+      const fullSyncGoogleEventIds = useFullSync ? new Set<string>() : null;
 
       try {
         do {
@@ -113,10 +132,7 @@ export function createGoogleCalendarSyncService(
           };
 
           if (useFullSync) {
-            const timeMin = new Date();
-            timeMin.setDate(timeMin.getDate() - FULL_SYNC_DAYS_BACK);
-            const timeMax = new Date();
-            timeMax.setDate(timeMax.getDate() + FULL_SYNC_DAYS_AHEAD);
+            const { timeMin, timeMax } = getFullSyncWindow();
             params.timeMin = timeMin.toISOString();
             params.timeMax = timeMax.toISOString();
           } else {
@@ -133,6 +149,7 @@ export function createGoogleCalendarSyncService(
           if (data.items) {
             for (const event of data.items) {
               if (!event.id) continue;
+              fullSyncGoogleEventIds?.add(event.id);
 
               if (event.status === "cancelled") {
                 await eventStore.markCancelled(event.id, connection.userId, connection.id);
@@ -176,6 +193,14 @@ export function createGoogleCalendarSyncService(
             nextSyncToken = data.nextSyncToken;
           }
         } while (pageToken);
+
+        if (useFullSync && eventStore.deleteMissingForConnection) {
+          await eventStore.deleteMissingForConnection(
+            connection.id,
+            connection.userId,
+            [...(fullSyncGoogleEventIds ?? [])]
+          );
+        }
 
         // If we got here without a 410, sync is complete
         const now = new Date();

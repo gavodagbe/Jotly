@@ -207,6 +207,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (googleCalendarOAuthService) {
     app.register(googleCalendarOAuthRoutes, {
       authService,
+      authStore,
+      taskStore,
       googleCalendarOAuthService,
       googleCalendarConnectionStore,
       calendarEventStore,

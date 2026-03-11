@@ -1,8 +1,10 @@
 import { FastifyPluginAsync } from "fastify";
 import { AuthService } from "../auth/auth-service";
+import { AuthSession, AuthStore } from "../auth/auth-store";
 import { GoogleCalendarOAuthService } from "../google-calendar/google-calendar-oauth-service";
 import { GoogleCalendarConnectionStore } from "../google-calendar/google-calendar-store";
 import { CalendarEventStore } from "../google-calendar/calendar-event-store";
+import { TaskStore } from "../tasks/task-store";
 import {
   getBearerToken,
   sendError,
@@ -11,6 +13,8 @@ import { z } from "zod";
 
 type GoogleCalendarOAuthRoutesOptions = {
   authService: AuthService;
+  authStore?: AuthStore;
+  taskStore?: TaskStore;
   googleCalendarOAuthService: GoogleCalendarOAuthService;
   googleCalendarConnectionStore?: GoogleCalendarConnectionStore;
   calendarEventStore?: CalendarEventStore;
@@ -45,13 +49,64 @@ function normalizeFrontendOrigin(frontendOrigin: string): string {
   return frontendOrigin.endsWith("/") ? frontendOrigin.slice(0, -1) : frontendOrigin;
 }
 
+function isAuthorizationSessionActive(
+  session: AuthSession | null | undefined,
+  userId: string
+): boolean {
+  if (!session) {
+    return false;
+  }
+
+  if (session.userId !== userId || session.revokedAt) {
+    return false;
+  }
+
+  return session.expiresAt.getTime() > Date.now();
+}
+
+async function connectionHasLinkedTasks(
+  userId: string,
+  connectionId: string,
+  taskStore?: TaskStore,
+  calendarEventStore?: CalendarEventStore
+): Promise<boolean> {
+  if (!taskStore || !calendarEventStore) {
+    return false;
+  }
+
+  const tasks = await taskStore.listByUser(userId);
+  const linkedCalendarEventIds = [
+    ...new Set(
+      tasks
+        .map((task) => task.calendarEventId)
+        .filter((calendarEventId): calendarEventId is string => typeof calendarEventId === "string")
+    ),
+  ];
+
+  for (const calendarEventId of linkedCalendarEventIds) {
+    const calendarEvent = await calendarEventStore.getById(calendarEventId, userId);
+    if (calendarEvent?.connectionId === connectionId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 const CALLBACK_PATH = "/api/google-calendar/callback";
 
 const googleCalendarOAuthRoutes: FastifyPluginAsync<GoogleCalendarOAuthRoutesOptions> = async (
   app,
   options
 ) => {
-  const { authService, googleCalendarOAuthService, googleCalendarConnectionStore, calendarEventStore } = options;
+  const {
+    authService,
+    authStore,
+    taskStore,
+    googleCalendarOAuthService,
+    googleCalendarConnectionStore,
+    calendarEventStore,
+  } = options;
   const frontendOrigin = normalizeFrontendOrigin(options.frontendOrigin ?? "http://localhost:3000");
 
   // Auth hook for all routes EXCEPT the callback (which is a browser redirect from Google)
@@ -97,6 +152,11 @@ const googleCalendarOAuthRoutes: FastifyPluginAsync<GoogleCalendarOAuthRoutesOpt
     const { code, state } = queryResult.data;
     const authorizationState = googleCalendarOAuthService.validateAuthorizationState(state);
     if (!authorizationState) {
+      return reply.redirect(`${frontendOrigin}/?google-calendar=error`);
+    }
+
+    const issuingSession = await authStore?.findSessionById?.(authorizationState.sessionId);
+    if (!isAuthorizationSessionActive(issuingSession, authorizationState.userId)) {
       return reply.redirect(`${frontendOrigin}/?google-calendar=error`);
     }
 
@@ -235,11 +295,31 @@ const googleCalendarOAuthRoutes: FastifyPluginAsync<GoogleCalendarOAuthRoutesOpt
         return sendError(reply, 404, "NOT_FOUND", "Connection not found");
       }
 
+      const nextCalendarId = body.calendarId.trim();
+      if (nextCalendarId === connection.calendarId) {
+        return reply.send({ data: { id: connection.id, calendarId: connection.calendarId } });
+      }
+
+      const hasLinkedTasks = await connectionHasLinkedTasks(
+        authUserId,
+        connectionId,
+        taskStore,
+        calendarEventStore
+      );
+      if (hasLinkedTasks) {
+        return sendError(
+          reply,
+          409,
+          "VALIDATION_ERROR",
+          "Unlink tasks from this Google Calendar connection before changing calendars"
+        );
+      }
+
       // Delete old events for this connection
       await calendarEventStore.deleteByConnectionId(connectionId);
 
       // Update calendar ID (also resets sync token)
-      const updated = await googleCalendarConnectionStore.updateCalendarId(connectionId, body.calendarId.trim());
+      const updated = await googleCalendarConnectionStore.updateCalendarId(connectionId, nextCalendarId);
       if (!updated) {
         return sendError(reply, 500, "INTERNAL_ERROR", "Failed to update calendar");
       }

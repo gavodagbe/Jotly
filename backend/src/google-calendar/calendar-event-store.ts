@@ -39,6 +39,11 @@ export type CalendarEventStore = {
     userId: string,
     connectionId: string
   ): Promise<CalendarEvent | null>;
+  deleteMissingForConnection?(
+    connectionId: string,
+    userId: string,
+    activeGoogleEventIds: string[]
+  ): Promise<void>;
   deleteByConnectionId(connectionId: string): Promise<void>;
   close?: () => Promise<void>;
 };
@@ -294,6 +299,22 @@ export function createPrismaCalendarEventStore(
       } catch {
         return null;
       }
+    },
+
+    async deleteMissingForConnection(connectionId, userId, activeGoogleEventIds) {
+      await prisma.calendarEvent.deleteMany({
+        where:
+          activeGoogleEventIds.length > 0
+            ? {
+                connectionId,
+                userId,
+                googleEventId: { notIn: activeGoogleEventIds },
+              }
+            : {
+                connectionId,
+                userId,
+              },
+      });
     },
 
     async deleteByConnectionId(connectionId) {

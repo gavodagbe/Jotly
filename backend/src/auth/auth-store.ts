@@ -37,6 +37,7 @@ export type AuthStore = {
   findUserByEmail(email: string): Promise<AuthUser | null>;
   findUserById(id: string): Promise<AuthUser | null>;
   createSession(input: CreateAuthSessionInput): Promise<AuthSession>;
+  findSessionById?(sessionId: string): Promise<AuthSession | null>;
   findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
   revokeSession(sessionId: string): Promise<void>;
   deleteExpiredSessions(now: Date): Promise<void>;
@@ -80,6 +81,12 @@ export function createPrismaAuthStore(prisma = new PrismaClient()): AuthStore {
     async findSessionByTokenHash(tokenHash) {
       return prisma.session.findUnique({
         where: { tokenHash }
+      });
+    },
+
+    async findSessionById(sessionId) {
+      return prisma.session.findUnique({
+        where: { id: sessionId }
       });
     },
 

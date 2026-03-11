@@ -715,7 +715,10 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         updateInput.plannedTime = updateBody.plannedTime;
       }
 
-      if (updateBody.calendarEventId !== undefined) {
+      if (
+        updateBody.calendarEventId !== undefined &&
+        updateBody.calendarEventId !== existingTask.calendarEventId
+      ) {
         const linkedCalendarEvent = await resolveCalendarEventId(
           updateBody.calendarEventId,
           authUserId,

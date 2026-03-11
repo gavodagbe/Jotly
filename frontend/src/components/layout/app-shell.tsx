@@ -3987,6 +3987,18 @@ export function AppShell() {
     setProfileErrorMessage(null);
     setProfileSuccessMessage(null);
     setIsProfileSaving(false);
+    setGoogleCalendarConnections([]);
+    setIsGoogleCalendarLoading(false);
+    setIsGoogleCalendarSyncing(false);
+    setGoogleCalendarError(null);
+    setCalendarEvents([]);
+    setIsCalendarEventsLoading(false);
+    setCalendarEventNoteDrafts({});
+    setPendingCalendarEventNoteIds([]);
+    setPendingCalendarEventTaskIds([]);
+    setExpandedCalendarEventId(null);
+    setCalendarEventSearchQuery("");
+    setConnectionCalendarOptions({});
     setTasks([]);
     setErrorMessage(null);
     setDragErrorMessage(null);
@@ -4205,6 +4217,7 @@ export function AppShell() {
 
   async function handleUpdateCalendarId(connectionId: string, calendarId: string) {
     if (!authToken) return;
+    setGoogleCalendarError(null);
     try {
       const response = await fetch(`/backend-api/google-calendar/connection/${connectionId}/calendar`, {
         method: "PATCH",
@@ -4217,9 +4230,21 @@ export function AppShell() {
         );
         // Re-sync after calendar change
         handleSyncGoogleCalendar();
+      } else {
+        const payload = await response.json().catch(() => null);
+        setGoogleCalendarError(
+          payload?.error?.message ??
+            (isFrench
+              ? "Impossible de changer le calendrier selectionne."
+              : "Unable to change the selected calendar.")
+        );
       }
     } catch {
-      // Non-critical
+      setGoogleCalendarError(
+        isFrench
+          ? "Impossible de changer le calendrier selectionne."
+          : "Unable to change the selected calendar."
+      );
     }
   }
 
