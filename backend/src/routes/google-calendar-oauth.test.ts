@@ -13,27 +13,27 @@ import {
   GoogleCalendarConnectionStore,
   GoogleCalendarConnectionUpsertInput,
 } from "../google-calendar/google-calendar-store";
-import { CalendarEventStore } from "../google-calendar/calendar-event-store";
+import { CalendarEventStore, CalendarEventUpsertInput } from "../google-calendar/calendar-event-store";
 import { GoogleCalendarOAuthService } from "../google-calendar/google-calendar-oauth-service";
 import { TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
 class NoopTaskStore implements TaskStore {
-  async listByDate(): Promise<Task[]> {
+  async listByDate(_targetDate: Date, _userId: string): Promise<Task[]> {
     return [];
   }
-  async listByUser(): Promise<Task[]> {
+  async listByUser(_userId: string): Promise<Task[]> {
     return [];
   }
-  async getById(): Promise<Task | null> {
+  async getById(_id: string, _userId: string): Promise<Task | null> {
     return null;
   }
   async create(_input: TaskCreateInput): Promise<Task> {
     throw new Error("Not implemented");
   }
-  async update(): Promise<Task | null> {
+  async update(_id: string, _input: TaskUpdateInput, _userId: string): Promise<Task | null> {
     return null;
   }
-  async remove(): Promise<Task | null> {
+  async remove(_id: string, _userId: string): Promise<Task | null> {
     return null;
   }
 }
@@ -221,6 +221,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
 
 class TrackingCalendarEventStore implements CalendarEventStore {
   readonly deletedConnectionIds: string[] = [];
+  private readonly now = new Date("2026-03-11T09:00:00.000Z");
 
   constructor(
     private readonly events: Array<{ id: string; userId: string; connectionId: string }> = []
@@ -244,8 +245,29 @@ class TrackingCalendarEventStore implements CalendarEventStore {
     return null;
   }
 
-  async upsertFromGoogle() {
-    throw new Error("Not implemented");
+  async upsertFromGoogle(input: CalendarEventUpsertInput) {
+    return {
+      id: `calendar-event-${input.googleEventId}`,
+      userId: input.userId,
+      connectionId: input.connectionId,
+      googleEventId: input.googleEventId,
+      title: input.title,
+      description: input.description,
+      location: input.location,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      isAllDay: input.isAllDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      status: input.status,
+      htmlLink: input.htmlLink,
+      attendees: input.attendees,
+      organizer: input.organizer,
+      recurringEventId: input.recurringEventId,
+      syncedAt: this.now,
+      createdAt: this.now,
+      updatedAt: this.now,
+    };
   }
 
   async markCancelled() {

@@ -229,16 +229,23 @@ function parsePayload(payload: string) {
   return JSON.parse(payload) as Record<string, unknown>;
 }
 
-function createAppForTest(options?: { calendarEventStore?: CalendarEventStore }) {
+function createAppForTest(options?: { calendarEventStore?: CalendarEventStore; taskStore?: TaskStore }) {
   return buildApp({
     logLevel: "silent",
-    taskStore: new InMemoryTaskStore(),
+    taskStore: options?.taskStore ?? new InMemoryTaskStore(),
     authStore: new InMemoryAuthStore(),
     calendarEventStore: options?.calendarEventStore,
   });
 }
 
 async function registerAndGetToken(app: ReturnType<typeof createAppForTest>): Promise<string> {
+  const auth = await registerAndGetAuth(app);
+  return auth.token;
+}
+
+async function registerAndGetAuth(
+  app: ReturnType<typeof createAppForTest>
+): Promise<{ token: string; userId: string }> {
   const response = await app.inject({
     method: "POST",
     url: "/api/auth/register",
@@ -250,7 +257,8 @@ async function registerAndGetToken(app: ReturnType<typeof createAppForTest>): Pr
 
   assert.equal(response.statusCode, 201);
   const body = parsePayload(response.payload);
-  return (body.data as { token: string }).token;
+  const data = body.data as { token: string; user: { id: string } };
+  return { token: data.token, userId: data.user.id };
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -625,6 +633,45 @@ test("PATCH /api/tasks can unlink a linked calendar event", async (t) => {
   const body = parsePayload(response.payload);
   const data = body.data as Record<string, unknown>;
   assert.equal(data.calendarEventId, null);
+});
+
+test("PATCH /api/tasks does not revalidate an unchanged calendarEventId", async (t) => {
+  const taskStore = new InMemoryTaskStore();
+  const app = createAppForTest({ taskStore });
+  t.after(async () => {
+    await app.close();
+  });
+  const { token, userId } = await registerAndGetAuth(app);
+  const existingTask = await taskStore.create({
+    userId,
+    title: "Linked task",
+    description: null,
+    status: "todo",
+    targetDate: new Date("2026-03-06T00:00:00.000Z"),
+    dueDate: null,
+    priority: "medium",
+    project: null,
+    plannedTime: null,
+    completedAt: null,
+    cancelledAt: null,
+    calendarEventId: "calendar-event-1",
+  });
+
+  const response = await app.inject({
+    method: "PATCH",
+    url: `/api/tasks/${existingTask.id}`,
+    headers: authHeaders(token),
+    payload: {
+      title: "Renamed task",
+      calendarEventId: "calendar-event-1",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as Record<string, unknown>;
+  assert.equal(data.title, "Renamed task");
+  assert.equal(data.calendarEventId, "calendar-event-1");
 });
 
 test("DELETE /api/tasks removes a task", async (t) => {

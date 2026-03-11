@@ -4,6 +4,7 @@ import test from "node:test";
 import { CalendarEventStore, CalendarEventUpsertInput } from "../google-calendar/calendar-event-store";
 import {
   createGoogleCalendarSyncService,
+  getFullSyncWindow,
   GoogleCalendarApi,
 } from "../google-calendar/google-calendar-sync-service";
 import {
@@ -93,6 +94,11 @@ class SpyCalendarEventStore implements CalendarEventStore {
     userId: string;
     connectionId: string;
   }> = [];
+  readonly deletedMissingSnapshots: Array<{
+    connectionId: string;
+    userId: string;
+    activeGoogleEventIds: string[];
+  }> = [];
 
   async listByDate(): Promise<CalendarEvent[]> {
     return [];
@@ -144,6 +150,14 @@ class SpyCalendarEventStore implements CalendarEventStore {
   ): Promise<CalendarEvent | null> {
     this.cancellations.push({ googleEventId, userId, connectionId });
     return null;
+  }
+
+  async deleteMissingForConnection(
+    connectionId: string,
+    userId: string,
+    activeGoogleEventIds: string[]
+  ): Promise<void> {
+    this.deletedMissingSnapshots.push({ connectionId, userId, activeGoogleEventIds });
   }
 
   async deleteByConnectionId(): Promise<void> {}
@@ -213,6 +227,13 @@ function createOAuth2ClientFactoryStub(): GoogleOAuth2ClientFactory {
   };
 }
 
+test("getFullSyncWindow expands fallback syncs to full UTC-day boundaries", () => {
+  const window = getFullSyncWindow(new Date("2026-03-11T15:30:45.000Z"));
+
+  assert.equal(window.timeMin.toISOString(), "2026-02-09T00:00:00.000Z");
+  assert.equal(window.timeMax.toISOString(), "2026-06-10T00:00:00.000Z");
+});
+
 test("Google Calendar sync retries with a full sync when the incremental sync token is expired", async () => {
   const connectionStore = new InMemoryGoogleCalendarConnectionStore([createConnection()]);
   const eventStore = new SpyCalendarEventStore();
@@ -261,6 +282,13 @@ test("Google Calendar sync retries with a full sync when the incremental sync to
   assert.equal(listCalls[1].syncToken, undefined);
   assert.equal(eventStore.upserts.length, 1);
   assert.equal(eventStore.upserts[0].connectionId, "connection-1");
+  assert.deepEqual(eventStore.deletedMissingSnapshots, [
+    {
+      connectionId: "connection-1",
+      userId: "user-1",
+      activeGoogleEventIds: ["google-event-1"],
+    },
+  ]);
   assert.deepEqual(
     connectionStore.updatedSyncTokens.map((entry) => entry.syncToken),
     ["fresh-sync-token"]
