@@ -618,23 +618,6 @@ const ASSISTANT_PROMPT_SUGGESTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<s
   ],
 };
 
-const DAILY_AFFIRMATION_SUGGESTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<string>> = {
-  en: [
-    "I choose focus, discipline, and calm execution today.",
-    "I finish what matters most before I move to new work.",
-    "I am consistent, capable, and committed to meaningful progress.",
-    "I protect deep work and handle distractions with intention.",
-    "I act with clarity, energy, and confidence in every task.",
-  ],
-  fr: [
-    "Je choisis la concentration, la discipline et une execution calme aujourd'hui.",
-    "Je termine ce qui compte le plus avant de commencer autre chose.",
-    "Je suis constant, capable et engage vers des progres utiles.",
-    "Je protege mes sessions profondes et je gere les distractions avec intention.",
-    "J'agis avec clarte, energie et confiance dans chaque tache.",
-  ],
-};
-
 const BOARD_COLUMNS_BY_LOCALE: Record<
   UserLocale,
   ReadonlyArray<{
@@ -1118,14 +1101,6 @@ function getDateHeading(value: string, locale: UserLocale): string {
     day: "numeric",
     year: "numeric",
   }).format(parseDateInput(value));
-}
-
-function getDefaultAffirmationText(targetDate: string, locale: UserLocale): string {
-  const suggestions = DAILY_AFFIRMATION_SUGGESTIONS_BY_LOCALE[locale];
-  const segments = targetDate.split("-").map((segment) => Number(segment));
-  const seed = segments.reduce((total, current) => total + (Number.isNaN(current) ? 0 : current), 0);
-  const index = seed % suggestions.length;
-  return suggestions[index];
 }
 
 function formatDateTime(value: string, locale: UserLocale, timeZone: string | null): string {
@@ -2730,9 +2705,17 @@ async function loadDayAffirmation(
   token: string,
   signal?: AbortSignal
 ): Promise<DayAffirmation | null> {
-  const response = await fetch(`/backend-api/day-affirmation?date=${encodeURIComponent(date)}`, {
+  const searchParams = new URLSearchParams({
+    date,
+    _: `${Date.now()}`,
+  });
+  const response = await fetch(`/backend-api/day-affirmation?${searchParams.toString()}`, {
     method: "GET",
-    headers: createAuthHeaders(token, false),
+    headers: {
+      ...createAuthHeaders(token, false),
+      "Cache-Control": "no-store, no-cache, max-age=0",
+      Pragma: "no-cache",
+    },
     signal,
     cache: "no-store",
   });
@@ -3931,9 +3914,9 @@ export function AppShell() {
   const [draggedDashboardBlockId, setDraggedDashboardBlockId] = useState<DashboardBlockId | null>(null);
   const [dashboardDropTargetId, setDashboardDropTargetId] = useState<DashboardBlockId | null>(null);
   const [dayAffirmation, setDayAffirmation] = useState<DayAffirmation | null>(null);
-  const [dayAffirmationDraft, setDayAffirmationDraft] = useState(() =>
-    getDefaultAffirmationText(toDateInputValue(new Date()), "en")
-  );
+  const [dayAffirmationDraft, setDayAffirmationDraft] = useState("");
+  const dayAffirmationDraftRef = useRef(dayAffirmationDraft);
+  const dayAffirmationCacheRef = useRef<Record<string, DayAffirmation | null>>({});
   const [isDayAffirmationLoading, setIsDayAffirmationLoading] = useState(false);
   const [isDayAffirmationSaving, setIsDayAffirmationSaving] = useState(false);
   const [dayAffirmationErrorMessage, setDayAffirmationErrorMessage] = useState<string | null>(null);
@@ -3973,6 +3956,48 @@ export function AppShell() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
   const [taskFilterValues, setTaskFilterValues] = useState<TaskFilterValues>(DEFAULT_TASK_FILTER_VALUES);
+
+  const updateDayAffirmationDraft = useCallback((nextValue: string) => {
+    dayAffirmationDraftRef.current = nextValue;
+    setDayAffirmationDraft(nextValue);
+  }, []);
+
+  const applyDayAffirmationState = useCallback((nextAffirmation: DayAffirmation | null) => {
+    setDayAffirmation(nextAffirmation);
+    updateDayAffirmationDraft(nextAffirmation?.text ?? "");
+  }, [updateDayAffirmationDraft]);
+
+  function getCachedDayAffirmation(date: string): DayAffirmation | null | undefined {
+    return Object.prototype.hasOwnProperty.call(dayAffirmationCacheRef.current, date)
+      ? dayAffirmationCacheRef.current[date]
+      : undefined;
+  }
+
+  function cacheDayAffirmation(date: string, nextAffirmation: DayAffirmation | null) {
+    dayAffirmationCacheRef.current[date] = nextAffirmation;
+  }
+
+  function shouldApplyFetchedDayAffirmation(
+    nextAffirmation: DayAffirmation | null,
+    cachedAffirmation: DayAffirmation | null | undefined
+  ) {
+    if (nextAffirmation === null) {
+      return cachedAffirmation === undefined || cachedAffirmation === null;
+    }
+
+    if (!cachedAffirmation) {
+      return true;
+    }
+
+    const nextUpdatedAt = Date.parse(nextAffirmation.updatedAt);
+    const cachedUpdatedAt = Date.parse(cachedAffirmation.updatedAt);
+
+    if (Number.isNaN(nextUpdatedAt) || Number.isNaN(cachedUpdatedAt)) {
+      return true;
+    }
+
+    return nextUpdatedAt >= cachedUpdatedAt;
+  }
 
   const [taskDialogMode, setTaskDialogMode] = useState<TaskDialogMode | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -4179,13 +4204,8 @@ export function AppShell() {
     setCarryOverErrorMessage(null);
     setDraggedDashboardBlockId(null);
     setDashboardDropTargetId(null);
-    setDayAffirmation(null);
-    setDayAffirmationDraft(
-      getDefaultAffirmationText(
-        toDateInputValue(new Date()),
-        getPreferredLocale(window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en")
-      )
-    );
+    dayAffirmationCacheRef.current = {};
+    applyDayAffirmationState(null);
     setIsDayAffirmationLoading(false);
     setIsDayAffirmationSaving(false);
     setDayAffirmationErrorMessage(null);
@@ -4237,7 +4257,7 @@ export function AppShell() {
     setPendingAttachmentIds([]);
     setNewProjectDraft("");
     setProjectFormErrorMessage(null);
-  }, []);
+  }, [applyDayAffirmationState]);
 
   function handleAuthFormFieldChange(field: keyof AuthFormValues, value: string) {
     setAuthFormValues((current) => ({
@@ -4765,8 +4785,8 @@ export function AppShell() {
     setDragErrorMessage(null);
     setCarryOverMessage(null);
     setCarryOverErrorMessage(null);
-    setDayAffirmation(null);
-    setDayAffirmationDraft(getDefaultAffirmationText(nextDate, activeLocale));
+    const cachedAffirmation = getCachedDayAffirmation(nextDate);
+    applyDayAffirmationState(cachedAffirmation ?? null);
     setDayAffirmationErrorMessage(null);
     setDayBilan(null);
     setDayBilanFormValues(getDefaultDayBilanFormValues());
@@ -5023,10 +5043,18 @@ export function AppShell() {
       return;
     }
 
-    const fallbackText = getDefaultAffirmationText(selectedDate, activeLocale);
-    const nextTextCandidate = options?.text ?? dayAffirmationDraft;
-    const normalizedText = nextTextCandidate.trim().length > 0 ? nextTextCandidate.trim() : fallbackText;
+    const nextTextCandidate = options?.text ?? dayAffirmationDraftRef.current;
+    const normalizedText = nextTextCandidate.trim();
     const nextCompletion = options?.isCompleted ?? dayAffirmation?.isCompleted ?? false;
+
+    if (normalizedText.length === 0) {
+      setDayAffirmationErrorMessage(
+        isFrench
+          ? "Veuillez saisir votre affirmation avant d'enregistrer."
+          : "Enter your affirmation before saving."
+      );
+      return;
+    }
 
     if (normalizedText.length > DAY_AFFIRMATION_MAX_LENGTH) {
       setDayAffirmationErrorMessage(
@@ -5050,8 +5078,8 @@ export function AppShell() {
         authToken
       );
 
-      setDayAffirmation(savedAffirmation);
-      setDayAffirmationDraft(savedAffirmation.text);
+      cacheDayAffirmation(selectedDate, savedAffirmation);
+      applyDayAffirmationState(savedAffirmation);
     } catch (error) {
       setDayAffirmationErrorMessage(
         error instanceof Error
@@ -6204,10 +6232,17 @@ export function AppShell() {
     }
 
     if (!authToken || !authUser) {
-      setDayAffirmation(null);
-      setDayAffirmationDraft(getDefaultAffirmationText(selectedDate, activeLocale));
+      dayAffirmationCacheRef.current = {};
+      applyDayAffirmationState(null);
       setIsDayAffirmationLoading(false);
       return;
+    }
+
+    const cachedAffirmation = getCachedDayAffirmation(selectedDate);
+    if (cachedAffirmation !== undefined) {
+      applyDayAffirmationState(cachedAffirmation);
+    } else {
+      applyDayAffirmationState(null);
     }
 
     setIsDayAffirmationLoading(true);
@@ -6220,18 +6255,25 @@ export function AppShell() {
           return;
         }
 
-        setDayAffirmation(nextAffirmation);
-        setDayAffirmationDraft(
-          nextAffirmation?.text ?? getDefaultAffirmationText(selectedDate, activeLocale)
-        );
+        const latestCachedAffirmation = getCachedDayAffirmation(selectedDate);
+
+        if (!shouldApplyFetchedDayAffirmation(nextAffirmation, latestCachedAffirmation)) {
+          return;
+        }
+
+        cacheDayAffirmation(selectedDate, nextAffirmation);
+        applyDayAffirmationState(nextAffirmation);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) {
           return;
         }
 
-        setDayAffirmation(null);
-        setDayAffirmationDraft(getDefaultAffirmationText(selectedDate, activeLocale));
+        if (getCachedDayAffirmation(selectedDate) === undefined) {
+          cacheDayAffirmation(selectedDate, null);
+          applyDayAffirmationState(null);
+        }
+
         setDayAffirmationErrorMessage(
           error instanceof Error
             ? error.message
@@ -6247,7 +6289,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [activeLocale, authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [applyDayAffirmationState, authToken, authUser, isAuthReady, isFrench, selectedDate]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -6419,8 +6461,9 @@ export function AppShell() {
       : "Save changes";
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
+  const hasSavedAffirmation = dayAffirmation !== null;
   const isAffirmationCompleted = dayAffirmation?.isCompleted ?? false;
-  const completionItemCount = tasks.length + 1;
+  const completionItemCount = tasks.length + (hasSavedAffirmation ? 1 : 0);
   const completedItemCount = tasksByStatus.done.length + (isAffirmationCompleted ? 1 : 0);
   const completionRate =
     completionItemCount === 0 ? 0 : Math.round((completedItemCount / completionItemCount) * 100);
@@ -7630,36 +7673,38 @@ export function AppShell() {
           </p>
         ) : (
           <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <div className="mt-4 space-y-3">
               <div className="block text-sm font-semibold text-foreground">
                 <span>{isFrench ? "Phrase du jour" : "Today statement"}</span>
                 <RichTextEditor
                   locale={activeLocale}
                   value={dayAffirmationDraft}
                   onChange={(nextValue) => {
-                    setDayAffirmationDraft(nextValue);
+                    updateDayAffirmationDraft(nextValue);
                     setDayAffirmationErrorMessage(null);
                   }}
                   disabled={isDayAffirmationLoading || isDayAffirmationSaving}
                 />
               </div>
-              <button
-                type="button"
-                className={primaryButtonClass}
-                onClick={() => {
-                  void saveDayAffirmation({ text: dayAffirmationDraft });
-                }}
-                disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-              >
-                <SaveIcon />
-                {isDayAffirmationSaving
-                  ? isFrench
-                    ? "Enregistrement..."
-                    : "Saving..."
-                  : isFrench
-                  ? "Enregistrer l'affirmation"
-                  : "Save affirmation"}
-              </button>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className={primaryButtonClass}
+                  onClick={() => {
+                    void saveDayAffirmation();
+                  }}
+                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                >
+                  <SaveIcon />
+                  {isDayAffirmationSaving
+                    ? isFrench
+                      ? "Enregistrement..."
+                      : "Saving..."
+                    : isFrench
+                    ? "Enregistrer l'affirmation"
+                    : "Save affirmation"}
+                </button>
+              </div>
             </div>
 
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">

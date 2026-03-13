@@ -106,6 +106,9 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
     try {
       const affirmation = await dayAffirmationStore.getByDate(targetDate, authUserId);
 
+      reply.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+      reply.header("Pragma", "no-cache");
+      reply.header("Expires", "0");
       return reply.send({
         data: affirmation ? serializeDayAffirmation(affirmation) : null,
       });
@@ -154,6 +157,9 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
         completedAt: nextCompletedAt,
       });
 
+      reply.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+      reply.header("Pragma", "no-cache");
+      reply.header("Expires", "0");
       return reply.send({
         data: serializeDayAffirmation(savedAffirmation),
       });
