@@ -6461,9 +6461,8 @@ export function AppShell() {
       : "Save changes";
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
-  const hasSavedAffirmation = dayAffirmation !== null;
   const isAffirmationCompleted = dayAffirmation?.isCompleted ?? false;
-  const completionItemCount = tasks.length + (hasSavedAffirmation ? 1 : 0);
+  const completionItemCount = tasks.length + 1;
   const completedItemCount = tasksByStatus.done.length + (isAffirmationCompleted ? 1 : 0);
   const completionRate =
     completionItemCount === 0 ? 0 : Math.round((completedItemCount / completionItemCount) * 100);
