@@ -148,6 +148,7 @@ type AssistantChatMessage = {
   source?: "openai" | "heuristic";
   usedTaskCount?: number;
   usedCommentCount?: number;
+  warning?: string | null;
 };
 
 type TaskAttachmentMutationInput = {
@@ -1543,6 +1544,38 @@ function getGamingTrackNudgeClass(
   return "border-line bg-surface text-muted";
 }
 
+function formatAssistantSourceLabel(
+  source: AssistantReplyPayload["source"] | AssistantChatMessage["source"],
+  locale: UserLocale
+): string {
+  if (source === "openai") {
+    return "OpenAI";
+  }
+
+  return locale === "fr" ? "Mode local" : "Local fallback";
+}
+
+function formatAssistantWarningMessage(
+  warning: string,
+  locale: UserLocale
+): string {
+  const normalized = warning.trim().toLowerCase();
+
+  if (normalized.includes("workspace text search is unavailable")) {
+    return locale === "fr"
+      ? "La recherche textuelle du workspace etait indisponible pour cette reponse. L'assistant a repondu avec le contexte principal uniquement."
+      : "Workspace text search was unavailable for this reply. The assistant answered with the main structured context only.";
+  }
+
+  if (normalized.includes("openai is unavailable right now")) {
+    return locale === "fr"
+      ? "Le mode OpenAI etait indisponible pour cette reponse. Un fallback local a ete utilise."
+      : "OpenAI was unavailable for this reply. A local fallback was used instead.";
+  }
+
+  return warning;
+}
+
 function formatPriority(priority: TaskPriority, locale: UserLocale): string {
   return getPriorityOptions(locale).find((option) => option.value === priority)?.label ?? priority;
 }
@@ -1841,6 +1874,16 @@ function renderDescriptionHtml(markdown: string): string {
 
     if (!cleanLine) {
       closeList();
+      continue;
+    }
+
+    if (/^#{1,3}\s+/.test(cleanLine)) {
+      closeList();
+      const level = Math.min(3, cleanLine.match(/^#+/)?.[0].length ?? 1);
+      const tagName = `h${level}`;
+      htmlParts.push(
+        `<${tagName}>${formatInlineMarkdown(cleanLine.replace(/^#{1,3}\s+/, ""))}</${tagName}>`
+      );
       continue;
     }
 
@@ -5192,13 +5235,12 @@ export function AppShell() {
         source: reply.source,
         usedTaskCount: reply.usedTaskCount,
         usedCommentCount: reply.usedCommentCount,
+        warning: reply.warning
+          ? formatAssistantWarningMessage(reply.warning, activeLocale)
+          : null,
       };
 
       setAssistantMessages((currentMessages) => [...currentMessages, assistantMessage]);
-
-      if (reply.warning) {
-        setAssistantErrorMessage(reply.warning);
-      }
     } catch (error) {
       setAssistantErrorMessage(
         error instanceof Error
@@ -9811,34 +9853,75 @@ export function AppShell() {
             {assistantMessages.length === 0 ? (
               <p className="text-center text-sm text-muted">
                 {isFrench
-                  ? "Posez vos questions sur toutes vos taches."
-                  : "Ask anything about your tasks."}
+                  ? "Posez vos questions sur vos taches, vos commentaires et vos priorites."
+                  : "Ask about your tasks, comments, and priorities."}
               </p>
             ) : (
               <>
-                {assistantMessages.map((message) => (
-                  <article
-                    key={message.id}
-                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${
-                      message.role === "user"
-                        ? "ml-auto bg-accent text-white rounded-br-md"
-                        : "bg-surface-soft text-foreground rounded-bl-md"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
-                    <p className={`mt-1 text-[10px] ${message.role === "user" ? "text-white/60" : "text-muted"}`}>
-                      {formatDateTime(message.timestamp, activeLocale, activeTimeZone)}
-                      {message.role === "assistant" && message.source ? ` · ${message.source}` : ""}
-                      {message.role === "assistant" &&
-                      typeof message.usedTaskCount === "number" &&
-                      typeof message.usedCommentCount === "number"
-                        ? isFrench
-                          ? ` · ${message.usedTaskCount} taches, ${message.usedCommentCount} commentaires`
-                          : ` · ${message.usedTaskCount} tasks, ${message.usedCommentCount} comments`
-                        : ""}
-                    </p>
-                  </article>
-                ))}
+                {assistantMessages.map((message) => {
+                  const isUserMessage = message.role === "user";
+                  const hasAssistantMetadata =
+                    !isUserMessage &&
+                    (Boolean(message.source) ||
+                      typeof message.usedTaskCount === "number" ||
+                      typeof message.usedCommentCount === "number");
+
+                  return (
+                    <article
+                      key={message.id}
+                      className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${
+                        isUserMessage
+                          ? "ml-auto bg-accent text-white rounded-br-md"
+                          : "bg-surface-soft text-foreground rounded-bl-md"
+                      }`}
+                    >
+                      {isUserMessage ? (
+                        <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          <RichTextContent
+                            value={message.content}
+                            className="text-sm leading-6 [&_p]:m-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1 [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:text-muted [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mt-1 [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-1 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mt-1 [&_h3]:mb-1 [&_code]:rounded [&_code]:bg-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.92em] [&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2"
+                          />
+
+                          {message.warning ? (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                              {message.warning}
+                            </div>
+                          ) : null}
+
+                          {hasAssistantMetadata ? (
+                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
+                              {message.source ? (
+                                <span className="rounded-full border border-line bg-surface px-2 py-0.5 font-medium text-foreground">
+                                  {formatAssistantSourceLabel(message.source, activeLocale)}
+                                </span>
+                              ) : null}
+                              {typeof message.usedTaskCount === "number" ? (
+                                <span className="rounded-full border border-line bg-surface px-2 py-0.5">
+                                  {isFrench
+                                    ? `${message.usedTaskCount} taches`
+                                    : `${message.usedTaskCount} tasks`}
+                                </span>
+                              ) : null}
+                              {typeof message.usedCommentCount === "number" ? (
+                                <span className="rounded-full border border-line bg-surface px-2 py-0.5">
+                                  {isFrench
+                                    ? `${message.usedCommentCount} commentaires`
+                                    : `${message.usedCommentCount} comments`}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+
+                      <p className={`mt-2 text-[10px] ${isUserMessage ? "text-white/60" : "text-muted"}`}>
+                        {formatDateTime(message.timestamp, activeLocale, activeTimeZone)}
+                      </p>
+                    </article>
+                  );
+                })}
                 <div ref={assistantMessagesEndRef} />
               </>
             )}
