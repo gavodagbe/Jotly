@@ -17,6 +17,15 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required")
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().email("Email must be valid")
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1, "Reset token is required"),
+  password: z.string().min(8, "Password must be at least 8 characters")
+});
+
 type ApiErrorCode = "VALIDATION_ERROR" | "UNAUTHORIZED" | "CONFLICT" | "INTERNAL_ERROR";
 
 function sendError(
@@ -156,6 +165,71 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, options) =>
 
       request.log.error(error, "Failed to login");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to login");
+    }
+  });
+
+  app.post("/api/auth/forgot-password", async (request, reply) => {
+    const bodyResult = forgotPasswordSchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      const details = zodIssuesToStrings(bodyResult.error);
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        details[0] ?? "Invalid request body",
+        details
+      );
+    }
+
+    try {
+      const result = await authService.requestPasswordReset({
+        email: bodyResult.data.email
+      });
+
+      return reply.send({
+        data: {
+          success: true,
+          resetToken: result.resetToken,
+          expiresAt: result.expiresAt
+        }
+      });
+    } catch (error) {
+      request.log.error(error, "Failed to issue password reset token");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to process password reset request");
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (request, reply) => {
+    const bodyResult = resetPasswordSchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      const details = zodIssuesToStrings(bodyResult.error);
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        details[0] ?? "Invalid request body",
+        details
+      );
+    }
+
+    try {
+      const result = await authService.resetPassword({
+        token: bodyResult.data.token,
+        password: bodyResult.data.password
+      });
+
+      return reply.send({
+        data: result
+      });
+    } catch (error) {
+      if (isAuthError(error) && error.code === "INVALID_RESET_TOKEN") {
+        return sendError(reply, 401, "UNAUTHORIZED", "Invalid or expired reset token");
+      }
+
+      request.log.error(error, "Failed to reset password");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to reset password");
     }
   });
 

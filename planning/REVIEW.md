@@ -1,6 +1,6 @@
 # Jotly - Architecture Decisions and Risks
 
-## Current implementation reality check (as of 2026-03-11)
+## Current implementation reality check (as of 2026-03-13)
 Implemented in the current codebase:
 - backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
 - backend auth/session API (`backend/src/routes/auth.ts`)
@@ -27,7 +27,7 @@ Implemented in the current codebase:
 - frontend day affirmation panel and day bilan panel (`frontend/src/components/layout/app-shell.tsx`)
 - frontend carry-over CTA in date controls (`frontend/src/components/layout/app-shell.tsx`)
 - daily completion percentage includes day affirmation completion (`frontend/src/components/layout/app-shell.tsx`)
-- frontend AI assistant chatbot (FAB) with global user task context (`frontend/src/components/layout/app-shell.tsx`)
+- frontend AI assistant chatbot (FAB) with workspace-first pipeline — evolving from global context dump to structured retrieval + RAG (`frontend/src/components/layout/app-shell.tsx`)
 - frontend profile/settings modal with language/timezone preferences (`frontend/src/components/layout/app-shell.tsx`)
 - frontend Google Calendar connect/disconnect/sync controls in the profile dialog (`frontend/src/components/layout/app-shell.tsx`)
 - frontend selected-date Google Calendar event preview in the dashboard (`frontend/src/components/layout/app-shell.tsx`)
@@ -130,6 +130,33 @@ Reason:
 - reduces cross-system coupling while OAuth/sync behavior stabilizes
 - allows future task-linking to build on persisted `CalendarEvent` data instead of live Google calls
 
+### 10. Assistant pipeline: structured retrieval first, then unified search with full-text + vector
+The assistant evolves through a 2-phase pipeline. Phase 1 is structured SQL retrieval with context budget. Phase 2 adds a unified search table with both PostgreSQL full-text and pgvector semantic search, including document extraction from uploaded PDFs and images.
+
+Reason:
+- most Jotly questions are domain-specific and answerable via targeted SQL (Phase 1)
+- users upload PDFs and images with text — these require extraction (pdf-parse + Tesseract.js OCR) and semantic indexing to be searchable
+- full-text handles keyword queries, vector handles conceptual/semantic queries — both are needed
+- building one unified table with `tsvector` + `vector(1536)` avoids a third migration later
+- keeping the heuristic fallback working without OpenAI remains a product requirement
+
+### 10b. Document extraction stays local (no external service)
+PDF parsing and image OCR run in the backend Node.js process, not via external APIs.
+
+Reason:
+- `pdf-parse` and `Tesseract.js` cover typed/printed text without external dependencies
+- avoids per-document API costs and additional vendor coupling
+- extraction happens asynchronously after upload — does not block the upload response
+- limitation accepted: handwriting recognition is out of scope (Tesseract.js handles printed text only)
+
+### 11. No LLM-based intent classification
+The query analyzer uses regex/heuristic patterns, not a separate LLM call.
+
+Reason:
+- doubling API calls (one for classification, one for answer) adds latency and cost
+- the current regex classifier already works for domain-specific questions
+- if heuristic classification fails, the fallback is a global overview, which is acceptable
+
 ## Module boundary map
 The boundaries below reflect current ownership and future evolution points.
 
@@ -154,6 +181,7 @@ The boundaries below reflect current ownership and future evolution points.
   - backend enforces max size 5 MB per attachment
   - app-level body limit set to 8 MB
 - Future direction: migrate binary content to dedicated object storage and keep PostgreSQL for metadata only.
+- Assistant pipeline impact (Phase 2): attachment uploads will trigger asynchronous text extraction (PDF via `pdf-parse`, image OCR via `Tesseract.js`) and indexing into `AssistantSearchDocument` for search.
 
 ### Recurrence
 - Relation to tasks: recurrence rules generate date-specific task instances.
@@ -205,15 +233,23 @@ The boundaries below reflect current ownership and future evolution points.
 - Current posture: implemented.
 
 ### AI assistant
-- Relation to task history: read-oriented assistant over tasks and related entities.
+- Relation to workspace history: workspace-first assistant over owned Jotly workspace data, not external knowledge.
 - Current backend module: `backend/src/assistant/`.
 - Current API surface:
   - `POST /api/assistant/reply`
+- Covered domains: tasks, comments, affirmations, bilans, reminders, calendar events, calendar notes, profile/preferences, gaming track.
 - Current behavior:
-  - uses user question + owned tasks/comments across all dates as context
   - supports `heuristic` (default) and `openai` provider modes
   - falls back to heuristic when OpenAI is unavailable
-- Current posture: implemented.
+  - request locale defaults from user's profile locale
+- Current limits (pre-pipeline):
+  - loads all user data across all domains and all dates into a single prompt
+  - no context budget — prompt grows linearly with account size
+  - heuristic mode covers domain-specific questions but not free-text cross-domain queries
+- Planned evolution (2 phases — see `planning/AGENT.md` for full spec):
+  - Phase 1: structured pipeline with domain-targeted retrieval + strict context budget
+  - Phase 2: unified `AssistantSearchDocument` table with PostgreSQL full-text (`tsvector`) + pgvector semantic search (`vector(1536)`) + document extraction (PDF via `pdf-parse`, image OCR via `Tesseract.js`, all local backend)
+- Current posture: implemented (pre-pipeline). Pipeline evolution planned.
 
 ### Reporting
 - Relation to task history: aggregated analytics over task lifecycle and date dimensions.
@@ -301,9 +337,13 @@ Existing entities:
 - `TaskRecurrenceRule`
 - `DayAffirmation`
 - `DayBilan`
+- `Reminder`
 - `GoogleCalendarConnection`
 - `CalendarEvent`
 - `CalendarEventNote`
+
+Planned entities (Phase 2 — assistant pipeline):
+- `AssistantSearchDocument` (unified search table with `tsvector` + `vector(1536)` for full-text and semantic search, including extracted document content)
 
 Likely future entities:
 - `TaskActivityEvent` (if event-level analytics becomes required)
@@ -359,7 +399,44 @@ Mitigation:
 - keep heuristic provider as default-safe mode
 - keep OpenAI integration optional and environment-controlled
 
-### Risk 7 - Carry-over duplication and workflow noise
+### Risk 7 - Assistant context sprawl
+If assistant context keeps expanding via broad prompt dumps, response quality, latency, and token usage can degrade as user accounts grow.
+
+Mitigation:
+- Phase 1 pipeline enforces a strict context budget (~4000 chars max) before any LLM call
+- domain-targeted retrieval replaces full data loading
+- heuristic fallback remains functional without OpenAI
+- context size is logged for observability
+
+### Risk 7b - Search index and embedding sync drift (Phase 2)
+If `AssistantSearchDocument` rows or embeddings become stale or orphaned when source records are updated or deleted, search results will be incorrect.
+
+Mitigation:
+- sync hooks on create/update/delete of all indexed source types (including attachments)
+- backfill script for initial migration
+- periodic reconciliation check (compare source record counts vs search document counts)
+- search documents always scoped by userId — orphaned rows cannot leak across accounts
+- embedding regeneration triggered on source text change
+
+### Risk 7c - Prompt injection via user content
+User-authored comments, notes, affirmations, bilans, and extracted document text are included in LLM prompts. Malicious or accidental prompt injection could alter assistant behavior.
+
+Mitigation:
+- sanitize user content before inclusion in prompts (strip control characters, limit length)
+- system prompt instructs the model to treat context as data, not as instructions
+- context budget limits the surface area of injected content
+- extracted document text is treated with the same sanitization as user-authored text
+
+### Risk 7d - Document extraction quality and performance (Phase 2)
+OCR via Tesseract.js may produce low-quality text from poor images. PDF parsing may fail on scanned-only PDFs. Extraction can be CPU-intensive.
+
+Mitigation:
+- extraction runs asynchronously after upload — does not block the upload response
+- extraction failures are logged but do not break the upload flow (document is stored, just not searchable)
+- handwriting and scanned-only PDFs are documented as out of scope for Tesseract.js
+- extracted text is stored in `bodyText` — can be re-extracted if extraction logic improves later
+
+### Risk 8 - Carry-over duplication and workflow noise
 Repeated carry-over actions can create duplicated task rows without a clear dedupe strategy.
 
 Mitigation:
@@ -367,7 +444,7 @@ Mitigation:
 - keep carry-over response explicit (`copiedCount`, `skippedCount`)
 - keep copy rules narrow to actionable statuses only
 
-### Risk 8 - Incentive distortion from gamification
+### Risk 9 - Incentive distortion from gamification
 If gaming-track scores optimize for quantity over quality, users may game metrics and reduce meaningful progress.
 
 Mitigation:

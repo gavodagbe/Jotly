@@ -1,5 +1,29 @@
 import Fastify, { FastifyInstance } from "fastify";
 import {
+  createPrismaAssistantContextStore,
+  AssistantContextStore,
+} from "./assistant/assistant-context-store";
+import {
+  createAssistantEmbeddingClient,
+  AssistantEmbeddingClient,
+} from "./assistant/assistant-embedding-client";
+import {
+  createAssistantDocumentExtractor,
+  AssistantDocumentExtractor,
+} from "./assistant/assistant-document-extractor";
+import {
+  createPrismaAssistantSearchDocumentStore,
+  AssistantSearchDocumentStore,
+} from "./assistant/assistant-search-document-store";
+import {
+  createAssistantSearchRetriever,
+  AssistantSearchRetriever,
+} from "./assistant/assistant-search-retriever";
+import {
+  createAssistantSearchSyncService,
+  AssistantSearchSyncService,
+} from "./assistant/assistant-search-sync";
+import {
   createAssistantService,
   AssistantService,
 } from "./assistant/assistant-service";
@@ -67,10 +91,15 @@ export type BuildAppOptions = {
   gamingTrackService?: GamingTrackService;
   reminderStore?: ReminderStore;
   profileStore?: ProfileStore;
+  assistantContextStore?: AssistantContextStore;
+  assistantSearchDocumentStore?: AssistantSearchDocumentStore;
+  assistantSearchRetriever?: AssistantSearchRetriever;
+  assistantSearchSyncService?: AssistantSearchSyncService;
   assistantService?: AssistantService;
   assistantProvider?: "openai" | "heuristic";
   openAiApiKey?: string;
   openAiModel?: string;
+  openAiEmbeddingModel?: string;
   openAiBaseUrl?: string;
   assistantRequestTimeoutMs?: number;
   authSessionTtlHours?: number;
@@ -126,6 +155,44 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const profileStore =
     options.profileStore ??
     (options.authStore ? undefined : createPrismaProfileStore());
+  const assistantContextStore =
+    options.assistantContextStore ??
+    (options.taskStore || options.authStore ? undefined : createPrismaAssistantContextStore());
+  const assistantSearchDocumentStore =
+    options.assistantSearchDocumentStore ??
+    (options.taskStore || options.authStore
+      ? undefined
+      : createPrismaAssistantSearchDocumentStore());
+  const assistantEmbeddingClient: AssistantEmbeddingClient = createAssistantEmbeddingClient({
+    apiKey: options.openAiApiKey,
+    baseUrl: options.openAiBaseUrl ?? "https://api.openai.com/v1",
+    model: options.openAiEmbeddingModel ?? "text-embedding-3-small",
+    requestTimeoutMs: options.assistantRequestTimeoutMs ?? 10000,
+  });
+  const assistantDocumentExtractor: AssistantDocumentExtractor =
+    createAssistantDocumentExtractor();
+  const assistantSearchSyncService =
+    options.assistantSearchSyncService ??
+    (assistantSearchDocumentStore
+      ? createAssistantSearchSyncService({
+          taskStore,
+          commentStore,
+          attachmentStore,
+          assistantContextStore,
+          searchDocumentStore: assistantSearchDocumentStore,
+          documentExtractor: assistantDocumentExtractor,
+          embeddingClient: assistantEmbeddingClient,
+          embeddingModel: options.openAiEmbeddingModel ?? "text-embedding-3-small",
+        })
+      : undefined);
+  const assistantSearchRetriever =
+    options.assistantSearchRetriever ??
+    (assistantSearchDocumentStore
+      ? createAssistantSearchRetriever({
+          searchDocumentStore: assistantSearchDocumentStore,
+          embeddingClient: assistantEmbeddingClient,
+        })
+      : undefined);
   const assistantService =
     options.assistantService ??
     createAssistantService({
@@ -134,6 +201,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       openAiModel: options.openAiModel ?? "gpt-4o-mini",
       openAiBaseUrl: options.openAiBaseUrl ?? "https://api.openai.com/v1",
       requestTimeoutMs: options.assistantRequestTimeoutMs ?? 10000,
+      taskStore,
+      commentStore,
+      assistantContextStore,
+      assistantSearchRetriever,
+      assistantSearchSyncService,
     });
   const googleCalendarConnectionStore =
     options.googleCalendarConnectionStore ??
@@ -195,7 +267,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }
 
   if (attachmentStore) {
-    app.register(attachmentsRoutes, { taskStore, attachmentStore, authService });
+    app.register(attachmentsRoutes, {
+      taskStore,
+      attachmentStore,
+      authService,
+      assistantSearchSyncService,
+    });
   }
 
   if (recurrenceStore) {
@@ -233,7 +310,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       googleCalendarSyncService,
     });
   }
-  app.register(assistantRoutes, { taskStore, commentStore, authService, assistantService });
+  app.register(assistantRoutes, {
+    authService,
+    assistantService,
+  });
 
   app.setErrorHandler((error, request, reply) => {
     const candidateStatusCode = (error as { statusCode?: number }).statusCode;
@@ -271,6 +351,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (commentStore?.close) {
       await commentStore.close();
+    }
+
+    if (assistantContextStore?.close) {
+      await assistantContextStore.close();
+    }
+
+    if (assistantSearchDocumentStore?.close) {
+      await assistantSearchDocumentStore.close();
     }
 
     if (attachmentStore?.close) {

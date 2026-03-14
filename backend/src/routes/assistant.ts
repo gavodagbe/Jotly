@@ -2,8 +2,6 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AssistantService } from "../assistant/assistant-service";
 import { AuthService } from "../auth/auth-service";
-import { CommentStore } from "../comments/comment-store";
-import { formatDateOnly, TaskStore } from "../tasks/task-store";
 import {
   getBearerToken,
   isStorageNotInitializedPrismaError,
@@ -13,8 +11,6 @@ import {
 } from "./route-helpers";
 
 type AssistantRoutesOptions = {
-  taskStore: TaskStore;
-  commentStore?: CommentStore;
   authService: AuthService;
   assistantService: AssistantService;
 };
@@ -45,7 +41,7 @@ function getAuthenticatedUser(request: {
 }
 
 const assistantRoutes: FastifyPluginAsync<AssistantRoutesOptions> = async (app, options) => {
-  const { taskStore, commentStore, authService, assistantService } = options;
+  const { authService, assistantService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -92,33 +88,11 @@ const assistantRoutes: FastifyPluginAsync<AssistantRoutesOptions> = async (app, 
     }
 
     try {
-      const tasks = await taskStore.listByUser(authUser.id);
-
-      const tasksWithComments = await Promise.all(
-        tasks.map(async (task) => {
-          const comments = commentStore ? await commentStore.listByTaskId(task.id) : [];
-
-          return {
-            id: task.id,
-            title: task.title,
-            description: task.description,
-            status: task.status,
-            targetDate: formatDateOnly(task.targetDate),
-            priority: task.priority,
-            project: task.project,
-            plannedTime: task.plannedTime,
-            comments: comments.map((comment) => comment.body).filter((value) => value.trim().length > 0),
-          };
-        })
-      );
-
-      const usedCommentCount = tasksWithComments.reduce((total, task) => total + task.comments.length, 0);
-
       const assistantReply = await assistantService.generateReply({
         question: bodyResult.data.question,
+        userId: authUser.id,
         userDisplayName: authUser.displayName,
         preferredLocale: bodyResult.data.locale ?? authUser.preferredLocale,
-        tasks: tasksWithComments,
       });
 
       return reply.send({
@@ -127,8 +101,9 @@ const assistantRoutes: FastifyPluginAsync<AssistantRoutesOptions> = async (app, 
           source: assistantReply.source,
           warning: assistantReply.warning,
           generatedAt: new Date().toISOString(),
-          usedTaskCount: tasksWithComments.length,
-          usedCommentCount,
+          usedDomains: assistantReply.usedDomains,
+          retrievalMode: assistantReply.retrievalMode,
+          matchedRecordsCount: assistantReply.matchedRecordsCount,
         },
       });
     } catch (error) {

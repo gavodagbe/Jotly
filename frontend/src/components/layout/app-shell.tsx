@@ -411,12 +411,13 @@ type AuthUser = {
   createdAt: string;
 };
 
-type AuthMode = "login" | "register";
+type AuthMode = "login" | "register" | "forgot_password" | "reset_password";
 
 type AuthFormValues = {
   email: string;
   password: string;
   displayName: string;
+  resetToken: string;
 };
 
 type ProfileFormValues = {
@@ -2262,6 +2263,66 @@ async function loginUser(values: AuthFormValues): Promise<{ user: AuthUser; toke
   };
 }
 
+async function requestPasswordReset(
+  email: string
+): Promise<{ resetToken: string | null; expiresAt: string | null }> {
+  const response = await fetch("/backend-api/auth/forgot-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: email.trim(),
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { resetToken?: string | null; expiresAt?: string | null }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to request password reset"));
+  }
+
+  return {
+    resetToken: payload?.data?.resetToken ?? null,
+    expiresAt: payload?.data?.expiresAt ?? null,
+  };
+}
+
+async function resetPasswordWithToken(
+  token: string,
+  password: string
+): Promise<{ user: AuthUser; token: string }> {
+  const response = await fetch("/backend-api/auth/reset-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: token.trim(),
+      password,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { user: AuthUser; token: string }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to reset password"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to reset password.");
+  }
+
+  return {
+    ...payload.data,
+    user: normalizeAuthUser(payload.data.user),
+  };
+}
+
 async function loadCurrentUser(token: string): Promise<AuthUser> {
   const response = await fetch("/backend-api/auth/me", {
     method: "GET",
@@ -3683,6 +3744,7 @@ type AuthPanelProps = {
   values: AuthFormValues;
   isSubmitting: boolean;
   errorMessage: string | null;
+  infoMessage: string | null;
   onModeChange: (mode: AuthMode) => void;
   onValueChange: (field: keyof AuthFormValues, value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -3694,6 +3756,7 @@ function AuthPanel({
   values,
   isSubmitting,
   errorMessage,
+  infoMessage,
   onModeChange,
   onValueChange,
   onSubmit,
@@ -3708,13 +3771,63 @@ function AuthPanel({
         : isFrench
         ? "Se connecter"
         : "Sign in"
+      : mode === "register"
+      ? isSubmitting
+        ? isFrench
+          ? "Creation..."
+          : "Creating..."
+        : isFrench
+        ? "Creer un compte"
+        : "Create account"
+      : mode === "forgot_password"
+      ? isSubmitting
+        ? isFrench
+          ? "Preparation..."
+          : "Preparing..."
+        : isFrench
+        ? "Generer un jeton"
+        : "Generate reset token"
       : isSubmitting
       ? isFrench
-        ? "Creation..."
-        : "Creating..."
+        ? "Reinitialisation..."
+        : "Resetting..."
       : isFrench
-      ? "Creer un compte"
-      : "Create account";
+      ? "Reinitialiser le mot de passe"
+      : "Reset password";
+
+  const heading =
+    mode === "login"
+      ? isFrench
+        ? "Bon retour"
+        : "Welcome back"
+      : mode === "register"
+      ? isFrench
+        ? "Creer un compte"
+        : "Create your account"
+      : mode === "forgot_password"
+      ? isFrench
+        ? "Mot de passe oublie"
+        : "Forgot password"
+      : isFrench
+      ? "Nouveau mot de passe"
+      : "Set a new password";
+
+  const subtitle =
+    mode === "login"
+      ? isFrench
+        ? "Connectez-vous pour acceder a votre tableau."
+        : "Sign in to access your daily board."
+      : mode === "register"
+      ? isFrench
+        ? "Commencez a suivre vos taches maintenant."
+        : "Start tracking your tasks today."
+      : mode === "forgot_password"
+      ? isFrench
+        ? "Entrez votre email pour generer un jeton de reinitialisation."
+        : "Enter your email to generate a reset token."
+      : isFrench
+      ? "Collez le jeton si besoin puis choisissez un nouveau mot de passe."
+      : "Paste the token if needed, then choose a new password.";
 
   return (
     <div className="flex min-h-screen animate-fade-in">
@@ -3767,67 +3880,113 @@ function AuthPanel({
           </div>
 
           <h2 className="text-2xl font-semibold text-foreground">
-            {mode === "login"
-              ? isFrench ? "Bon retour" : "Welcome back"
-              : isFrench ? "Creer un compte" : "Create your account"}
+            {heading}
           </h2>
           <p className="mt-1.5 text-sm text-muted">
-            {mode === "login"
-              ? isFrench ? "Connectez-vous pour acceder a votre tableau." : "Sign in to access your daily board."
-              : isFrench ? "Commencez a suivre vos taches maintenant." : "Start tracking your tasks today."}
+            {subtitle}
           </p>
 
-          <div className="mt-6 inline-flex rounded-lg bg-surface-soft p-1">
+          {mode === "login" || mode === "register" ? (
+            <div className="mt-6 inline-flex rounded-lg bg-surface-soft p-1">
+              <button
+                type="button"
+                className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
+                  mode === "login" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
+                }`}
+                onClick={() => onModeChange("login")}
+                disabled={isSubmitting}
+              >
+                {isFrench ? "Connexion" : "Sign in"}
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
+                  mode === "register" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
+                }`}
+                onClick={() => onModeChange("register")}
+                disabled={isSubmitting}
+              >
+                {isFrench ? "Inscription" : "Register"}
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
-                mode === "login" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
-              }`}
+              className="mt-6 text-sm font-medium text-accent hover:text-accent-strong"
               onClick={() => onModeChange("login")}
               disabled={isSubmitting}
             >
-              {isFrench ? "Connexion" : "Sign in"}
+              {isFrench ? "Retour a la connexion" : "Back to sign in"}
             </button>
-            <button
-              type="button"
-              className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
-                mode === "register" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
-              }`}
-              onClick={() => onModeChange("register")}
-              disabled={isSubmitting}
-            >
-              {isFrench ? "Inscription" : "Register"}
-            </button>
-          </div>
+          )}
 
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
-            <label className="block text-sm font-medium text-foreground">
-              {isFrench ? "Email" : "Email"}
-              <input
-                type="email"
-                autoComplete="email"
-                value={values.email}
-                onChange={(event) => onValueChange("email", event.target.value)}
-                className={textFieldClass}
-                disabled={isSubmitting}
-                placeholder="you@company.com"
-                required
-              />
-            </label>
+            {mode !== "reset_password" ? (
+              <label className="block text-sm font-medium text-foreground">
+                {isFrench ? "Email" : "Email"}
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={values.email}
+                  onChange={(event) => onValueChange("email", event.target.value)}
+                  className={textFieldClass}
+                  disabled={isSubmitting}
+                  placeholder="you@company.com"
+                  required
+                />
+              </label>
+            ) : null}
 
-            <label className="block text-sm font-medium text-foreground">
-              {isFrench ? "Mot de passe" : "Password"}
-              <input
-                type="password"
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                value={values.password}
-                onChange={(event) => onValueChange("password", event.target.value)}
-                className={textFieldClass}
-                disabled={isSubmitting}
-                minLength={8}
-                required
-              />
-            </label>
+            {mode === "reset_password" ? (
+              <label className="block text-sm font-medium text-foreground">
+                {isFrench ? "Jeton de reinitialisation" : "Reset token"}
+                <input
+                  type="text"
+                  autoComplete="one-time-code"
+                  value={values.resetToken}
+                  onChange={(event) => onValueChange("resetToken", event.target.value)}
+                  className={textFieldClass}
+                  disabled={isSubmitting}
+                  placeholder={isFrench ? "Collez le jeton ici" : "Paste the token here"}
+                  required
+                />
+              </label>
+            ) : null}
+
+            {mode !== "forgot_password" ? (
+              <label className="block text-sm font-medium text-foreground">
+                {mode === "reset_password"
+                  ? isFrench
+                    ? "Nouveau mot de passe"
+                    : "New password"
+                  : isFrench
+                  ? "Mot de passe"
+                  : "Password"}
+                <input
+                  type="password"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  value={values.password}
+                  onChange={(event) => onValueChange("password", event.target.value)}
+                  className={textFieldClass}
+                  disabled={isSubmitting}
+                  minLength={8}
+                  required
+                />
+              </label>
+            ) : null}
+
+            {mode === "login" ? (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="text-sm font-medium text-accent hover:text-accent-strong"
+                  onClick={() => onModeChange("forgot_password")}
+                  disabled={isSubmitting}
+                >
+                  {isFrench ? "Mot de passe oublie ?" : "Forgot password?"}
+                </button>
+              </div>
+            ) : null}
 
             {mode === "register" ? (
               <label className="block text-sm font-medium text-foreground">
@@ -3844,6 +4003,12 @@ function AuthPanel({
               </label>
             ) : null}
 
+            {infoMessage ? (
+              <p className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm text-sky-700">
+                {infoMessage}
+              </p>
+            ) : null}
+
             {errorMessage ? (
               <p className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
                 {errorMessage}
@@ -3853,6 +4018,17 @@ function AuthPanel({
             <button type="submit" className={`w-full py-3 ${primaryButtonClass}`} disabled={isSubmitting}>
               {submitLabel}
             </button>
+
+            {mode === "reset_password" ? (
+              <button
+                type="button"
+                className="w-full text-sm font-medium text-muted hover:text-foreground"
+                onClick={() => onModeChange("forgot_password")}
+                disabled={isSubmitting}
+              >
+                {isFrench ? "Generer un nouveau jeton" : "Generate a new token"}
+              </button>
+            ) : null}
           </form>
         </div>
       </div>
@@ -3870,8 +4046,10 @@ export function AppShell() {
     email: "",
     password: "",
     displayName: "",
+    resetToken: "",
   });
   const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
+  const [authInfoMessage, setAuthInfoMessage] = useState<string | null>(null);
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [profileFormValues, setProfileFormValues] = useState<ProfileFormValues>(
@@ -4171,7 +4349,9 @@ export function AppShell() {
     setProfileFormValues(getProfileFormValues(user));
     setProfileErrorMessage(null);
     setProfileSuccessMessage(null);
+    setAuthMode("login");
     setAuthErrorMessage(null);
+    setAuthInfoMessage(null);
     setErrorMessage(null);
   }
 
@@ -4236,7 +4416,14 @@ export function AppShell() {
     setTaskDialogMode(null);
     setEditingTaskId(null);
     setTaskToDelete(null);
-    setAuthFormValues((current) => ({ ...current, password: "" }));
+    setAuthMode("login");
+    setAuthErrorMessage(null);
+    setAuthInfoMessage(null);
+    setAuthFormValues((current) => ({
+      ...current,
+      password: "",
+      resetToken: "",
+    }));
     setTaskRecurrenceRule(null);
     setRecurrenceFormValues(getDefaultRecurrenceFormValues());
     setTaskDetailsErrorMessage(null);
@@ -4266,6 +4453,18 @@ export function AppShell() {
     }));
   }
 
+  function handleAuthModeChange(mode: AuthMode) {
+    setAuthMode(mode);
+    setAuthErrorMessage(null);
+    setAuthInfoMessage(null);
+    setAuthFormValues((current) => ({
+      ...current,
+      password: "",
+      displayName: mode === "register" ? current.displayName : "",
+      resetToken: mode === "reset_password" ? current.resetToken : "",
+    }));
+  }
+
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -4274,18 +4473,52 @@ export function AppShell() {
     }
 
     setAuthErrorMessage(null);
+    setAuthInfoMessage(null);
     setIsAuthSubmitting(true);
 
     try {
-      const result =
-        authMode === "login" ? await loginUser(authFormValues) : await registerUser(authFormValues);
+      if (authMode === "login" || authMode === "register") {
+        const result =
+          authMode === "login" ? await loginUser(authFormValues) : await registerUser(authFormValues);
 
-      applyAuthSession(result.token, result.user);
-      setAuthFormValues({
-        email: result.user.email,
-        password: "",
-        displayName: result.user.displayName ?? "",
-      });
+        applyAuthSession(result.token, result.user);
+        setAuthFormValues({
+          email: result.user.email,
+          password: "",
+          displayName: result.user.displayName ?? "",
+          resetToken: "",
+        });
+      } else if (authMode === "forgot_password") {
+        const result = await requestPasswordReset(authFormValues.email);
+        setAuthFormValues((current) => ({
+          ...current,
+          password: "",
+          resetToken: result.resetToken ?? "",
+        }));
+        setAuthMode("reset_password");
+        setAuthInfoMessage(
+          result.resetToken
+            ? isFrench
+              ? "Un jeton de reinitialisation a ete genere. Choisissez maintenant un nouveau mot de passe."
+              : "A reset token was generated. You can now choose a new password."
+            : isFrench
+            ? "Si un compte existe, un jeton de reinitialisation a ete emis."
+            : "If an account exists, a reset token has been issued."
+        );
+      } else {
+        const result = await resetPasswordWithToken(
+          authFormValues.resetToken,
+          authFormValues.password
+        );
+
+        applyAuthSession(result.token, result.user);
+        setAuthFormValues({
+          email: result.user.email,
+          password: "",
+          displayName: result.user.displayName ?? "",
+          resetToken: "",
+        });
+      }
     } catch (error) {
       setAuthErrorMessage(
         error instanceof Error
@@ -6590,10 +6823,8 @@ export function AppShell() {
         values={authFormValues}
         isSubmitting={isAuthSubmitting}
         errorMessage={authErrorMessage}
-        onModeChange={(mode) => {
-          setAuthMode(mode);
-          setAuthErrorMessage(null);
-        }}
+        infoMessage={authInfoMessage}
+        onModeChange={handleAuthModeChange}
         onValueChange={handleAuthFormFieldChange}
         onSubmit={handleAuthSubmit}
       />

@@ -6,6 +6,8 @@ const scryptAsync = promisify(scrypt);
 
 const PASSWORD_HASH_KEY_LENGTH = 64;
 const SESSION_TOKEN_BYTES = 32;
+const PASSWORD_RESET_TOKEN_BYTES = 32;
+const DEFAULT_PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 export type AuthenticatedUser = {
   id: string;
@@ -32,9 +34,22 @@ export type LoginInput = {
   password: string;
 };
 
+export type RequestPasswordResetInput = {
+  email: string;
+};
+
+export type ResetPasswordInput = {
+  token: string;
+  password: string;
+};
+
 export type AuthService = {
   register(input: RegisterInput): Promise<{ user: AuthenticatedUser; token: string }>;
   login(input: LoginInput): Promise<{ user: AuthenticatedUser; token: string }>;
+  requestPasswordReset(
+    input: RequestPasswordResetInput
+  ): Promise<{ resetToken: string | null; expiresAt: string | null }>;
+  resetPassword(input: ResetPasswordInput): Promise<{ user: AuthenticatedUser; token: string }>;
   authenticateBearerToken(token: string): Promise<AuthSessionContext | null>;
   revokeBearerToken(token: string): Promise<void>;
 };
@@ -42,12 +57,14 @@ export type AuthService = {
 type AuthServiceOptions = {
   authStore: AuthStore;
   sessionTtlMs: number;
+  passwordResetTtlMs?: number;
+  exposePasswordResetToken?: boolean;
 };
 
 class AuthError extends Error {
   constructor(
     message: string,
-    readonly code: "EMAIL_IN_USE" | "INVALID_CREDENTIALS"
+    readonly code: "EMAIL_IN_USE" | "INVALID_CREDENTIALS" | "INVALID_RESET_TOKEN"
   ) {
     super(message);
     this.name = "AuthError";
@@ -90,12 +107,20 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
   return timingSafeEqual(candidateBuffer, expectedBuffer);
 }
 
-function hashSessionToken(token: string): string {
+function hashOpaqueToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function hashSessionToken(token: string): string {
+  return hashOpaqueToken(token);
 }
 
 function createSessionToken(): string {
   return randomBytes(SESSION_TOKEN_BYTES).toString("base64url");
+}
+
+function createPasswordResetToken(): string {
+  return randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString("base64url");
 }
 
 function isEmailUniqueConstraintError(error: unknown): boolean {
@@ -141,7 +166,12 @@ async function createSessionForUser(
 }
 
 export function createAuthService(options: AuthServiceOptions): AuthService {
-  const { authStore, sessionTtlMs } = options;
+  const {
+    authStore,
+    sessionTtlMs,
+    passwordResetTtlMs = DEFAULT_PASSWORD_RESET_TTL_MS,
+    exposePasswordResetToken = true
+  } = options;
 
   return {
     async register(input) {
@@ -198,6 +228,85 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
 
       return {
         user: toAuthenticatedUser(user),
+        token
+      };
+    },
+
+    async requestPasswordReset(input) {
+      const email = normalizeEmail(input.email);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + passwordResetTtlMs);
+
+      await authStore.deleteExpiredPasswordResetTokens?.(now);
+
+      const user = await authStore.findUserByEmail(email);
+      const resetToken = exposePasswordResetToken ? createPasswordResetToken() : null;
+
+      if (
+        user &&
+        resetToken &&
+        authStore.createPasswordResetToken &&
+        authStore.revokePasswordResetTokensByUserId
+      ) {
+        await authStore.revokePasswordResetTokensByUserId(user.id);
+        await authStore.createPasswordResetToken({
+          userId: user.id,
+          tokenHash: hashOpaqueToken(resetToken),
+          expiresAt
+        });
+      }
+
+      return {
+        resetToken,
+        expiresAt: exposePasswordResetToken ? expiresAt.toISOString() : null
+      };
+    },
+
+    async resetPassword(input) {
+      const now = new Date();
+      const tokenHash = hashOpaqueToken(input.token);
+
+      await authStore.deleteExpiredPasswordResetTokens?.(now);
+
+      if (
+        !authStore.findPasswordResetTokenByTokenHash ||
+        !authStore.markPasswordResetTokenUsed ||
+        !authStore.updateUserPasswordHash
+      ) {
+        throw new Error("Password reset is not supported by the configured auth store.");
+      }
+
+      const resetToken = await authStore.findPasswordResetTokenByTokenHash(tokenHash);
+
+      if (
+        !resetToken ||
+        resetToken.usedAt !== null ||
+        resetToken.expiresAt.getTime() <= now.getTime()
+      ) {
+        throw new AuthError("Invalid or expired reset token", "INVALID_RESET_TOKEN");
+      }
+
+      const user = await authStore.findUserById(resetToken.userId);
+
+      if (!user) {
+        throw new AuthError("Invalid or expired reset token", "INVALID_RESET_TOKEN");
+      }
+
+      const passwordHash = await hashPassword(input.password);
+      await authStore.updateUserPasswordHash(user.id, passwordHash);
+      await authStore.markPasswordResetTokenUsed(resetToken.id);
+      await authStore.revokePasswordResetTokensByUserId?.(user.id);
+      await authStore.revokeSessionsByUserId?.(user.id);
+      await authStore.deleteExpiredSessions(now);
+
+      const refreshedUser = await authStore.findUserById(user.id);
+      if (!refreshedUser) {
+        throw new AuthError("Invalid or expired reset token", "INVALID_RESET_TOKEN");
+      }
+
+      const { token } = await createSessionForUser(authStore, sessionTtlMs, refreshedUser.id);
+      return {
+        user: toAuthenticatedUser(refreshedUser),
         token
       };
     },

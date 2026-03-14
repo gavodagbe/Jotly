@@ -40,7 +40,7 @@ Completed:
 - attachments module (API + tests)
 - recurrence module (API + tests)
 - frontend task details integrations for comments/attachments/recurrence
-- AI assistant module (backend route + frontend panel)
+- AI assistant module (backend route + frontend panel — pre-pipeline, evolving to structured retrieval + RAG)
 - day affirmation module (API + frontend panel)
 - yesterday carry-over action for non-completed tasks (API + frontend action)
 - day bilan module (API + frontend panel)
@@ -79,9 +79,15 @@ Latest daily workflow conventions:
 
 Latest AI assistant conventions:
 - endpoint: `POST /api/assistant/reply`
-- authenticated scope: all current user tasks/comments across all dates
+- workspace-first assistant: answers only questions about the authenticated user's Jotly workspace, not external knowledge
+- covered domains: tasks, comments, affirmations, bilans, reminders, calendar events, calendar notes, profile/preferences, gaming track
+- locale defaults to the user's profile locale when omitted from the request
 - provider modes: `heuristic` (default) or `openai`
 - automatic fallback to heuristic when OpenAI is unavailable
+- evolution plan (2 phases):
+  - Phase 1: refactor into pipeline (analyzeQuery -> retrieveByDomain -> buildContext with ~4000 char budget -> generateAnswer). No new table, no LLM classifier. Domain-targeted SQL replaces full context dump.
+  - Phase 2: unified `AssistantSearchDocument` table with PostgreSQL full-text (`tsvector`) + vector search (`pgvector` with `text-embedding-3-small`). Includes document extraction pipeline: PDF parsing (`pdf-parse`) + image OCR (`Tesseract.js`), both local backend. Covers attachments, comments, bilans, affirmations, notes, and all text-bearing domains.
+- see `planning/AGENT.md` AI assistant section for full implementation details
 
 Latest Google Calendar conventions:
 - routes are enabled only when all Google OAuth env vars are present:
@@ -126,6 +132,8 @@ Gaming Track status:
   - deeper social loops and collaborative mechanics
 
 Still not implemented:
+- assistant pipeline Phase 1 (structured retrieval + context budget)
+- assistant pipeline Phase 2 (unified search table + full-text + vector + document extraction)
 - reporting
 - gaming track phase 6+ collaborative/social engagement layer
 - calendar event note workflows

@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { AttachmentStore } from "../attachments/attachment-store";
 import { AuthService } from "../auth/auth-service";
 import { TaskStore } from "../tasks/task-store";
@@ -15,6 +16,7 @@ type AttachmentsRouteOptions = {
   taskStore: TaskStore;
   attachmentStore: AttachmentStore;
   authService: AuthService;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
@@ -86,7 +88,7 @@ function getAuthenticatedUserId(request: { authUserId?: string }): string | null
 }
 
 const attachmentsRoutes: FastifyPluginAsync<AttachmentsRouteOptions> = async (app, options) => {
-  const { taskStore, attachmentStore, authService } = options;
+  const { taskStore, attachmentStore, authService, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -177,6 +179,10 @@ const attachmentsRoutes: FastifyPluginAsync<AttachmentsRouteOptions> = async (ap
         sizeBytes: bodyResult.data.sizeBytes ?? null,
       });
 
+      void assistantSearchSyncService?.syncUserWorkspace(authUserId).catch((error) => {
+        request.log.error(error, "Failed to sync assistant search index after attachment upload");
+      });
+
       return reply.code(201).send({
         data: serializeAttachment(attachment),
       });
@@ -223,6 +229,10 @@ const attachmentsRoutes: FastifyPluginAsync<AttachmentsRouteOptions> = async (ap
       if (!deletedAttachment) {
         return sendError(reply, 404, "NOT_FOUND", "Attachment not found");
       }
+
+      void assistantSearchSyncService?.syncUserWorkspace(authUserId).catch((error) => {
+        request.log.error(error, "Failed to sync assistant search index after attachment delete");
+      });
 
       return reply.send({
         data: serializeAttachment(deletedAttachment),
