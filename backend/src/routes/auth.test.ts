@@ -1,7 +1,15 @@
 import { Task } from "@prisma/client";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AuthSession, AuthStore, AuthUser, CreateAuthSessionInput, CreateAuthUserInput } from "../auth/auth-store";
+import {
+  AuthPasswordResetToken,
+  AuthSession,
+  AuthStore,
+  AuthUser,
+  CreateAuthPasswordResetTokenInput,
+  CreateAuthSessionInput,
+  CreateAuthUserInput
+} from "../auth/auth-store";
 import { buildApp } from "../app";
 import { TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
@@ -36,8 +44,11 @@ class InMemoryAuthStore implements AuthStore {
   private readonly usersByEmail = new Map<string, AuthUser>();
   private readonly sessions = new Map<string, AuthSession>();
   private readonly sessionsByTokenHash = new Map<string, AuthSession>();
+  private readonly passwordResetTokens = new Map<string, AuthPasswordResetToken>();
+  private readonly passwordResetTokensByHash = new Map<string, AuthPasswordResetToken>();
   private userIdCounter = 1;
   private sessionIdCounter = 1;
+  private passwordResetTokenCounter = 1;
 
   async createUser(input: CreateAuthUserInput): Promise<AuthUser> {
     const now = new Date();
@@ -61,6 +72,24 @@ class InMemoryAuthStore implements AuthStore {
 
   async findUserById(id: string): Promise<AuthUser | null> {
     return this.users.get(id) ?? null;
+  }
+
+  async updateUserPasswordHash(userId: string, passwordHash: string): Promise<AuthUser | null> {
+    const existing = this.users.get(userId);
+
+    if (!existing) {
+      return null;
+    }
+
+    const updated: AuthUser = {
+      ...existing,
+      passwordHash,
+      updatedAt: new Date()
+    };
+
+    this.users.set(userId, updated);
+    this.usersByEmail.set(updated.email, updated);
+    return updated;
   }
 
   async createSession(input: CreateAuthSessionInput): Promise<AuthSession> {
@@ -94,12 +123,80 @@ class InMemoryAuthStore implements AuthStore {
     this.sessionsByTokenHash.set(revoked.tokenHash, revoked);
   }
 
+  async revokeSessionsByUserId(userId: string): Promise<void> {
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (session.userId !== userId || session.revokedAt) {
+        continue;
+      }
+
+      const revoked = { ...session, revokedAt: new Date() };
+      this.sessions.set(sessionId, revoked);
+      this.sessionsByTokenHash.set(revoked.tokenHash, revoked);
+    }
+  }
+
   async deleteExpiredSessions(now: Date): Promise<void> {
     for (const [id, session] of this.sessions.entries()) {
       if (session.expiresAt.getTime() <= now.getTime() || session.revokedAt) {
         this.sessions.delete(id);
         this.sessionsByTokenHash.delete(session.tokenHash);
       }
+    }
+  }
+
+  async createPasswordResetToken(
+    input: CreateAuthPasswordResetTokenInput
+  ): Promise<AuthPasswordResetToken> {
+    const resetToken: AuthPasswordResetToken = {
+      id: `password-reset-token-${this.passwordResetTokenCounter++}`,
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      expiresAt: input.expiresAt,
+      createdAt: new Date(),
+      usedAt: null
+    };
+
+    this.passwordResetTokens.set(resetToken.id, resetToken);
+    this.passwordResetTokensByHash.set(resetToken.tokenHash, resetToken);
+    return resetToken;
+  }
+
+  async findPasswordResetTokenByTokenHash(tokenHash: string): Promise<AuthPasswordResetToken | null> {
+    return this.passwordResetTokensByHash.get(tokenHash) ?? null;
+  }
+
+  async markPasswordResetTokenUsed(resetTokenId: string): Promise<void> {
+    const existing = this.passwordResetTokens.get(resetTokenId);
+
+    if (!existing) {
+      return;
+    }
+
+    const updated = { ...existing, usedAt: new Date() };
+    this.passwordResetTokens.set(resetTokenId, updated);
+    this.passwordResetTokensByHash.set(updated.tokenHash, updated);
+  }
+
+  async revokePasswordResetTokensByUserId(userId: string): Promise<void> {
+    for (const [resetTokenId, resetToken] of this.passwordResetTokens.entries()) {
+      if (resetToken.userId !== userId || resetToken.usedAt) {
+        continue;
+      }
+
+      const updated = { ...resetToken, usedAt: new Date() };
+      this.passwordResetTokens.set(resetTokenId, updated);
+      this.passwordResetTokensByHash.set(updated.tokenHash, updated);
+    }
+  }
+
+  async deleteExpiredPasswordResetTokens(now: Date): Promise<void> {
+    for (const [resetTokenId, resetToken] of this.passwordResetTokens.entries()) {
+      if (resetToken.expiresAt.getTime() > now.getTime() && resetToken.usedAt === null) {
+        continue;
+      }
+
+      this.passwordResetTokens.delete(resetTokenId);
+      this.passwordResetTokensByHash.delete(resetToken.tokenHash);
     }
   }
 }
@@ -288,6 +385,118 @@ test("POST /api/auth/login rejects invalid credentials", async (t) => {
   assert.deepEqual(body.error, {
     code: "UNAUTHORIZED",
     message: "Invalid credentials"
+  });
+});
+
+test("POST /api/auth/forgot-password returns a reset token payload", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+
+  await registerAndGetToken(app);
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/auth/forgot-password",
+    payload: {
+      email: "user@example.com"
+    }
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as { success: boolean; resetToken: string | null; expiresAt: string | null };
+
+  assert.equal(data.success, true);
+  assert.equal(typeof data.resetToken, "string");
+  assert.equal(typeof data.expiresAt, "string");
+});
+
+test("POST /api/auth/reset-password updates the password and revokes previous sessions", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const originalToken = await registerAndGetToken(app);
+  const forgotResponse = await app.inject({
+    method: "POST",
+    url: "/api/auth/forgot-password",
+    payload: {
+      email: "user@example.com"
+    }
+  });
+
+  assert.equal(forgotResponse.statusCode, 200);
+  const forgotBody = parsePayload(forgotResponse.payload);
+  const resetToken = (forgotBody.data as { resetToken: string | null }).resetToken;
+  assert.equal(typeof resetToken, "string");
+
+  const resetResponse = await app.inject({
+    method: "POST",
+    url: "/api/auth/reset-password",
+    payload: {
+      token: resetToken,
+      password: "new-password-123"
+    }
+  });
+
+  assert.equal(resetResponse.statusCode, 200);
+  const resetBody = parsePayload(resetResponse.payload);
+  const resetData = resetBody.data as { token: string; user: { email: string } };
+  assert.equal(resetData.user.email, "user@example.com");
+  assert.equal(typeof resetData.token, "string");
+
+  const staleSessionResponse = await app.inject({
+    method: "GET",
+    url: "/api/auth/me",
+    headers: authHeaders(originalToken)
+  });
+  assert.equal(staleSessionResponse.statusCode, 401);
+
+  const loginResponse = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: {
+      email: "user@example.com",
+      password: "new-password-123"
+    }
+  });
+
+  assert.equal(loginResponse.statusCode, 200);
+
+  const oldPasswordResponse = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: {
+      email: "user@example.com",
+      password: "password123"
+    }
+  });
+
+  assert.equal(oldPasswordResponse.statusCode, 401);
+});
+
+test("POST /api/auth/reset-password rejects an invalid token", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/auth/reset-password",
+    payload: {
+      token: "invalid-token",
+      password: "new-password-123"
+    }
+  });
+
+  assert.equal(response.statusCode, 401);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "UNAUTHORIZED",
+    message: "Invalid or expired reset token"
   });
 });
 

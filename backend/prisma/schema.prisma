@@ -34,9 +34,11 @@ model User {
   preferredLocale String @default("en")
   preferredTimeZone String?
   sessions     Session[]
+  passwordResetTokens PasswordResetToken[]
   tasks        Task[]
   dayAffirmations DayAffirmation[]
   dayBilans    DayBilan[]
+  assistantSearchDocuments AssistantSearchDocument[]
   gamingTrackChallengeClaims GamingTrackChallengeClaim[]
   gamingTrackStreakProtectionUsages GamingTrackStreakProtectionUsage[]
   gamingTrackNudgeDismissals GamingTrackNudgeDismissal[]
@@ -58,6 +60,20 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
 }
 
 model Task {
@@ -291,4 +307,27 @@ model Reminder {
 
   @@index([userId, remindAt])
   @@index([userId, isFired, isDismissed])
+}
+
+model AssistantSearchDocument {
+  id                String   @id @default(cuid())
+  userId            String
+  sourceType        String
+  sourceId          String
+  title             String?
+  bodyText          String
+  metadataJson      Json?
+  contentHash       String
+  sourceUpdatedAt   DateTime
+  extractionStatus  String?
+  extractionWarning String?
+  embeddingModel    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceType, sourceId])
+  @@index([userId, sourceType])
+  @@index([userId, updatedAt])
+  @@index([userId, sourceUpdatedAt])
 }

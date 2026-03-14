@@ -21,6 +21,8 @@
     "dotenv": "^16.4.7",
     "fastify": "^5.3.3",
     "googleapis": "^171.4.0",
+    "pdf-parse": "^2.2.2",
+    "tesseract.js": "^7.0.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

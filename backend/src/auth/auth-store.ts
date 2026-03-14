@@ -20,6 +20,15 @@ export type AuthSession = {
   revokedAt: Date | null;
 };
 
+export type AuthPasswordResetToken = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  createdAt: Date;
+  usedAt: Date | null;
+};
+
 export type CreateAuthUserInput = {
   email: string;
   passwordHash: string;
@@ -32,15 +41,32 @@ export type CreateAuthSessionInput = {
   expiresAt: Date;
 };
 
+export type CreateAuthPasswordResetTokenInput = {
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+};
+
 export type AuthStore = {
   createUser(input: CreateAuthUserInput): Promise<AuthUser>;
   findUserByEmail(email: string): Promise<AuthUser | null>;
   findUserById(id: string): Promise<AuthUser | null>;
+  updateUserPasswordHash?(userId: string, passwordHash: string): Promise<AuthUser | null>;
   createSession(input: CreateAuthSessionInput): Promise<AuthSession>;
   findSessionById?(sessionId: string): Promise<AuthSession | null>;
   findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
   revokeSession(sessionId: string): Promise<void>;
+  revokeSessionsByUserId?(userId: string): Promise<void>;
   deleteExpiredSessions(now: Date): Promise<void>;
+  createPasswordResetToken?(
+    input: CreateAuthPasswordResetTokenInput
+  ): Promise<AuthPasswordResetToken>;
+  findPasswordResetTokenByTokenHash?(
+    tokenHash: string
+  ): Promise<AuthPasswordResetToken | null>;
+  markPasswordResetTokenUsed?(resetTokenId: string): Promise<void>;
+  revokePasswordResetTokensByUserId?(userId: string): Promise<void>;
+  deleteExpiredPasswordResetTokens?(now: Date): Promise<void>;
   close?: () => Promise<void>;
 };
 
@@ -65,6 +91,13 @@ export function createPrismaAuthStore(prisma = new PrismaClient()): AuthStore {
     async findUserById(id) {
       return prisma.user.findUnique({
         where: { id }
+      });
+    },
+
+    async updateUserPasswordHash(userId, passwordHash) {
+      return prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash }
       });
     },
 
@@ -97,10 +130,65 @@ export function createPrismaAuthStore(prisma = new PrismaClient()): AuthStore {
       });
     },
 
+    async revokeSessionsByUserId(userId) {
+      await prisma.session.updateMany({
+        where: {
+          userId,
+          revokedAt: null
+        },
+        data: {
+          revokedAt: new Date()
+        }
+      });
+    },
+
     async deleteExpiredSessions(now) {
       await prisma.session.deleteMany({
         where: {
           OR: [{ expiresAt: { lte: now } }, { revokedAt: { not: null } }]
+        }
+      });
+    },
+
+    async createPasswordResetToken(input) {
+      return prisma.passwordResetToken.create({
+        data: {
+          userId: input.userId,
+          tokenHash: input.tokenHash,
+          expiresAt: input.expiresAt
+        }
+      });
+    },
+
+    async findPasswordResetTokenByTokenHash(tokenHash) {
+      return prisma.passwordResetToken.findUnique({
+        where: { tokenHash }
+      });
+    },
+
+    async markPasswordResetTokenUsed(resetTokenId) {
+      await prisma.passwordResetToken.update({
+        where: { id: resetTokenId },
+        data: { usedAt: new Date() }
+      });
+    },
+
+    async revokePasswordResetTokensByUserId(userId) {
+      await prisma.passwordResetToken.updateMany({
+        where: {
+          userId,
+          usedAt: null
+        },
+        data: {
+          usedAt: new Date()
+        }
+      });
+    },
+
+    async deleteExpiredPasswordResetTokens(now) {
+      await prisma.passwordResetToken.deleteMany({
+        where: {
+          OR: [{ expiresAt: { lte: now } }, { usedAt: { not: null } }]
         }
       });
     },
