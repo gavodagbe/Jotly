@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { AuthService } from "../auth/auth-service";
 import { DayAffirmationStore } from "../day-affirmation/day-affirmation-store";
 import { formatDateOnly, parseDateOnly } from "../tasks/task-store";
@@ -10,10 +11,12 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { triggerAssistantSearchSync } from "./assistant-search-sync-helpers";
 
 type DayAffirmationRoutesOptions = {
   authService: AuthService;
   dayAffirmationStore: DayAffirmationStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const targetDateSchema = z
@@ -65,7 +68,7 @@ function serializeDayAffirmation(affirmation: {
 }
 
 const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = async (app, options) => {
-  const { authService, dayAffirmationStore } = options;
+  const { authService, dayAffirmationStore, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -156,6 +159,13 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
         isCompleted: bodyResult.data.isCompleted,
         completedAt: nextCompletedAt,
       });
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "day affirmation save"
+      );
 
       reply.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
       reply.header("Pragma", "no-cache");

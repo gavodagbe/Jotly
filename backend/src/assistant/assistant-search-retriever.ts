@@ -90,10 +90,6 @@ export function shouldUseAssistantSearch(question: string, domains: AssistantDom
     return false;
   }
 
-  if (domains.includes("overview") || domains.includes("reflections")) {
-    return true;
-  }
-
   return /\b(document|documents|doc|pdf|note|notes|comment|comments|search|find|where|mention|mentions|said|says|talk|theme|themes|pattern|patterns|summary|summarize|resume|resume-moi|resumez|chercher|rechercher|documentaire)\b/i.test(
     normalized
   );

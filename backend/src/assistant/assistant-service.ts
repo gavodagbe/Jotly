@@ -122,6 +122,9 @@ export type AssistantServiceOptions = {
   openAiModel: string;
   openAiBaseUrl: string;
   requestTimeoutMs: number;
+  logger?: {
+    warn: (object: unknown, message?: string) => void;
+  };
   taskStore?: TaskStore;
   commentStore?: CommentStore;
   assistantContextStore?: AssistantContextStore;
@@ -1492,15 +1495,33 @@ export function createAssistantService(options: AssistantServiceOptions): Assist
         shouldUseAssistantSearch(question, domains)
       ) {
         try {
-          await options.assistantSearchSyncService?.syncUserWorkspace(userId);
-          const searchRetrieval = await options.assistantSearchRetriever.search({
+          const searchInput = {
             userId,
             question,
             domains,
-          });
+          };
+          let searchRetrieval = await options.assistantSearchRetriever.search(searchInput);
+
+          if (
+            searchRetrieval.mode === "none" &&
+            options.assistantSearchSyncService
+          ) {
+            await options.assistantSearchSyncService.syncUserWorkspace(userId);
+            searchRetrieval = await options.assistantSearchRetriever.search(searchInput);
+          }
+
           retrieved.searchMatches = searchRetrieval.matches;
           searchMode = searchRetrieval.mode;
-        } catch {
+        } catch (error) {
+          options.logger?.warn(
+            {
+              err: error,
+              userId,
+              domains,
+              question,
+            },
+            "Assistant workspace text search failed"
+          );
           searchWarning =
             "Workspace text search is unavailable right now. Returned structured guidance only.";
         }

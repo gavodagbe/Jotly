@@ -1,6 +1,7 @@
 import { Task, TaskPriority, TaskStatus } from "@prisma/client";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { AuthService } from "../auth/auth-service";
 import { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { RecurrenceStore } from "../recurrence/recurrence-store";
@@ -12,6 +13,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { triggerAssistantSearchSync } from "./assistant-search-sync-helpers";
 import { formatDateOnly, parseDateOnly, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
 type TasksRouteOptions = {
@@ -19,6 +21,7 @@ type TasksRouteOptions = {
   authService: AuthService;
   recurrenceStore?: RecurrenceStore;
   calendarEventStore?: CalendarEventStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -265,7 +268,13 @@ async function resolveCalendarEventId(
 }
 
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore, authService, recurrenceStore, calendarEventStore } = options;
+  const {
+    taskStore,
+    authService,
+    recurrenceStore,
+    calendarEventStore,
+    assistantSearchSyncService,
+  } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -479,6 +488,13 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         ...getTimestampsForNewStatus(status, now)
       });
 
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "task create"
+      );
+
       return reply.code(201).send({
         data: serializeTask(task)
       });
@@ -560,6 +576,15 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
           throw error;
         }
+      }
+
+      if (createdTasks.length > 0) {
+        triggerAssistantSearchSync(
+          assistantSearchSyncService,
+          authUserId,
+          request.log,
+          "task carry-over"
+        );
       }
 
       return reply.send({
@@ -749,6 +774,13 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
       }
 
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "task update"
+      );
+
       return reply.send({
         data: serializeTask(updatedTask)
       });
@@ -789,6 +821,13 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
       if (!deletedTask) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
       }
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "task delete"
+      );
 
       return reply.send({
         data: serializeTask(deletedTask)

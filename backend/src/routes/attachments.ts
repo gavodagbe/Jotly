@@ -11,6 +11,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { triggerAssistantSearchSync } from "./assistant-search-sync-helpers";
 
 type AttachmentsRouteOptions = {
   taskStore: TaskStore;
@@ -179,9 +180,12 @@ const attachmentsRoutes: FastifyPluginAsync<AttachmentsRouteOptions> = async (ap
         sizeBytes: bodyResult.data.sizeBytes ?? null,
       });
 
-      void assistantSearchSyncService?.syncUserWorkspace(authUserId).catch((error) => {
-        request.log.error(error, "Failed to sync assistant search index after attachment upload");
-      });
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "attachment upload"
+      );
 
       return reply.code(201).send({
         data: serializeAttachment(attachment),
@@ -230,9 +234,12 @@ const attachmentsRoutes: FastifyPluginAsync<AttachmentsRouteOptions> = async (ap
         return sendError(reply, 404, "NOT_FOUND", "Attachment not found");
       }
 
-      void assistantSearchSyncService?.syncUserWorkspace(authUserId).catch((error) => {
-        request.log.error(error, "Failed to sync assistant search index after attachment delete");
-      });
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "attachment delete"
+      );
 
       return reply.send({
         data: serializeAttachment(deletedAttachment),

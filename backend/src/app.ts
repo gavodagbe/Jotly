@@ -201,6 +201,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       openAiModel: options.openAiModel ?? "gpt-4o-mini",
       openAiBaseUrl: options.openAiBaseUrl ?? "https://api.openai.com/v1",
       requestTimeoutMs: options.assistantRequestTimeoutMs ?? 10000,
+      logger: app.log,
       taskStore,
       commentStore,
       assistantContextStore,
@@ -261,9 +262,20 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (profileStore) {
     app.register(profileRoutes, { authService, profileStore });
   }
-  app.register(tasksRoutes, { taskStore, authService, recurrenceStore, calendarEventStore });
+  app.register(tasksRoutes, {
+    taskStore,
+    authService,
+    recurrenceStore,
+    calendarEventStore,
+    assistantSearchSyncService,
+  });
   if (commentStore) {
-    app.register(commentsRoutes, { taskStore, commentStore, authService });
+    app.register(commentsRoutes, {
+      taskStore,
+      commentStore,
+      authService,
+      assistantSearchSyncService,
+    });
   }
 
   if (attachmentStore) {
@@ -279,13 +291,25 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.register(recurrenceRoutes, { taskStore, recurrenceStore, authService });
   }
   if (dayAffirmationStore) {
-    app.register(dayAffirmationRoutes, { dayAffirmationStore, authService });
+    app.register(dayAffirmationRoutes, {
+      dayAffirmationStore,
+      authService,
+      assistantSearchSyncService,
+    });
   }
   if (dayBilanStore) {
-    app.register(dayBilanRoutes, { dayBilanStore, authService });
+    app.register(dayBilanRoutes, {
+      dayBilanStore,
+      authService,
+      assistantSearchSyncService,
+    });
   }
   if (reminderStore) {
-    app.register(reminderRoutes, { reminderStore, authService });
+    app.register(reminderRoutes, {
+      reminderStore,
+      authService,
+      assistantSearchSyncService,
+    });
   }
   if (gamingTrackService) {
     app.register(gamingTrackRoutes, { gamingTrackService, authService });
@@ -308,6 +332,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       calendarEventNoteStore,
       taskStore,
       googleCalendarSyncService,
+      assistantSearchSyncService,
     });
   }
   app.register(assistantRoutes, {

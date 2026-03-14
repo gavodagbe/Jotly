@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AssistantContextStore, AssistantContextSnapshot, AssistantOverviewCounts } from "../assistant/assistant-context-store";
 import { createInMemoryAssistantSearchDocumentStore } from "../assistant/assistant-search-document-store";
+import { AssistantSearchRetriever } from "../assistant/assistant-search-retriever";
 import { AssistantPipelineInput, AssistantReply, AssistantService } from "../assistant/assistant-service";
 import { AttachmentStore, TaskAttachmentCreateInput } from "../attachments/attachment-store";
 import { AuthSession, AuthStore, AuthUser, CreateAuthSessionInput, CreateAuthUserInput } from "../auth/auth-store";
@@ -272,6 +273,12 @@ class EchoAssistantService implements AssistantService {
   }
 }
 
+class ThrowingAssistantSearchRetriever implements AssistantSearchRetriever {
+  async search(): Promise<never> {
+    throw new Error("search failed");
+  }
+}
+
 class InMemoryAssistantContextStore implements AssistantContextStore {
   private readonly snapshots = new Map<string, AssistantContextSnapshot>();
 
@@ -425,6 +432,19 @@ function createAppForPhaseTwoSearchTest(options?: {
     assistantProvider: "heuristic",
     assistantContextStore: options?.assistantContextStore,
     assistantSearchDocumentStore: createInMemoryAssistantSearchDocumentStore(),
+  });
+}
+
+function createAppForSearchFailureTest() {
+  const taskStore = new InMemoryTaskStore();
+  const commentStore = new InMemoryCommentStore();
+  return buildApp({
+    logLevel: "silent",
+    taskStore,
+    commentStore,
+    authStore: new InMemoryAuthStore(),
+    assistantProvider: "heuristic",
+    assistantSearchRetriever: new ThrowingAssistantSearchRetriever(),
   });
 }
 
@@ -850,6 +870,60 @@ test("POST /api/assistant/reply falls back to overview when no domain matches", 
 
   assert.deepStrictEqual(data.usedDomains, ["overview"]);
   assert.match(String(data.answer), /Workspace overview/);
+});
+
+test("POST /api/assistant/reply does not warn for overview questions when workspace search fails", async (t) => {
+  const app = createAppForSearchFailureTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  await createTask(app, token, "Some task");
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/reply",
+    headers: authHeaders(token),
+    payload: {
+      question: "What is going on?",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as Record<string, unknown>;
+
+  assert.equal(data.warning, null);
+  assert.equal(data.retrievalMode, "structured");
+});
+
+test("POST /api/assistant/reply still warns for explicit search questions when workspace search fails", async (t) => {
+  const app = createAppForSearchFailureTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  await createTask(app, token, "Prepare budget memo");
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/reply",
+    headers: authHeaders(token),
+    payload: {
+      question: "Where do I mention budget approval?",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as Record<string, unknown>;
+
+  assert.match(String(data.warning), /Workspace text search is unavailable/i);
+  assert.equal(data.retrievalMode, "structured");
 });
 
 test("POST /api/assistant/reply uses full-text search across comments for search questions", async (t) => {

@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { AuthService } from "../auth/auth-service";
 import { ReminderStore } from "../reminders/reminder-store";
 import { parseDateOnly } from "../tasks/task-store";
@@ -10,10 +11,12 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { triggerAssistantSearchSync } from "./assistant-search-sync-helpers";
 
 type ReminderRoutesOptions = {
   authService: AuthService;
   reminderStore: ReminderStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const dateQuerySchema = z
@@ -84,7 +87,7 @@ function serializeReminder(reminder: {
 }
 
 const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, options) => {
-  const { authService, reminderStore } = options;
+  const { authService, reminderStore, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -153,6 +156,15 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
         })
       );
 
+      if (results.length > 0) {
+        triggerAssistantSearchSync(
+          assistantSearchSyncService,
+          authUserId,
+          request.log,
+          "reminder fire"
+        );
+      }
+
       return reply.send({ data: results.map(serializeReminder) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
@@ -209,6 +221,14 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
         assignees: bodyResult.data.assignees ?? null,
         remindAt: new Date(bodyResult.data.remindAt),
       });
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "reminder create"
+      );
+
       return reply.code(201).send({ data: serializeReminder(reminder) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
@@ -245,6 +265,14 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
       if (!updated) {
         return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
       }
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "reminder update"
+      );
+
       return reply.send({ data: serializeReminder(updated) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
@@ -269,6 +297,14 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
       if (!removed) {
         return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
       }
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "reminder delete"
+      );
+
       return reply.send({ data: serializeReminder(removed) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
@@ -293,6 +329,14 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
       if (!dismissed) {
         return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
       }
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "reminder dismiss"
+      );
+
       return reply.send({ data: serializeReminder(dismissed) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {

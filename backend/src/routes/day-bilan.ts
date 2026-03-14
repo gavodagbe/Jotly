@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { AuthService } from "../auth/auth-service";
 import { DayBilanStore } from "../day-bilan/day-bilan-store";
 import { formatDateOnly, parseDateOnly } from "../tasks/task-store";
@@ -10,10 +11,12 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { triggerAssistantSearchSync } from "./assistant-search-sync-helpers";
 
 type DayBilanRoutesOptions = {
   authService: AuthService;
   dayBilanStore: DayBilanStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const targetDateSchema = z
@@ -85,7 +88,7 @@ function serializeDayBilan(bilan: {
 }
 
 const dayBilanRoutes: FastifyPluginAsync<DayBilanRoutesOptions> = async (app, options) => {
-  const { authService, dayBilanStore } = options;
+  const { authService, dayBilanStore, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -178,6 +181,13 @@ const dayBilanRoutes: FastifyPluginAsync<DayBilanRoutesOptions> = async (app, op
         lessonsLearned: lessonsInput !== undefined ? lessonsInput : existingBilan?.lessonsLearned ?? null,
         tomorrowTop3: top3Input !== undefined ? top3Input : existingBilan?.tomorrowTop3 ?? null,
       });
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "day bilan save"
+      );
 
       return reply.send({
         data: serializeDayBilan(savedBilan),

@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { CalendarEventNote, Task } from "@prisma/client";
 import { z } from "zod";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { AuthService } from "../auth/auth-service";
 import { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { CalendarEventNoteStore } from "../google-calendar/calendar-event-note-store";
@@ -10,6 +11,7 @@ import {
   getBearerToken,
   sendError,
 } from "./route-helpers";
+import { triggerAssistantSearchSync } from "./assistant-search-sync-helpers";
 
 type GoogleCalendarEventsRoutesOptions = {
   authService: AuthService;
@@ -17,6 +19,7 @@ type GoogleCalendarEventsRoutesOptions = {
   calendarEventNoteStore?: CalendarEventNoteStore;
   taskStore: TaskStore;
   googleCalendarSyncService: GoogleCalendarSyncService;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const dateQuerySchema = z.object({
@@ -140,6 +143,7 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     calendarEventNoteStore,
     taskStore,
     googleCalendarSyncService,
+    assistantSearchSyncService,
   } = options;
 
   async function hydrateCalendarEvents(
@@ -197,6 +201,14 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
 
     try {
       const result = await googleCalendarSyncService.syncEventsForUser(authUserId);
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "google calendar sync"
+      );
+
       return reply.send({
         data: {
           syncedCount: result.syncedCount,
@@ -343,6 +355,14 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       }
 
       const note = await calendarEventNoteStore.upsert(event.id, authUserId, bodyResult.data.body);
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "calendar note save"
+      );
+
       return reply.send({ data: serializeCalendarEventNote(note) });
     } catch (error) {
       request.log.error(error, "Failed to save calendar event note");
@@ -372,6 +392,14 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       }
 
       await calendarEventNoteStore.deleteByCalendarEventId(event.id, authUserId);
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "calendar note delete"
+      );
+
       return reply.send({ data: { deleted: true } });
     } catch (error) {
       request.log.error(error, "Failed to delete calendar event note");

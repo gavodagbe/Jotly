@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { AuthService } from "../auth/auth-service";
 import { CommentStore } from "../comments/comment-store";
 import { TaskStore } from "../tasks/task-store";
@@ -10,11 +11,13 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { triggerAssistantSearchSync } from "./assistant-search-sync-helpers";
 
 type CommentsRouteOptions = {
   taskStore: TaskStore;
   commentStore: CommentStore;
   authService: AuthService;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const taskParamsSchema = z.object({
@@ -60,7 +63,7 @@ function getAuthenticatedUserId(request: { authUserId?: string }): string | null
 }
 
 const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, options) => {
-  const { taskStore, commentStore, authService } = options;
+  const { taskStore, commentStore, authService, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -148,6 +151,13 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
         body: bodyResult.data.body,
       });
 
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "comment create"
+      );
+
       return reply.code(201).send({
         data: serializeComment(comment),
       });
@@ -204,6 +214,13 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
         return sendError(reply, 404, "NOT_FOUND", "Comment not found");
       }
 
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "comment update"
+      );
+
       return reply.send({
         data: serializeComment(updatedComment),
       });
@@ -250,6 +267,13 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
       if (!deletedComment) {
         return sendError(reply, 404, "NOT_FOUND", "Comment not found");
       }
+
+      triggerAssistantSearchSync(
+        assistantSearchSyncService,
+        authUserId,
+        request.log,
+        "comment delete"
+      );
 
       return reply.send({
         data: serializeComment(deletedComment),
