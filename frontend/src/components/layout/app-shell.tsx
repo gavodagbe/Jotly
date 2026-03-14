@@ -1564,7 +1564,7 @@ function formatAssistantWarningMessage(
   if (normalized.includes("workspace text search is unavailable")) {
     return locale === "fr"
       ? "La recherche textuelle du workspace etait indisponible pour cette reponse. L'assistant a repondu avec le contexte principal uniquement."
-      : "Workspace text search was unavailable for this reply. The assistant answered with the main structured context only.";
+      : "Workspace text search was unavailable for this reply. The assistant answered using only the primary structured context.";
   }
 
   if (normalized.includes("openai is unavailable right now")) {
