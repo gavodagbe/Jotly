@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { NoteAttachmentStore } from "../notes/note-attachment-store";
 import { NoteStore } from "../notes/note-store";
 import { parseDateOnly } from "../tasks/task-store";
@@ -16,6 +17,7 @@ type NoteRoutesOptions = {
   authService: AuthService;
   noteStore: NoteStore;
   noteAttachmentStore?: NoteAttachmentStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const NOTE_BODY_MAX = 50000;
@@ -124,7 +126,7 @@ function serializeNote(note: {
 }
 
 const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) => {
-  const { authService, noteStore, noteAttachmentStore } = options;
+  const { authService, noteStore, noteAttachmentStore, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -220,6 +222,10 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
           ? parseDateOnly(bodyResult.data.targetDate)
           : null,
       });
+      // Fire-and-forget sync (do not await)
+      if (assistantSearchSyncService) {
+        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+      }
       return reply.code(201).send({ data: serializeNote(note) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
@@ -263,6 +269,10 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       const updated = await noteStore.update(id, updateInput, authUserId);
       if (!updated) {
         return sendError(reply, 404, "NOT_FOUND", "Note not found");
+      }
+      // Fire-and-forget sync (do not await)
+      if (assistantSearchSyncService) {
+        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
       }
       return reply.send({ data: serializeNote(updated) });
     } catch (error) {
@@ -323,6 +333,10 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
         sizeBytes: bodyResult.data.sizeBytes ?? null,
       });
 
+      // Fire-and-forget sync (do not await)
+      if (assistantSearchSyncService) {
+        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+      }
       return reply.code(201).send({ data: serializeAttachment(attachment) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) return sendStorageNotInitializedError(reply, "NoteAttachment");
@@ -347,6 +361,10 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       const removed = await noteAttachmentStore.remove(attachmentId, authUserId);
       if (!removed) return sendError(reply, 404, "NOT_FOUND", "Attachment not found");
 
+      // Fire-and-forget sync (do not await)
+      if (assistantSearchSyncService) {
+        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+      }
       return reply.send({ data: serializeAttachment(removed) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) return sendStorageNotInitializedError(reply, "NoteAttachment");
@@ -368,6 +386,10 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       const removed = await noteStore.remove(id, authUserId);
       if (!removed) {
         return sendError(reply, 404, "NOT_FOUND", "Note not found");
+      }
+      // Fire-and-forget sync (do not await)
+      if (assistantSearchSyncService) {
+        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
       }
       return reply.send({ data: serializeNote(removed) });
     } catch (error) {

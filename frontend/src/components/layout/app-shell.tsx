@@ -497,7 +497,9 @@ type SearchSourceType =
   | "reminder"
   | "calendarEvent"
   | "calendarNote"
-  | "attachment";
+  | "attachment"
+  | "note"
+  | "noteAttachment";
 
 type SearchResult = {
   sourceType: SearchSourceType;
@@ -3414,6 +3416,8 @@ const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> =
   calendarEvent: { fr: "Calendrier", en: "Calendar" },
   calendarNote: { fr: "Notes agenda", en: "Calendar Notes" },
   attachment: { fr: "Pièces jointes", en: "Attachments" },
+  note: { fr: "Notes", en: "Notes" },
+  noteAttachment: { fr: "Docs de notes", en: "Note Documents" },
 };
 
 const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
@@ -3425,6 +3429,8 @@ const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
   "calendarEvent",
   "calendarNote",
   "attachment",
+  "note",
+  "noteAttachment",
 ];
 
 function SearchResultCard({
@@ -3448,6 +3454,8 @@ function SearchResultCard({
     calendarEvent: "bg-purple-50 text-purple-600",
     calendarNote: "bg-violet-50 text-violet-600",
     attachment: "bg-slate-50 text-slate-600",
+    note: "bg-teal-50 text-teal-600",
+    noteAttachment: "bg-cyan-50 text-cyan-600",
   };
 
   return (
@@ -7703,6 +7711,17 @@ export function AppShell() {
           setExpandedCalendarEventId(calendarEventId);
         }
         setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "note": {
+        setExpandedNoteId(result.sourceId);
+        setTimeout(() => document.getElementById("notes")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "noteAttachment": {
+        const noteId = meta?.noteId as string | undefined;
+        if (noteId) setExpandedNoteId(noteId);
+        setTimeout(() => document.getElementById("notes")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
     }

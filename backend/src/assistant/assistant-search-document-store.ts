@@ -8,7 +8,9 @@ export type AssistantSearchSourceType =
   | "reminder"
   | "calendarEvent"
   | "calendarNote"
-  | "attachment";
+  | "attachment"
+  | "note"
+  | "noteAttachment";
 
 export type AssistantSearchDocumentRecord = {
   id: string;

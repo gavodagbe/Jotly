@@ -22,7 +22,11 @@ import {
 import {
   createAssistantSearchSyncService,
   AssistantSearchSyncService,
+  SearchIndexPlugin,
 } from "./assistant/assistant-search-sync";
+import { createTaskSearchPlugin } from "./tasks/task-search-plugin";
+import { createAssistantContextSearchPlugin } from "./assistant/assistant-context-search-plugin";
+import { createNoteSearchPlugin } from "./notes/note-search-plugin";
 import {
   createAssistantService,
   AssistantService,
@@ -124,6 +128,40 @@ export type BuildAppOptions = {
 
 const APP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
+function buildSearchPlugins(options: {
+  taskStore: TaskStore;
+  commentStore?: CommentStore;
+  attachmentStore?: AttachmentStore;
+  assistantContextStore?: AssistantContextStore;
+  noteStore?: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
+}): SearchIndexPlugin[] {
+  const plugins: SearchIndexPlugin[] = [];
+
+  plugins.push(
+    createTaskSearchPlugin({
+      taskStore: options.taskStore,
+      commentStore: options.commentStore,
+      attachmentStore: options.attachmentStore,
+    })
+  );
+
+  if (options.assistantContextStore) {
+    plugins.push(createAssistantContextSearchPlugin(options.assistantContextStore));
+  }
+
+  if (options.noteStore) {
+    plugins.push(
+      createNoteSearchPlugin({
+        noteStore: options.noteStore,
+        noteAttachmentStore: options.noteAttachmentStore,
+      })
+    );
+  }
+
+  return plugins;
+}
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     bodyLimit: APP_BODY_LIMIT_BYTES,
@@ -187,10 +225,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     options.assistantSearchSyncService ??
     (assistantSearchDocumentStore
       ? createAssistantSearchSyncService({
-          taskStore,
-          commentStore,
-          attachmentStore,
-          assistantContextStore,
+          plugins: buildSearchPlugins({
+            taskStore,
+            commentStore,
+            attachmentStore,
+            assistantContextStore,
+            noteStore,
+            noteAttachmentStore,
+          }),
           searchDocumentStore: assistantSearchDocumentStore,
           documentExtractor: assistantDocumentExtractor,
           embeddingClient: assistantEmbeddingClient,
@@ -297,7 +339,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
   if (noteStore) {
-    app.register(noteRoutes, { noteStore, noteAttachmentStore, authService });
+    app.register(noteRoutes, { noteStore, noteAttachmentStore, authService, assistantSearchSyncService });
   }
   if (reminderStore) {
     app.register(reminderRoutes, { reminderStore, authService });

@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { Task, TaskAttachment } from "@prisma/client";
-import { AssistantContextStore } from "./assistant-context-store";
 import { AssistantDocumentExtractor } from "./assistant-document-extractor";
 import {
   AssistantSearchDocumentRecord,
@@ -10,9 +8,6 @@ import {
   AssistantSearchSourceType,
 } from "./assistant-search-document-store";
 import { AssistantEmbeddingClient } from "./assistant-embedding-client";
-import { AttachmentStore } from "../attachments/attachment-store";
-import { CommentStore } from "../comments/comment-store";
-import { formatDateOnly, TaskStore } from "../tasks/task-store";
 
 export type AssistantSearchSyncSummary = {
   documentCount: number;
@@ -23,11 +18,37 @@ export type AssistantSearchSyncService = {
   syncUserWorkspace(userId: string): Promise<AssistantSearchSyncSummary>;
 };
 
+/**
+ * A single searchable entry returned by a SearchIndexPlugin.
+ * If `attachment` is set, the sync service will run OCR/extraction automatically.
+ */
+export type SearchIndexEntry = {
+  sourceType: AssistantSearchSourceType;
+  sourceId: string;
+  title: string | null;
+  /** Plain-text body (for text docs). Leave empty string for attachment entries. */
+  bodyText: string;
+  /** Additional metadata stored alongside the document. */
+  metadata: Record<string, unknown>;
+  updatedAt: Date;
+  /** If set, OCR/extraction is run on this file. Omit for plain-text entries. */
+  attachment?: {
+    name: string;
+    url: string;
+    contentType: string | null;
+  };
+};
+
+/**
+ * Implement this interface for each domain that needs to be searchable.
+ * Register the plugin in app.ts — the sync service handles everything else.
+ */
+export type SearchIndexPlugin = {
+  fetchEntries(userId: string): Promise<SearchIndexEntry[]>;
+};
+
 export type AssistantSearchSyncServiceOptions = {
-  taskStore?: TaskStore;
-  commentStore?: CommentStore;
-  attachmentStore?: AttachmentStore;
-  assistantContextStore?: AssistantContextStore;
+  plugins: SearchIndexPlugin[];
   searchDocumentStore: AssistantSearchDocumentStore;
   documentExtractor: AssistantDocumentExtractor;
   embeddingClient: AssistantEmbeddingClient;
@@ -37,6 +58,14 @@ export type AssistantSearchSyncServiceOptions = {
 type SearchDocumentDraft = AssistantSearchDocumentUpsertInput & {
   shouldEmbed: boolean;
 };
+
+export function normalizePlainText(...parts: Array<string | null | undefined>): string {
+  return parts
+    .map((part) => (part ? stripRichTextToPlainText(part) : ""))
+    .filter((part) => part.length > 0)
+    .join("\n\n")
+    .trim();
+}
 
 function stripRichTextToPlainText(value: string): string {
   return value
@@ -50,14 +79,6 @@ function stripRichTextToPlainText(value: string): string {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
-    .trim();
-}
-
-function normalizePlainText(...parts: Array<string | null | undefined>): string {
-  return parts
-    .map((part) => (part ? stripRichTextToPlainText(part) : ""))
-    .filter((part) => part.length > 0)
-    .join("\n\n")
     .trim();
 }
 
@@ -142,81 +163,11 @@ function draftDocument(input: {
   };
 }
 
-async function buildAttachmentDraft(
-  userId: string,
-  task: Task,
-  attachment: TaskAttachment,
-  existingByKey: Map<string, AssistantSearchDocumentRecord>,
-  documentExtractor: AssistantDocumentExtractor
-): Promise<SearchDocumentDraft> {
-  const existing =
-    existingByKey.get(keyForDocument("attachment", attachment.id)) ?? null;
-  const attachmentHash = hashContent(
-    JSON.stringify({
-      taskId: task.id,
-      name: attachment.name,
-      url: attachment.url,
-      contentType: attachment.contentType,
-      sizeBytes: attachment.sizeBytes,
-    })
-  );
-
-  if (existing && existing.contentHash === attachmentHash) {
-    return draftDocument({
-      userId,
-      sourceType: "attachment",
-      sourceId: attachment.id,
-      title: attachment.name,
-      bodyText: existing.bodyText,
-      metadataJson:
-        toInputJsonObject(existing.metadataJson) ??
-        buildBaseMetadata("attachment", {
-          taskId: task.id,
-          taskTitle: task.title,
-          contentType: attachment.contentType,
-          sizeBytes: attachment.sizeBytes,
-        }),
-      sourceUpdatedAt: attachment.createdAt,
-      extractionStatus: existing.extractionStatus,
-      extractionWarning: existing.extractionWarning,
-      reuseExisting: existing,
-    });
-  }
-
-  const extraction = await documentExtractor.extractFromAttachment({
-    name: attachment.name,
-    url: attachment.url,
-    contentType: attachment.contentType,
-  });
-
-  return draftDocument({
-    userId,
-    sourceType: "attachment",
-    sourceId: attachment.id,
-    title: attachment.name,
-    bodyText: extraction.text,
-    metadataJson: buildBaseMetadata("attachment", {
-      taskId: task.id,
-      taskTitle: task.title,
-      contentType: attachment.contentType,
-      sizeBytes: attachment.sizeBytes,
-      parser: extraction.parser,
-    }),
-    sourceUpdatedAt: attachment.createdAt,
-    extractionStatus: extraction.status,
-    extractionWarning: extraction.warning,
-    reuseExisting: existing,
-  });
-}
-
 export function createAssistantSearchSyncService(
   options: AssistantSearchSyncServiceOptions
 ): AssistantSearchSyncService {
   const {
-    taskStore,
-    commentStore,
-    attachmentStore,
-    assistantContextStore,
+    plugins,
     searchDocumentStore,
     documentExtractor,
     embeddingClient,
@@ -234,184 +185,90 @@ export function createAssistantSearchSyncService(
       );
 
       const drafts: SearchDocumentDraft[] = [];
-      const tasks = taskStore ? await taskStore.listByUser(userId) : [];
 
-      for (const task of tasks) {
-        drafts.push(
-          draftDocument({
-            userId,
-            sourceType: "task",
-            sourceId: task.id,
-            title: task.title,
-            bodyText: normalizePlainText(task.description, task.project),
-            metadataJson: buildBaseMetadata("task", {
-              targetDate: formatDateOnly(task.targetDate),
-              dueDate: task.dueDate ? formatDateOnly(task.dueDate) : null,
-              status: task.status,
-              priority: task.priority,
-              plannedTime: task.plannedTime,
-              project: task.project,
-            }),
-            sourceUpdatedAt: task.updatedAt,
-            reuseExisting: existingByKey.get(keyForDocument("task", task.id)) ?? null,
-          })
-        );
+      for (const plugin of plugins) {
+        const entries = await plugin.fetchEntries(userId);
 
-        if (commentStore) {
-          const comments = await commentStore.listByTaskId(task.id);
-          for (const comment of comments) {
+        for (const entry of entries) {
+          const existing =
+            existingByKey.get(keyForDocument(entry.sourceType, entry.sourceId)) ?? null;
+
+          if (entry.attachment) {
+            // File attachment entry: use content signature for extraction caching
+            const contentSig = hashContent(
+              JSON.stringify({
+                name: entry.attachment.name,
+                url: entry.attachment.url,
+                contentType: entry.attachment.contentType,
+              })
+            );
+
+            const existingSig =
+              existing && existing.metadataJson && typeof existing.metadataJson === "object" && !Array.isArray(existing.metadataJson)
+                ? (existing.metadataJson as Record<string, unknown>)._contentSig as string | undefined
+                : undefined;
+
+            if (existing && existingSig === contentSig) {
+              // Reuse existing extraction result — no re-OCR needed
+              drafts.push(
+                draftDocument({
+                  userId,
+                  sourceType: entry.sourceType,
+                  sourceId: entry.sourceId,
+                  title: entry.title,
+                  bodyText: existing.bodyText,
+                  metadataJson: buildBaseMetadata(entry.sourceType, {
+                    ...entry.metadata,
+                    _contentSig: contentSig,
+                  }),
+                  sourceUpdatedAt: entry.updatedAt,
+                  extractionStatus: existing.extractionStatus,
+                  extractionWarning: existing.extractionWarning,
+                  reuseExisting: existing,
+                })
+              );
+            } else {
+              // Extract fresh (new attachment or content changed)
+              const extraction = await documentExtractor.extractFromAttachment({
+                name: entry.attachment.name,
+                url: entry.attachment.url,
+                contentType: entry.attachment.contentType,
+              });
+
+              drafts.push(
+                draftDocument({
+                  userId,
+                  sourceType: entry.sourceType,
+                  sourceId: entry.sourceId,
+                  title: entry.title,
+                  bodyText: extraction.text,
+                  metadataJson: buildBaseMetadata(entry.sourceType, {
+                    ...entry.metadata,
+                    _contentSig: contentSig,
+                    parser: extraction.parser,
+                  }),
+                  sourceUpdatedAt: entry.updatedAt,
+                  extractionStatus: extraction.status,
+                  extractionWarning: extraction.warning,
+                  reuseExisting: existing,
+                })
+              );
+            }
+          } else {
+            // Plain-text document entry
             drafts.push(
               draftDocument({
                 userId,
-                sourceType: "comment",
-                sourceId: comment.id,
-                title: `Comment on ${task.title}`,
-                bodyText: normalizePlainText(comment.body),
-                metadataJson: buildBaseMetadata("comment", {
-                  taskId: task.id,
-                  taskTitle: task.title,
-                  createdAt: comment.createdAt.toISOString(),
-                }),
-                sourceUpdatedAt: comment.updatedAt,
-                reuseExisting:
-                  existingByKey.get(keyForDocument("comment", comment.id)) ?? null,
+                sourceType: entry.sourceType,
+                sourceId: entry.sourceId,
+                title: entry.title,
+                bodyText: entry.bodyText,
+                metadataJson: buildBaseMetadata(entry.sourceType, entry.metadata),
+                sourceUpdatedAt: entry.updatedAt,
+                reuseExisting: existing,
               })
             );
           }
-        }
-
-        if (attachmentStore) {
-          const attachments = await attachmentStore.listByTaskId(task.id);
-          const attachmentDrafts = await Promise.all(
-            attachments.map((attachment) =>
-              buildAttachmentDraft(
-                userId,
-                task,
-                attachment,
-                existingByKey,
-                documentExtractor
-              )
-            )
-          );
-          drafts.push(...attachmentDrafts);
-        }
-      }
-
-      if (assistantContextStore) {
-        const snapshot = await assistantContextStore.getByUserId(userId);
-        const eventTitlesById = new Map(
-          snapshot.calendarEvents.map((event) => [event.id, event.title])
-        );
-
-        for (const affirmation of snapshot.dayAffirmations) {
-          drafts.push(
-            draftDocument({
-              userId,
-              sourceType: "affirmation",
-              sourceId: affirmation.id,
-              title: `Affirmation ${formatDateOnly(affirmation.targetDate)}`,
-              bodyText: normalizePlainText(affirmation.text),
-              metadataJson: buildBaseMetadata("affirmation", {
-                targetDate: formatDateOnly(affirmation.targetDate),
-                isCompleted: affirmation.isCompleted,
-              }),
-              sourceUpdatedAt: affirmation.updatedAt,
-              reuseExisting:
-                existingByKey.get(keyForDocument("affirmation", affirmation.id)) ?? null,
-            })
-          );
-        }
-
-        for (const bilan of snapshot.dayBilans) {
-          drafts.push(
-            draftDocument({
-              userId,
-              sourceType: "bilan",
-              sourceId: bilan.id,
-              title: `Bilan ${formatDateOnly(bilan.targetDate)}`,
-              bodyText: normalizePlainText(
-                bilan.wins,
-                bilan.blockers,
-                bilan.lessonsLearned,
-                bilan.tomorrowTop3
-              ),
-              metadataJson: buildBaseMetadata("bilan", {
-                targetDate: formatDateOnly(bilan.targetDate),
-                mood: bilan.mood,
-              }),
-              sourceUpdatedAt: bilan.updatedAt,
-              reuseExisting:
-                existingByKey.get(keyForDocument("bilan", bilan.id)) ?? null,
-            })
-          );
-        }
-
-        for (const reminder of snapshot.reminders) {
-          drafts.push(
-            draftDocument({
-              userId,
-              sourceType: "reminder",
-              sourceId: reminder.id,
-              title: reminder.title,
-              bodyText: normalizePlainText(
-                reminder.description,
-                reminder.project,
-                reminder.assignees
-              ),
-              metadataJson: buildBaseMetadata("reminder", {
-                remindAt: reminder.remindAt.toISOString(),
-                isDismissed: reminder.isDismissed,
-                isFired: reminder.isFired,
-              }),
-              sourceUpdatedAt: reminder.updatedAt,
-              reuseExisting:
-                existingByKey.get(keyForDocument("reminder", reminder.id)) ?? null,
-            })
-          );
-        }
-
-        for (const event of snapshot.calendarEvents) {
-          drafts.push(
-            draftDocument({
-              userId,
-              sourceType: "calendarEvent",
-              sourceId: event.id,
-              title: event.title,
-              bodyText: normalizePlainText(
-                event.description,
-                event.location,
-                event.organizer,
-                event.attendees
-              ),
-              metadataJson: buildBaseMetadata("calendarEvent", {
-                startTime: event.startTime.toISOString(),
-                endTime: event.endTime.toISOString(),
-                isAllDay: event.isAllDay,
-              }),
-              sourceUpdatedAt: event.updatedAt,
-              reuseExisting:
-                existingByKey.get(keyForDocument("calendarEvent", event.id)) ?? null,
-            })
-          );
-        }
-
-        for (const note of snapshot.calendarEventNotes) {
-          drafts.push(
-            draftDocument({
-              userId,
-              sourceType: "calendarNote",
-              sourceId: note.id,
-              title: `Calendar note for ${eventTitlesById.get(note.calendarEventId) ?? note.calendarEventId}`,
-              bodyText: normalizePlainText(note.body),
-              metadataJson: buildBaseMetadata("calendarNote", {
-                calendarEventId: note.calendarEventId,
-                calendarEventTitle: eventTitlesById.get(note.calendarEventId) ?? null,
-              }),
-              sourceUpdatedAt: note.updatedAt,
-              reuseExisting:
-                existingByKey.get(keyForDocument("calendarNote", note.id)) ?? null,
-            })
-          );
         }
       }
 
