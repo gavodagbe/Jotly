@@ -47,6 +47,7 @@ import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
 import reminderRoutes from "./routes/reminders";
+import searchRoutes from "./routes/search";
 import tasksRoutes from "./routes/tasks";
 import {
   createPrismaGoogleCalendarConnectionStore,
@@ -308,6 +309,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       calendarEventNoteStore,
       taskStore,
       googleCalendarSyncService,
+    });
+  }
+  if (assistantSearchDocumentStore) {
+    app.register(searchRoutes, {
+      authService,
+      searchDocumentStore: assistantSearchDocumentStore,
     });
   }
   app.register(assistantRoutes, {

@@ -462,6 +462,40 @@ type TaskFilterValues = {
   priority: TaskFilterPriority;
   project: string;
 };
+type SearchSourceType =
+  | "task"
+  | "comment"
+  | "affirmation"
+  | "bilan"
+  | "reminder"
+  | "calendarEvent"
+  | "calendarNote"
+  | "attachment";
+
+type SearchResult = {
+  sourceType: SearchSourceType;
+  sourceId: string;
+  title: string | null;
+  snippet: string;
+  score: number;
+  matchedBy: "fulltext" | "vector";
+  metadataJson: Record<string, unknown> | null;
+  updatedAt: string;
+};
+
+type GlobalSearchState = {
+  query: string;
+  results: SearchResult[];
+  totalCount: number;
+  page: number;
+  hasMore: boolean;
+  isLoading: boolean;
+  errorMessage: string | null;
+  typeFilter: SearchSourceType | "all";
+  from: string;
+  to: string;
+};
+
 type ApiErrorPayload = { error?: { message?: string } } | null;
 type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders";
 type DashboardLayoutConfig = {
@@ -3198,8 +3232,246 @@ type AppNavbarProps = {
   taskAlertsSummary?: TaskAlertsSummary | null;
   isTaskAlertsPanelOpen?: boolean;
   onOpenTaskAlerts?: () => void;
+  onOpenSearch?: () => void;
   isBusy?: boolean;
 };
+
+const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> = {
+  task: { fr: "Tâches", en: "Tasks" },
+  comment: { fr: "Commentaires", en: "Comments" },
+  affirmation: { fr: "Affirmations", en: "Affirmations" },
+  bilan: { fr: "Bilans", en: "Bilans" },
+  reminder: { fr: "Rappels", en: "Reminders" },
+  calendarEvent: { fr: "Calendrier", en: "Calendar" },
+  calendarNote: { fr: "Notes agenda", en: "Calendar Notes" },
+  attachment: { fr: "Pièces jointes", en: "Attachments" },
+};
+
+const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
+  "task",
+  "comment",
+  "affirmation",
+  "bilan",
+  "reminder",
+  "calendarEvent",
+  "calendarNote",
+  "attachment",
+];
+
+function SearchResultCard({
+  result,
+  locale,
+  onClick,
+}: {
+  result: SearchResult;
+  locale: UserLocale;
+  onClick: () => void;
+}) {
+  const isFrench = locale === "fr";
+  const label = SOURCE_TYPE_LABELS[result.sourceType]?.[isFrench ? "fr" : "en"] ?? result.sourceType;
+
+  const typeColorClass: Record<SearchSourceType, string> = {
+    task: "bg-indigo-50 text-indigo-600",
+    comment: "bg-sky-50 text-sky-600",
+    affirmation: "bg-amber-50 text-amber-600",
+    bilan: "bg-emerald-50 text-emerald-600",
+    reminder: "bg-rose-50 text-rose-600",
+    calendarEvent: "bg-purple-50 text-purple-600",
+    calendarNote: "bg-violet-50 text-violet-600",
+    attachment: "bg-slate-50 text-slate-600",
+  };
+
+  return (
+    <button
+      type="button"
+      className="group w-full rounded-lg border border-line bg-surface p-3 text-left transition-all duration-150 hover:border-accent/30 hover:bg-accent-soft hover:shadow-sm"
+      onClick={onClick}
+    >
+      <div className="flex items-start gap-3">
+        <span className={`mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${typeColorClass[result.sourceType]}`}>
+          {label}
+        </span>
+        <div className="min-w-0 flex-1">
+          {result.title ? (
+            <p className="truncate text-sm font-medium text-foreground group-hover:text-accent">
+              {result.title}
+            </p>
+          ) : null}
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted">{result.snippet}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+type GlobalSearchModalProps = {
+  locale: UserLocale;
+  state: GlobalSearchState;
+  onQueryChange: (value: string) => void;
+  onTypeFilterChange: (filter: SearchSourceType | "all") => void;
+  onDateFilterChange: (field: "from" | "to", value: string) => void;
+  onLoadMore: () => void;
+  onClose: () => void;
+  onResultClick: (result: SearchResult) => void;
+};
+
+function GlobalSearchModal({
+  locale,
+  state,
+  onQueryChange,
+  onTypeFilterChange,
+  onDateFilterChange,
+  onLoadMore,
+  onClose,
+  onResultClick,
+}: GlobalSearchModalProps) {
+  const isFrench = locale === "fr";
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 60);
+    return () => clearTimeout(t);
+  }, []);
+
+  const resultsByType = useMemo(() => {
+    const map = new Map<SearchSourceType, SearchResult[]>();
+    for (const result of state.results) {
+      const group = map.get(result.sourceType) ?? [];
+      group.push(result);
+      map.set(result.sourceType, group);
+    }
+    return map;
+  }, [state.results]);
+
+  const hasResults = state.results.length > 0;
+  const hasQuery = state.query.trim().length >= 2;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-16 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="flex w-full max-w-2xl flex-col rounded-xl border border-line bg-surface shadow-2xl">
+        {/* Search input */}
+        <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+          <SearchIcon />
+          <input
+            ref={inputRef}
+            type="text"
+            value={state.query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder={isFrench ? "Rechercher dans tous vos contenus..." : "Search across all your content..."}
+            className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+          />
+          {state.isLoading ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+          ) : null}
+          <button type="button" onClick={onClose} className="text-xs text-muted hover:text-foreground">
+            Esc
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => onTypeFilterChange("all")}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${state.typeFilter === "all" ? "bg-accent text-white" : "bg-surface-soft text-muted hover:text-foreground"}`}
+            >
+              {isFrench ? "Tout" : "All"}
+            </button>
+            {ALL_SEARCH_SOURCE_TYPES.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => onTypeFilterChange(type)}
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${state.typeFilter === type ? "bg-accent text-white" : "bg-surface-soft text-muted hover:text-foreground"}`}
+              >
+                {SOURCE_TYPE_LABELS[type][isFrench ? "fr" : "en"]}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-1.5">
+            <input
+              type="date"
+              value={state.from}
+              onChange={(e) => onDateFilterChange("from", e.target.value)}
+              className="rounded border border-line bg-surface-soft px-2 py-0.5 text-[11px] text-muted outline-none focus:border-accent"
+              title={isFrench ? "Date de début" : "From date"}
+            />
+            <span className="text-[11px] text-muted">→</span>
+            <input
+              type="date"
+              value={state.to}
+              onChange={(e) => onDateFilterChange("to", e.target.value)}
+              className="rounded border border-line bg-surface-soft px-2 py-0.5 text-[11px] text-muted outline-none focus:border-accent"
+              title={isFrench ? "Date de fin" : "To date"}
+            />
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="max-h-[60vh] overflow-y-auto p-4">
+          {state.errorMessage ? (
+            <p className="text-sm text-rose-500">{state.errorMessage}</p>
+          ) : !hasQuery ? (
+            <p className="text-center text-sm text-muted py-8">
+              {isFrench ? "Tapez au moins 2 caractères pour rechercher" : "Type at least 2 characters to search"}
+            </p>
+          ) : !hasResults && !state.isLoading ? (
+            <p className="text-center text-sm text-muted py-8">
+              {isFrench ? "Aucun résultat pour cette recherche" : "No results found"}
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {Array.from(resultsByType.entries()).map(([type, results]) => (
+                <div key={type}>
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    {SOURCE_TYPE_LABELS[type][isFrench ? "fr" : "en"]} ({results.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {results.map((result) => (
+                      <SearchResultCard
+                        key={`${result.sourceType}-${result.sourceId}`}
+                        result={result}
+                        locale={locale}
+                        onClick={() => { onResultClick(result); onClose(); }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {state.hasMore ? (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={onLoadMore}
+                    disabled={state.isLoading}
+                    className="rounded-lg border border-line px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-soft hover:text-foreground disabled:opacity-50"
+                  >
+                    {state.isLoading
+                      ? isFrench ? "Chargement..." : "Loading..."
+                      : isFrench ? "Voir plus" : "Load more"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {hasResults ? (
+          <div className="border-t border-line px-4 py-2 text-right">
+            <p className="text-[11px] text-muted">
+              {state.totalCount} {isFrench ? "résultat(s)" : "result(s)"}
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function ProfileGlyph({ isLoggedIn }: { isLoggedIn: boolean }) {
   if (isLoggedIn) {
@@ -3229,6 +3501,7 @@ function AppNavbar({
   taskAlertsSummary,
   isTaskAlertsPanelOpen = false,
   onOpenTaskAlerts,
+  onOpenSearch,
   isBusy = false,
 }: AppNavbarProps) {
   const isLoggedIn = user !== null;
@@ -3251,6 +3524,18 @@ function AppNavbar({
         </div>
 
         <div className="flex-1 overflow-y-auto px-3">
+          <div className="pt-3">
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              disabled={!onOpenSearch}
+              className="flex w-full items-center gap-2.5 rounded-lg border border-line bg-surface-soft px-3 py-2 text-sm text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
+            >
+              <SearchIcon />
+              <span className="flex-1 text-left">{isFrench ? "Rechercher..." : "Search..."}</span>
+              <kbd className="hidden rounded border border-line px-1.5 py-0.5 text-[10px] text-muted lg:block">⌘K</kbd>
+            </button>
+          </div>
           <nav className="space-y-0.5">
             <p className="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{isFrench ? "Navigation" : "Navigation"}</p>
             <a href="#overview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
@@ -3342,6 +3627,15 @@ function AppNavbar({
         <div className="flex items-center gap-2">
           {isLoggedIn ? (
             <>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                onClick={onOpenSearch}
+                disabled={!onOpenSearch}
+                aria-label={isFrench ? "Rechercher" : "Search"}
+              >
+                <SearchIcon />
+              </button>
               <button
                 type="button"
                 className={`relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
@@ -4177,6 +4471,21 @@ export function AppShell() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
   const [taskFilterValues, setTaskFilterValues] = useState<TaskFilterValues>(DEFAULT_TASK_FILTER_VALUES);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [pendingOpenTaskId, setPendingOpenTaskId] = useState<string | null>(null);
+  const [globalSearch, setGlobalSearch] = useState<GlobalSearchState>({
+    query: "",
+    results: [],
+    totalCount: 0,
+    page: 1,
+    hasMore: false,
+    isLoading: false,
+    errorMessage: null,
+    typeFilter: "all",
+    from: "",
+    to: "",
+  });
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateDayAffirmationDraft = useCallback((nextValue: string) => {
     dayAffirmationDraftRef.current = nextValue;
@@ -4847,6 +5156,90 @@ export function AppShell() {
     } finally {
       setPendingCalendarEventNoteIds((current) => current.filter((candidate) => candidate !== eventId));
     }
+  }
+
+  async function performGlobalSearch(
+    query: string,
+    page: number,
+    typeFilter: SearchSourceType | "all",
+    from: string,
+    to: string,
+    append = false
+  ) {
+    if (!authToken || query.trim().length < 2) return;
+
+    setGlobalSearch((prev) => ({ ...prev, isLoading: true, errorMessage: null }));
+
+    const params = new URLSearchParams({ q: query.trim(), page: String(page), limit: "20" });
+    if (typeFilter !== "all") params.set("types", typeFilter);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+
+    try {
+      const response = await fetch(`/backend-api/search?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        throw new Error(err?.error?.message ?? "Search failed");
+      }
+      const payload = await response.json() as {
+        data: {
+          results: SearchResult[];
+          totalCount: number;
+          page: number;
+          hasMore: boolean;
+        };
+      };
+      setGlobalSearch((prev) => ({
+        ...prev,
+        results: append ? [...prev.results, ...payload.data.results] : payload.data.results,
+        totalCount: payload.data.totalCount,
+        page: payload.data.page,
+        hasMore: payload.data.hasMore,
+        isLoading: false,
+      }));
+    } catch (error) {
+      setGlobalSearch((prev) => ({
+        ...prev,
+        isLoading: false,
+        errorMessage: error instanceof Error ? error.message : isFrench ? "Erreur de recherche" : "Search error",
+      }));
+    }
+  }
+
+  function handleSearchQueryChange(value: string) {
+    setGlobalSearch((prev) => ({ ...prev, query: value, page: 1, results: [], totalCount: 0, hasMore: false }));
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (value.trim().length < 2) return;
+    searchDebounceRef.current = setTimeout(() => {
+      performGlobalSearch(value, 1, globalSearch.typeFilter, globalSearch.from, globalSearch.to);
+    }, 300);
+  }
+
+  function handleSearchTypeFilterChange(nextFilter: SearchSourceType | "all") {
+    setGlobalSearch((prev) => ({ ...prev, typeFilter: nextFilter, page: 1, results: [], totalCount: 0, hasMore: false }));
+    if (globalSearch.query.trim().length >= 2) {
+      performGlobalSearch(globalSearch.query, 1, nextFilter, globalSearch.from, globalSearch.to);
+    }
+  }
+
+  function handleSearchDateFilterChange(field: "from" | "to", value: string) {
+    const nextFrom = field === "from" ? value : globalSearch.from;
+    const nextTo = field === "to" ? value : globalSearch.to;
+    setGlobalSearch((prev) => ({ ...prev, [field]: value, page: 1, results: [], totalCount: 0, hasMore: false }));
+    if (globalSearch.query.trim().length >= 2) {
+      performGlobalSearch(globalSearch.query, 1, globalSearch.typeFilter, nextFrom, nextTo);
+    }
+  }
+
+  function handleSearchLoadMore() {
+    const nextPage = globalSearch.page + 1;
+    performGlobalSearch(globalSearch.query, nextPage, globalSearch.typeFilter, globalSearch.from, globalSearch.to, true);
+  }
+
+  function handleCloseSearchModal() {
+    setIsSearchModalOpen(false);
   }
 
   function openProfileDialog() {
@@ -6264,6 +6657,29 @@ export function AppShell() {
   }, [isAuthReady, authToken]);
 
   useEffect(() => {
+    if (!pendingOpenTaskId) return;
+    const task = tasks.find((t) => t.id === pendingOpenTaskId);
+    if (task) {
+      openEditTaskDialog(task);
+      setPendingOpenTaskId(null);
+    }
+  }, [tasks, pendingOpenTaskId]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        event.preventDefault();
+        setIsSearchModalOpen((prev) => !prev);
+      }
+      if (event.key === "Escape" && isSearchModalOpen) {
+        setIsSearchModalOpen(false);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isSearchModalOpen]);
+
+  useEffect(() => {
     document.documentElement.lang = activeLocale;
   }, [activeLocale]);
 
@@ -6873,8 +7289,79 @@ export function AppShell() {
     );
   }
 
+  function handleSearchResultClick(result: SearchResult) {
+    const meta = result.metadataJson as Record<string, unknown> | null;
+
+    switch (result.sourceType) {
+      case "task": {
+        const targetDate = meta?.targetDate as string | undefined;
+        if (targetDate) setSelectedDate(targetDate);
+        setPendingOpenTaskId(result.sourceId);
+        setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 100);
+        break;
+      }
+      case "comment":
+      case "attachment": {
+        const taskId = meta?.taskId as string | undefined;
+        if (taskId) setPendingOpenTaskId(taskId);
+        setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 100);
+        break;
+      }
+      case "affirmation": {
+        const targetDate = meta?.targetDate as string | undefined;
+        if (targetDate) setSelectedDate(targetDate);
+        setTimeout(() => document.getElementById("affirmation")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "bilan": {
+        const targetDate = meta?.targetDate as string | undefined;
+        if (targetDate) setSelectedDate(targetDate);
+        setTimeout(() => document.getElementById("bilan")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "reminder": {
+        const reminder = reminders.find((r) => r.id === result.sourceId);
+        if (reminder) {
+          openEditReminderDialog(reminder);
+        } else {
+          setTimeout(() => document.getElementById("reminders")?.scrollIntoView({ behavior: "smooth" }), 100);
+        }
+        break;
+      }
+      case "calendarEvent": {
+        const startTime = meta?.startTime as string | undefined;
+        if (startTime) setSelectedDate(startTime.slice(0, 10));
+        setExpandedCalendarEventId(result.sourceId);
+        setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "calendarNote": {
+        const calendarEventId = meta?.calendarEventId as string | undefined;
+        if (calendarEventId) {
+          const event = calendarEvents.find((e) => e.id === calendarEventId);
+          if (event?.startTime) setSelectedDate(event.startTime.slice(0, 10));
+          setExpandedCalendarEventId(calendarEventId);
+        }
+        setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
+      {isSearchModalOpen ? (
+        <GlobalSearchModal
+          locale={activeLocale}
+          state={globalSearch}
+          onQueryChange={handleSearchQueryChange}
+          onTypeFilterChange={handleSearchTypeFilterChange}
+          onDateFilterChange={handleSearchDateFilterChange}
+          onLoadMore={handleSearchLoadMore}
+          onClose={handleCloseSearchModal}
+          onResultClick={handleSearchResultClick}
+        />
+      ) : null}
       <AppNavbar
         locale={activeLocale}
         user={authUser}
@@ -6883,6 +7370,7 @@ export function AppShell() {
         taskAlertsSummary={taskAlertsSummary}
         isTaskAlertsPanelOpen={isTaskAlertsPanelOpen}
         onOpenTaskAlerts={toggleTaskAlertsPanel}
+        onOpenSearch={() => setIsSearchModalOpen(true)}
         isBusy={isMutationPending || isLoading}
       />
 
