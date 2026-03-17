@@ -77,6 +77,7 @@ import {
   GoogleCalendarSyncService,
 } from "./google-calendar/google-calendar-sync-service";
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
+import { createPrismaNoteAttachmentStore, NoteAttachmentStore } from "./notes/note-attachment-store";
 import { createPrismaNoteStore, NoteStore } from "./notes/note-store";
 import { createPrismaReminderStore, ReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
@@ -93,6 +94,7 @@ export type BuildAppOptions = {
   gamingTrackStore?: GamingTrackStore;
   gamingTrackService?: GamingTrackService;
   noteStore?: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
   reminderStore?: ReminderStore;
   profileStore?: ProfileStore;
   assistantContextStore?: AssistantContextStore;
@@ -150,6 +152,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const noteStore =
     options.noteStore ??
     (options.taskStore ? undefined : createPrismaNoteStore());
+  const noteAttachmentStore =
+    options.noteAttachmentStore ??
+    (options.taskStore ? undefined : createPrismaNoteAttachmentStore());
   const reminderStore =
     options.reminderStore ??
     (options.taskStore ? undefined : createPrismaReminderStore());
@@ -292,7 +297,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
   if (noteStore) {
-    app.register(noteRoutes, { noteStore, authService });
+    app.register(noteRoutes, { noteStore, noteAttachmentStore, authService });
   }
   if (reminderStore) {
     app.register(reminderRoutes, { reminderStore, authService });
@@ -399,6 +404,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (noteStore?.close) {
       await noteStore.close();
+    }
+
+    if (noteAttachmentStore?.close) {
+      await noteAttachmentStore.close();
     }
 
     if (reminderStore?.close) {

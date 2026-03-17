@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
+import { NoteAttachmentStore } from "../notes/note-attachment-store";
 import { NoteStore } from "../notes/note-store";
 import { parseDateOnly } from "../tasks/task-store";
 import {
@@ -14,11 +15,14 @@ import {
 type NoteRoutesOptions = {
   authService: AuthService;
   noteStore: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
 };
 
 const NOTE_BODY_MAX = 50000;
 const NOTE_TITLE_MAX = 300;
 const NOTE_COLOR_MAX = 50;
+const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_ATTACHMENT_URL_LENGTH = 7_100_000;
 
 const dateQuerySchema = z
   .string()
@@ -59,6 +63,44 @@ function getAuthenticatedUserId(request: { authUserId?: string }): string | null
   return request.authUserId;
 }
 
+const createAttachmentBodySchema = z.object({
+  name: z.string().trim().min(1, "Attachment name is required").max(200, "Attachment name is too long"),
+  url: z
+    .string()
+    .trim()
+    .min(1, "Attachment URL must be valid")
+    .max(MAX_ATTACHMENT_URL_LENGTH, "Attachment payload is too large")
+    .url("Attachment URL must be valid"),
+  contentType: z.string().trim().max(255, "contentType is too long").optional().nullable(),
+  sizeBytes: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(MAX_ATTACHMENT_SIZE_BYTES, "Attachment exceeds 5 MB limit")
+    .optional()
+    .nullable(),
+});
+
+function serializeAttachment(a: {
+  id: string;
+  noteId: string;
+  name: string;
+  url: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: Date;
+}) {
+  return {
+    id: a.id,
+    noteId: a.noteId,
+    name: a.name,
+    url: a.url,
+    contentType: a.contentType,
+    sizeBytes: a.sizeBytes,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
 function serializeNote(note: {
   id: string;
   title: string | null;
@@ -82,7 +124,7 @@ function serializeNote(note: {
 }
 
 const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) => {
-  const { authService, noteStore } = options;
+  const { authService, noteStore, noteAttachmentStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -229,6 +271,87 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       }
       request.log.error(error, "Failed to update note");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to update note");
+    }
+  });
+
+  // GET /api/notes/:id/attachments
+  app.get("/api/notes/:id/attachments", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+
+    if (!noteAttachmentStore) return sendError(reply, 503, "SERVICE_UNAVAILABLE", "Attachments are not available");
+
+    const { id } = request.params as { id: string };
+
+    try {
+      const note = await noteStore.getById(id, authUserId);
+      if (!note) return sendError(reply, 404, "NOT_FOUND", "Note not found");
+
+      const attachments = await noteAttachmentStore.listByNoteId(id, authUserId);
+      return reply.send({ data: attachments.map(serializeAttachment) });
+    } catch (error) {
+      if (isStorageNotInitializedPrismaError(error)) return sendStorageNotInitializedError(reply, "NoteAttachment");
+      request.log.error(error, "Failed to list note attachments");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list attachments");
+    }
+  });
+
+  // POST /api/notes/:id/attachments
+  app.post("/api/notes/:id/attachments", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+
+    if (!noteAttachmentStore) return sendError(reply, 503, "SERVICE_UNAVAILABLE", "Attachments are not available");
+
+    const { id } = request.params as { id: string };
+    const bodyResult = createAttachmentBodySchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      const details = zodIssuesToStrings(bodyResult.error);
+      return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid request body", details);
+    }
+
+    try {
+      const note = await noteStore.getById(id, authUserId);
+      if (!note) return sendError(reply, 404, "NOT_FOUND", "Note not found");
+
+      const attachment = await noteAttachmentStore.create({
+        noteId: id,
+        userId: authUserId,
+        name: bodyResult.data.name,
+        url: bodyResult.data.url,
+        contentType: bodyResult.data.contentType?.trim() || null,
+        sizeBytes: bodyResult.data.sizeBytes ?? null,
+      });
+
+      return reply.code(201).send({ data: serializeAttachment(attachment) });
+    } catch (error) {
+      if (isStorageNotInitializedPrismaError(error)) return sendStorageNotInitializedError(reply, "NoteAttachment");
+      request.log.error(error, "Failed to create note attachment");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to create attachment");
+    }
+  });
+
+  // DELETE /api/notes/:id/attachments/:attachmentId
+  app.delete("/api/notes/:id/attachments/:attachmentId", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+
+    if (!noteAttachmentStore) return sendError(reply, 503, "SERVICE_UNAVAILABLE", "Attachments are not available");
+
+    const { id, attachmentId } = request.params as { id: string; attachmentId: string };
+
+    try {
+      const note = await noteStore.getById(id, authUserId);
+      if (!note) return sendError(reply, 404, "NOT_FOUND", "Note not found");
+
+      const removed = await noteAttachmentStore.remove(attachmentId, authUserId);
+      if (!removed) return sendError(reply, 404, "NOT_FOUND", "Attachment not found");
+
+      return reply.send({ data: serializeAttachment(removed) });
+    } catch (error) {
+      if (isStorageNotInitializedPrismaError(error)) return sendStorageNotInitializedError(reply, "NoteAttachment");
+      request.log.error(error, "Failed to delete note attachment");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to delete attachment");
     }
   });
 
