@@ -55,6 +55,19 @@ export type AssistantSearchResult = {
   updatedAt: Date;
 };
 
+export type SearchDirectOptions = {
+  sourceTypes?: AssistantSearchSourceType[];
+  from?: Date;
+  to?: Date;
+  page?: number;
+  limit?: number;
+};
+
+export type SearchDirectResult = {
+  results: AssistantSearchResult[];
+  totalCount: number;
+};
+
 export type AssistantSearchDocumentStore = {
   listByUser(userId: string): Promise<AssistantSearchDocumentRecord[]>;
   replaceUserDocuments(userId: string, documents: AssistantSearchDocumentUpsertInput[]): Promise<void>;
@@ -68,6 +81,11 @@ export type AssistantSearchDocumentStore = {
     embedding: number[],
     options?: { sourceTypes?: AssistantSearchSourceType[]; limit?: number }
   ): Promise<AssistantSearchResult[]>;
+  searchDirect(
+    userId: string,
+    query: string,
+    options?: SearchDirectOptions
+  ): Promise<SearchDirectResult>;
   supportsVectorSearch(): Promise<boolean>;
   close?: () => Promise<void>;
 };
@@ -293,6 +311,48 @@ export function createInMemoryAssistantSearchDocumentStore(): AssistantSearchDoc
       }));
     },
 
+    async searchDirect(userId, query, options) {
+      const trimmed = query.trim();
+      const page = Math.max(1, options?.page ?? 1);
+      const limit = Math.min(50, Math.max(1, options?.limit ?? 20));
+
+      const candidates = [...records.values()].filter((row) => {
+        if (row.userId !== userId) return false;
+        if (!filterBySourceTypes(options?.sourceTypes, row)) return false;
+        if (options?.from && row.updatedAt < options.from) return false;
+        if (options?.to && row.updatedAt > options.to) return false;
+        return rankFullText(trimmed, row) > 0;
+      });
+
+      candidates.sort((a, b) => {
+        const scoreDiff = rankFullText(trimmed, b) - rankFullText(trimmed, a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return b.updatedAt.getTime() - a.updatedAt.getTime();
+      });
+
+      const totalCount = candidates.length;
+      const offset = (page - 1) * limit;
+      const paged = candidates.slice(offset, offset + limit);
+
+      return {
+        totalCount,
+        results: paged.map((row) => {
+          const score = rankFullText(trimmed, row);
+          return {
+            sourceType: row.sourceType,
+            sourceId: row.sourceId,
+            title: row.title,
+            bodyText: row.bodyText,
+            snippet: row.bodyText.slice(0, 280),
+            score,
+            matchedBy: "fulltext" as const,
+            metadataJson: row.metadataJson,
+            updatedAt: row.updatedAt,
+          };
+        }),
+      };
+    },
+
     async supportsVectorSearch() {
       return [...records.values()].some((row) => Array.isArray(row.embedding));
     },
@@ -504,6 +564,63 @@ export function createPrismaAssistantSearchDocumentStore(
       `);
 
       return rows.map((row) => toResult(row, "vector"));
+    },
+
+    async searchDirect(userId, query, options) {
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length === 0) {
+        return { results: [], totalCount: 0 };
+      }
+
+      const page = Math.max(1, options?.page ?? 1);
+      const limit = Math.min(50, Math.max(1, options?.limit ?? 20));
+      const offset = (page - 1) * limit;
+
+      const sourceTypeWhere = buildSourceTypeWhere(options?.sourceTypes);
+      const fromWhere = options?.from ? Prisma.sql`AND "updatedAt" >= ${options.from}` : Prisma.empty;
+      const toWhere = options?.to ? Prisma.sql`AND "updatedAt" <= ${options.to}` : Prisma.empty;
+
+      const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+        SELECT COUNT(*) AS total
+        FROM "AssistantSearchDocument"
+        WHERE "userId" = ${userId}
+          ${sourceTypeWhere}
+          ${fromWhere}
+          ${toWhere}
+          AND search_vector @@ websearch_to_tsquery('simple', ${trimmedQuery})
+      `);
+
+      const totalCount = Number(countRows[0]?.total ?? 0);
+
+      const rows = await prisma.$queryRaw<PrismaFullTextRow[]>(Prisma.sql`
+        SELECT
+          "sourceType",
+          "sourceId",
+          "title",
+          "bodyText",
+          "metadataJson",
+          "updatedAt",
+          ts_rank_cd(search_vector, websearch_to_tsquery('simple', ${trimmedQuery})) AS score,
+          ts_headline(
+            'simple',
+            concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')),
+            websearch_to_tsquery('simple', ${trimmedQuery}),
+            'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false'
+          ) AS snippet
+        FROM "AssistantSearchDocument"
+        WHERE "userId" = ${userId}
+          ${sourceTypeWhere}
+          ${fromWhere}
+          ${toWhere}
+          AND search_vector @@ websearch_to_tsquery('simple', ${trimmedQuery})
+        ORDER BY score DESC, "updatedAt" DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `);
+
+      return {
+        totalCount,
+        results: rows.map((row) => toResult(row, "fulltext")),
+      };
     },
 
     supportsVectorSearch: checkVectorSupport,
