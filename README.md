@@ -6,7 +6,21 @@ This repository currently contains the MVP foundation:
 - `frontend/` Next.js app shell
 - `backend/` Fastify API foundation
 - Docker Compose local stack with PostgreSQL
-- Authenticated task board with comments, attachments, recurrence, AI assistant, day affirmations, carry-over, day bilan, and Google Calendar event sync
+- Authenticated task board with comments, attachments, recurrence, AI assistant, day affirmations, carry-over, day bilan, Google Calendar event sync, reminders, and global full-text search
+
+## Authentication
+
+Endpoints:
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+
+Reset password flow:
+- `POST /api/auth/forgot-password` — body: `{ "email": "user@example.com" }`, returns `{ success, resetToken, expiresAt }`
+- `POST /api/auth/reset-password` — body: `{ "token": "...", "password": "newpassword" }`, returns a new session
 
 ## Daily Workflow APIs
 
@@ -35,6 +49,74 @@ Profile preferences:
 - `preferredTimeZone` expects a valid IANA timezone (for example `Europe/Paris`, `America/New_York`)
 - assistant requests can include `locale`; backend defaults to authenticated user profile locale
 - frontend UI language follows `preferredLocale` after login (with browser-language fallback before login)
+
+## Reminders
+
+Authenticated endpoints for reminder management:
+- `GET /api/reminders` — list all reminders (optional `?date=YYYY-MM-DD` filter)
+- `GET /api/reminders/pending` — list pending unfired/undismissed reminders (auto-marks as fired)
+- `GET /api/reminders/:id` — get single reminder
+- `POST /api/reminders` — create reminder
+- `PUT /api/reminders/:id` — update reminder
+- `DELETE /api/reminders/:id` — delete reminder
+- `POST /api/reminders/:id/dismiss` — mark reminder as dismissed
+
+Request body for create/update:
+```json
+{
+  "title": "Team meeting",
+  "description": "Optional rich text description",
+  "project": "Optional project name",
+  "assignees": "Optional assignee list",
+  "remindAt": "2026-03-17T14:00:00.000Z"
+}
+```
+
+Reminder fields:
+- `isFired` — set automatically when reminder appears in `/pending` response
+- `isDismissed` — set manually via `/dismiss`
+- `date` filter on list endpoint matches a 24-hour window starting at midnight UTC
+
+## Global Search
+
+Full-text search across all user content:
+- `GET /api/search?q=...`
+
+Query parameters:
+- `q` (required): search query, minimum 2 characters
+- `types` (optional): comma-separated source types — `task,comment,affirmation,bilan,reminder,calendarEvent,calendarNote,attachment`
+- `from` (optional): ISO date start filter
+- `to` (optional): ISO date end filter
+- `page` (optional): default 1
+- `limit` (optional): default 20, max 50
+
+Response shape:
+```json
+{
+  "data": {
+    "results": [
+      {
+        "sourceType": "task",
+        "sourceId": "...",
+        "title": "...",
+        "snippet": "...highlighted excerpt...",
+        "score": 0.85,
+        "matchedBy": "fulltext",
+        "metadataJson": {},
+        "updatedAt": "..."
+      }
+    ],
+    "totalCount": 42,
+    "page": 1,
+    "limit": 20,
+    "hasMore": true
+  }
+}
+```
+
+Frontend: Cmd/Ctrl+K opens the global search modal with type filtering, optional date range, debounced input, and result navigation.
+
+Search is powered by `AssistantSearchDocument` — a unified PostgreSQL full-text index (`tsvector`) over all text-bearing domains. Content is indexed automatically when records are created or updated.
 
 ## Google Calendar Integration
 

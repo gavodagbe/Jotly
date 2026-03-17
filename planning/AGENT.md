@@ -54,13 +54,16 @@ This section reflects the current repository implementation.
 - Prisma `GoogleCalendarConnection` for encrypted OAuth token storage and per-account sync metadata
 - Prisma `CalendarEvent` for synced Google events
 - Prisma `CalendarEventNote` reserved for future event-note workflows
-- Prisma `Reminder` model
-- Prisma `AssistantSearchDocument` model (planned Phase 2 — unified search table with `tsvector` + `vector(1536)` via pgvector)
+- Prisma `Reminder` model (title, description, project, assignees, remindAt, isFired, isDismissed lifecycle flags)
+- Prisma `PasswordResetToken` model for password reset flow
+- Prisma `AssistantSearchDocument` model — unified full-text search table (`tsvector` via PostgreSQL full-text; `vector(1536)` column reserved for Phase 2 pgvector semantic search)
 
 ### Testing
 - Node test runner tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan routes
 - Node test runner tests include profile route coverage
 - Node test runner tests include Google Calendar OAuth route coverage
+- Node test runner tests include reminders route coverage
+- Node test runner tests include search route coverage
 
 ### Infrastructure
 - Docker
@@ -103,6 +106,8 @@ Implemented endpoints:
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
 - `GET /api/tasks?date=YYYY-MM-DD`
 - `POST /api/tasks`
 - `POST /api/tasks/carry-over-yesterday`
@@ -136,6 +141,14 @@ Implemented endpoints:
 - `GET /api/google-calendar/events/:id`
 - `PUT /api/google-calendar/events/:id/note`
 - `DELETE /api/google-calendar/events/:id/note`
+- `GET /api/reminders`
+- `GET /api/reminders/pending`
+- `GET /api/reminders/:id`
+- `POST /api/reminders`
+- `PUT /api/reminders/:id`
+- `DELETE /api/reminders/:id`
+- `POST /api/reminders/:id/dismiss`
+- `GET /api/search?q=...`
 
 Rules:
 - JSON-only API
@@ -145,6 +158,8 @@ Rules:
 - Google Calendar routes are registered only when Google OAuth env vars are configured
 - Google Calendar callback redirects should use `FRONTEND_ORIGIN`, not a hard-coded frontend URL
 - task payloads may optionally carry `calendarEventId` when linking a Jotly task to a synced event
+- search endpoint requires minimum 2-character query; results scoped to authenticated user
+- `GET /api/reminders/pending` auto-marks returned reminders as fired; do not call repeatedly in tight loops
 
 Example error shape:
 
@@ -169,6 +184,8 @@ Main UI currently includes:
 - profile settings dialog with persisted language/timezone preferences
 - profile settings dialog with Google Calendar account connection controls
 - selected-date Google Calendar event preview on the main dashboard
+- reminders panel with create/edit/dismiss flows and rich text description
+- global search modal (Cmd/Ctrl+K) with type filtering, date range, pagination, and result navigation
 - create/edit task dialog
 - delete confirmation dialog
 - empty states and API error states
@@ -247,6 +264,36 @@ The modules below define intended boundaries without pre-building abstractions.
 - Current fields: `mood`, `wins`, `blockers`, `lessonsLearned`, `tomorrowTop3`.
 - Current status: implemented.
 
+### Reminders
+- Relation to date workflow: user-defined timed reminders with fire and dismiss lifecycle.
+- Current backend ownership: `backend/src/routes/reminders.ts`.
+- Current API surface:
+  - `GET /api/reminders` (optional `?date=YYYY-MM-DD`)
+  - `GET /api/reminders/pending`
+  - `GET /api/reminders/:id`
+  - `POST /api/reminders`
+  - `PUT /api/reminders/:id`
+  - `DELETE /api/reminders/:id`
+  - `POST /api/reminders/:id/dismiss`
+- Current fields: `title`, `description`, `project`, `assignees`, `remindAt`, `isFired`, `firedAt`, `isDismissed`, `dismissedAt`.
+- Current behavior:
+  - `/pending` auto-marks all returned reminders as fired on read
+  - date filter on list endpoint matches a 24-hour UTC window
+  - all reminders scoped to authenticated user
+- Current status: implemented.
+
+### Global Search
+- Relation to workspace history: single search entry point across all user content domains.
+- Current backend ownership: `backend/src/routes/search.ts`.
+- Current API surface:
+  - `GET /api/search?q=...`
+- Query parameters: `q` (required, min 2 chars), `types`, `from`, `to`, `page`, `limit` (max 50).
+- Source types: `task`, `comment`, `affirmation`, `bilan`, `reminder`, `calendarEvent`, `calendarNote`, `attachment`.
+- Backend: queries `AssistantSearchDocument` using PostgreSQL `websearch_to_tsquery` with `ts_headline` snippets.
+- Response includes: `results[]` with `sourceType`, `sourceId`, `title`, `snippet`, `score`, `matchedBy`, `metadataJson`, plus `totalCount`, `page`, `limit`, `hasMore`.
+- Frontend: Cmd/Ctrl+K opens global search modal; results navigate to source content in the dashboard.
+- Current status: implemented (full-text only; vector search planned for assistant Phase 2).
+
 ### Google Calendar
 - Relation to daily workflow: read-only imported events enrich the selected-day view and future task-linking flows.
 - Current backend ownership:
@@ -261,15 +308,18 @@ The modules below define intended boundaries without pre-building abstractions.
   - `GET /api/google-calendar/events?date=YYYY-MM-DD`
   - `GET /api/google-calendar/events?start=YYYY-MM-DD&end=YYYY-MM-DD`
   - `GET /api/google-calendar/events/:id`
+  - `PUT /api/google-calendar/events/:id/note`
+  - `DELETE /api/google-calendar/events/:id/note`
 - Current behavior:
   - supports multiple Google accounts per Jotly user
   - encrypts access and refresh tokens at rest
   - stores synced events in PostgreSQL for date-based querying
   - surfaces selected-date events in the main dashboard
+  - users can attach internal Jotly-only notes to synced events
+  - tasks can be created from and linked to synced events via `Task.calendarEventId`
 - Current limits:
   - no calendar write-back
-  - no task creation from events yet
-  - `CalendarEventNote` and `Task.calendarEventId` remain reserved extension points
+  - no background/webhook sync yet
 - Current status: implemented as a read-only integration foundation.
 
 ### AI assistant
@@ -480,9 +530,12 @@ Existing entities:
 - `GoogleCalendarConnection`
 - `CalendarEvent`
 - `CalendarEventNote`
+- `AssistantSearchDocument` (unified full-text search table with `tsvector`; `vector(1536)` column reserved for Phase 2 pgvector semantic search)
+- `PasswordResetToken`
 
-Planned entities (Phase 2 — assistant pipeline):
-- `AssistantSearchDocument` (unified search table with `tsvector` + `vector(1536)` for full-text and semantic search across all text-bearing domains including extracted document content)
+Planned extensions (Phase 2 — assistant pipeline):
+- Enable pgvector extension and populate `AssistantSearchDocument.embedding` column for semantic search
+- Add document extraction pipeline (PDF via `pdf-parse`, image OCR via `Tesseract.js`) feeding into `AssistantSearchDocument`
 
 Potential future entities:
 - `TaskActivityEvent` (optional, if reporting granularity requires event-level history)
@@ -491,6 +544,7 @@ Potential future entities:
 Current extension points to preserve:
 - task route module boundaries in `backend/src/routes/`
 - store/service boundaries in `backend/src/tasks/`, `backend/src/day-affirmation/`, `backend/src/day-bilan/`, `backend/src/assistant/`, and `backend/src/gaming-track/`
+- `AssistantSearchDocument` as the canonical search index — all new text-bearing domains must write to it on create/update/delete
 - feature-first frontend folders under `frontend/src/features/`
 - explicit task API contract as the integration backbone
 

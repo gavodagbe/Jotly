@@ -195,6 +195,33 @@ type DayBilanMutationInput = {
   tomorrowTop3: string | null;
 };
 
+type Note = {
+  id: string;
+  title: string | null;
+  body: string;
+  color: string | null;
+  targetDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type NoteAttachment = {
+  id: string;
+  noteId: string;
+  name: string;
+  url: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+};
+
+type NoteFormValues = {
+  title: string;
+  body: string;
+  color: string;
+  targetDate: string;
+};
+
 type Reminder = {
   id: string;
   title: string;
@@ -470,7 +497,9 @@ type SearchSourceType =
   | "reminder"
   | "calendarEvent"
   | "calendarNote"
-  | "attachment";
+  | "attachment"
+  | "note"
+  | "noteAttachment";
 
 type SearchResult = {
   sourceType: SearchSourceType;
@@ -497,7 +526,7 @@ type GlobalSearchState = {
 };
 
 type ApiErrorPayload = { error?: { message?: string } } | null;
-type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders";
+type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders" | "notes";
 type DashboardLayoutConfig = {
   order: DashboardBlockId[];
   collapsed: Record<DashboardBlockId, boolean>;
@@ -532,6 +561,7 @@ const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "dailyControls",
   "affirmation",
   "reminders",
+  "notes",
   "board",
   "bilan",
 ];
@@ -541,6 +571,7 @@ const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
   dailyControls: false,
   affirmation: true,
   reminders: false,
+  notes: false,
   board: false,
   bilan: true,
 };
@@ -810,6 +841,10 @@ function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale
 
   if (blockId === "reminders") {
     return isFrench ? "Rappels" : "Reminders";
+  }
+
+  if (blockId === "notes") {
+    return isFrench ? "Notes" : "Notes";
   }
 
   if (blockId === "board") {
@@ -2939,6 +2974,142 @@ async function loadPendingReminders(
   return payload?.data ?? [];
 }
 
+async function loadNotes(token: string, signal?: AbortSignal): Promise<Note[]> {
+  const response = await fetch("/backend-api/notes", {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Note[]; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load notes"));
+  }
+
+  return payload?.data ?? [];
+}
+
+async function createNoteApi(
+  input: { title?: string | null; body: string; color?: string | null; targetDate?: string | null },
+  token: string
+): Promise<Note> {
+  const response = await fetch("/backend-api/notes", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Note; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create note"));
+  }
+
+  if (!payload?.data) throw new Error("Unable to create note");
+  return payload.data;
+}
+
+async function updateNoteApi(
+  id: string,
+  input: { title?: string | null; body?: string; color?: string | null; targetDate?: string | null },
+  token: string
+): Promise<Note> {
+  const response = await fetch(`/backend-api/notes/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Note; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update note"));
+  }
+
+  if (!payload?.data) throw new Error("Unable to update note");
+  return payload.data;
+}
+
+async function deleteNoteApi(id: string, token: string): Promise<void> {
+  const response = await fetch(`/backend-api/notes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: createAuthHeaders(token, false),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete note"));
+  }
+}
+
+async function loadNoteAttachments(noteId: string, token: string): Promise<NoteAttachment[]> {
+  const response = await fetch(`/backend-api/notes/${encodeURIComponent(noteId)}/attachments`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: NoteAttachment[]; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load attachments"));
+  }
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function createNoteAttachmentApi(
+  noteId: string,
+  input: { name: string; file: File },
+  token: string
+): Promise<NoteAttachment> {
+  const fileDataUrl = await readFileAsDataUrl(input.file);
+  const response = await fetch(`/backend-api/notes/${encodeURIComponent(noteId)}/attachments`, {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      name: input.name,
+      url: fileDataUrl,
+      contentType: input.file.type || null,
+      sizeBytes: input.file.size,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: NoteAttachment; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create attachment"));
+  }
+  if (!payload?.data) throw new Error("Unable to create attachment.");
+  return payload.data;
+}
+
+async function deleteNoteAttachmentApi(
+  noteId: string,
+  attachmentId: string,
+  token: string
+): Promise<void> {
+  const response = await fetch(
+    `/backend-api/notes/${encodeURIComponent(noteId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    { method: "DELETE", headers: createAuthHeaders(token, false) }
+  );
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete attachment"));
+  }
+}
+
 async function createReminderApi(
   input: { title: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt: string },
   token: string
@@ -3245,6 +3416,8 @@ const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> =
   calendarEvent: { fr: "Calendrier", en: "Calendar" },
   calendarNote: { fr: "Notes agenda", en: "Calendar Notes" },
   attachment: { fr: "Pièces jointes", en: "Attachments" },
+  note: { fr: "Notes", en: "Notes" },
+  noteAttachment: { fr: "Docs de notes", en: "Note Documents" },
 };
 
 const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
@@ -3256,6 +3429,8 @@ const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
   "calendarEvent",
   "calendarNote",
   "attachment",
+  "note",
+  "noteAttachment",
 ];
 
 function SearchResultCard({
@@ -3279,6 +3454,8 @@ function SearchResultCard({
     calendarEvent: "bg-purple-50 text-purple-600",
     calendarNote: "bg-violet-50 text-violet-600",
     attachment: "bg-slate-50 text-slate-600",
+    note: "bg-teal-50 text-teal-600",
+    noteAttachment: "bg-cyan-50 text-cyan-600",
   };
 
   return (
@@ -4451,6 +4628,21 @@ export function AppShell() {
   const [reminderErrorMessage, setReminderErrorMessage] = useState<string | null>(null);
   const [isSubmittingReminder, setIsSubmittingReminder] = useState(false);
   const [pendingReminders, setPendingReminders] = useState<Reminder[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [noteDialogMode, setNoteDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteFormValues, setNoteFormValues] = useState<NoteFormValues>({ title: "", body: "", color: "", targetDate: "" });
+  const [noteErrorMessage, setNoteErrorMessage] = useState<string | null>(null);
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+  const [noteAttachments, setNoteAttachments] = useState<Record<string, NoteAttachment[]>>({});
+  const [noteAttachmentNameDraft, setNoteAttachmentNameDraft] = useState("");
+  const [noteAttachmentFileDraft, setNoteAttachmentFileDraft] = useState<File | null>(null);
+  const noteAttachmentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [noteAttachmentErrorMessage, setNoteAttachmentErrorMessage] = useState<string | null>(null);
+  const [isCreatingNoteAttachment, setIsCreatingNoteAttachment] = useState(false);
+  const [pendingNoteAttachmentIds, setPendingNoteAttachmentIds] = useState<string[]>([]);
   const [gamingTrackPeriod, setGamingTrackPeriod] = useState<GamingTrackPeriod>("week");
   const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
@@ -5902,6 +6094,156 @@ export function AppShell() {
     }
   }
 
+  function openCreateNoteDialog() {
+    setNoteDialogMode("create");
+    setEditingNoteId(null);
+    setNoteFormValues({ title: "", body: "", color: "", targetDate: "" });
+    setNoteErrorMessage(null);
+  }
+
+  function openEditNoteDialog(note: Note) {
+    setNoteDialogMode("edit");
+    setEditingNoteId(note.id);
+    setNoteFormValues({
+      title: note.title ?? "",
+      body: note.body,
+      color: note.color ?? "",
+      targetDate: note.targetDate ?? "",
+    });
+    setNoteErrorMessage(null);
+  }
+
+  function closeNoteDialog() {
+    setNoteDialogMode(null);
+    setEditingNoteId(null);
+    setNoteErrorMessage(null);
+  }
+
+  async function handleSubmitNote() {
+    if (!authToken) return;
+    if (!noteFormValues.body.trim()) {
+      setNoteErrorMessage(isFrench ? "Le contenu de la note est requis." : "Note body is required.");
+      return;
+    }
+
+    setIsSubmittingNote(true);
+    setNoteErrorMessage(null);
+
+    const payload = {
+      title: noteFormValues.title.trim() || null,
+      body: noteFormValues.body,
+      color: noteFormValues.color.trim() || null,
+      targetDate: noteFormValues.targetDate.trim() || null,
+    };
+
+    try {
+      if (noteDialogMode === "edit" && editingNoteId) {
+        const updated = await updateNoteApi(editingNoteId, payload, authToken);
+        setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+      } else {
+        const created = await createNoteApi(payload, authToken);
+        setNotes((prev) => [created, ...prev]);
+      }
+      closeNoteDialog();
+    } catch (error) {
+      setNoteErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer la note."
+          : "Unable to save note."
+      );
+    } finally {
+      setIsSubmittingNote(false);
+    }
+  }
+
+  async function handleDeleteNote(id: string) {
+    if (!authToken) return;
+    try {
+      await deleteNoteApi(id, authToken);
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      if (expandedNoteId === id) setExpandedNoteId(null);
+    } catch {
+      // silent
+    }
+  }
+
+  async function handleExpandNote(noteId: string) {
+    if (expandedNoteId === noteId) {
+      setExpandedNoteId(null);
+      return;
+    }
+    setExpandedNoteId(noteId);
+    if (!authToken || noteAttachments[noteId]) return;
+    try {
+      const attachments = await loadNoteAttachments(noteId, authToken);
+      setNoteAttachments((prev) => ({ ...prev, [noteId]: attachments }));
+    } catch {
+      setNoteAttachments((prev) => ({ ...prev, [noteId]: [] }));
+    }
+  }
+
+  async function handleCreateNoteAttachment(noteId: string) {
+    if (!authToken || isCreatingNoteAttachment) return;
+    const file = noteAttachmentFileDraft;
+    const name = noteAttachmentNameDraft.trim() || file?.name?.trim() || "";
+
+    if (!name) {
+      setNoteAttachmentErrorMessage(isFrench ? "Le nom de la piece jointe est requis." : "Attachment name is required.");
+      return;
+    }
+    if (!file) {
+      setNoteAttachmentErrorMessage(isFrench ? "Selectionnez un fichier a televerser." : "Select a file to upload.");
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      setNoteAttachmentErrorMessage(
+        isFrench
+          ? `La piece jointe depasse la limite de ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)}.`
+          : `Attachment exceeds ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} limit.`
+      );
+      return;
+    }
+
+    setNoteAttachmentErrorMessage(null);
+    setIsCreatingNoteAttachment(true);
+    try {
+      const attachment = await createNoteAttachmentApi(noteId, { name, file }, authToken);
+      setNoteAttachments((prev) => ({
+        ...prev,
+        [noteId]: [...(prev[noteId] ?? []), attachment],
+      }));
+      setNoteAttachmentNameDraft("");
+      setNoteAttachmentFileDraft(null);
+      if (noteAttachmentFileInputRef.current) noteAttachmentFileInputRef.current.value = "";
+    } catch (error) {
+      setNoteAttachmentErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench ? "Impossible de creer la piece jointe." : "Unable to create attachment."
+      );
+    } finally {
+      setIsCreatingNoteAttachment(false);
+    }
+  }
+
+  async function handleDeleteNoteAttachment(noteId: string, attachmentId: string) {
+    if (!authToken) return;
+    setPendingNoteAttachmentIds((prev) => [...prev, attachmentId]);
+    try {
+      await deleteNoteAttachmentApi(noteId, attachmentId, authToken);
+      setNoteAttachments((prev) => ({
+        ...prev,
+        [noteId]: (prev[noteId] ?? []).filter((a) => a.id !== attachmentId),
+      }));
+    } catch {
+      // silent
+    } finally {
+      setPendingNoteAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
+    }
+  }
+
   async function handleDismissReminder(id: string) {
     if (!authToken) return;
     try {
@@ -6786,6 +7128,32 @@ export function AppShell() {
     return () => controller.abort();
   }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
 
+  // Fetch notes
+  useEffect(() => {
+    if (!isAuthReady) return;
+    if (!authToken || !authUser) {
+      setNotes([]);
+      setIsLoadingNotes(false);
+      return;
+    }
+
+    setIsLoadingNotes(true);
+    const controller = new AbortController();
+
+    loadNotes(authToken, controller.signal)
+      .then((nextNotes) => {
+        if (!controller.signal.aborted) setNotes(nextNotes);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setNotes([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingNotes(false);
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady]);
+
   // Poll for pending reminders every 30s
   useEffect(() => {
     if (!isAuthReady || !authToken || !authUser) {
@@ -7343,6 +7711,17 @@ export function AppShell() {
           setExpandedCalendarEventId(calendarEventId);
         }
         setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "note": {
+        setExpandedNoteId(result.sourceId);
+        setTimeout(() => document.getElementById("notes")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "noteAttachment": {
+        const noteId = meta?.noteId as string | undefined;
+        if (noteId) setExpandedNoteId(noteId);
+        setTimeout(() => document.getElementById("notes")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
     }
@@ -8639,6 +9018,306 @@ export function AppShell() {
                 {reminderErrorMessage}
               </p>
             ) : null}
+          </>
+        )}
+      </section>
+
+      {/* Notes section */}
+      <section
+        id="notes"
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getDashboardDropClassName("notes")}`}
+        style={{ order: getDashboardBlockVisualOrder("notes"), animationDelay: "0.19s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("notes", event)}
+        onDrop={(event) => handleDashboardBlockDrop("notes", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Notes" : "Notes"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench ? "Vos notes libres." : "Your standalone notes."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90"
+              onClick={openCreateNoteDialog}
+            >
+              {isFrench ? "+ Nouvelle note" : "+ New note"}
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("notes", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("notes")}
+              title={getDashboardDragHandleLabel("notes")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("notes")}
+              aria-expanded={!dashboardBlockCollapsed.notes}
+              aria-label={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
+              title={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.notes} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.notes ? (
+          <p className="mt-3 text-xs text-muted">
+            {collapsedHintLabel}{" "}
+            {notes.length === 0
+              ? isFrench ? "Aucune note." : "No notes."
+              : isFrench ? `${notes.length} note(s).` : `${notes.length} note(s).`}
+          </p>
+        ) : (
+          <>
+            {/* Create / Edit note dialog */}
+            {noteDialogMode !== null ? (
+              <div className="mt-4 rounded-xl border border-line bg-white/80 p-4">
+                <p className="mb-3 text-sm font-semibold text-foreground">
+                  {noteDialogMode === "create"
+                    ? isFrench ? "Nouvelle note" : "New note"
+                    : isFrench ? "Modifier la note" : "Edit note"}
+                </p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">
+                      {isFrench ? "Titre (facultatif)" : "Title (optional)"}
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                      placeholder={isFrench ? "Titre..." : "Title..."}
+                      value={noteFormValues.title}
+                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, title: e.target.value }))}
+                      maxLength={300}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">
+                      {isFrench ? "Contenu" : "Body"}
+                    </label>
+                    <textarea
+                      rows={5}
+                      className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent resize-y"
+                      placeholder={isFrench ? "Écrivez votre note..." : "Write your note..."}
+                      value={noteFormValues.body}
+                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, body: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">
+                      {isFrench ? "Date cible (facultatif)" : "Target date (optional)"}
+                    </label>
+                    <input
+                      type="date"
+                      className="rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                      value={noteFormValues.targetDate}
+                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, targetDate: e.target.value }))}
+                    />
+                  </div>
+                  {noteErrorMessage ? (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      {noteErrorMessage}
+                    </p>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                      disabled={isSubmittingNote}
+                      onClick={() => { void handleSubmitNote(); }}
+                    >
+                      {isSubmittingNote
+                        ? isFrench ? "Enregistrement..." : "Saving..."
+                        : isFrench ? "Enregistrer" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-line px-4 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                      onClick={closeNoteDialog}
+                    >
+                      {isFrench ? "Annuler" : "Cancel"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {isLoadingNotes ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Chargement..." : "Loading..."}
+              </p>
+            ) : notes.length === 0 && noteDialogMode === null ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Aucune note. Créez votre première note." : "No notes yet. Create your first note."}
+              </p>
+            ) : (
+              <ul className="mt-4 flex flex-col gap-2">
+                {notes.map((note) => {
+                  const isExpanded = expandedNoteId === note.id;
+                  const attachmentsForNote = noteAttachments[note.id] ?? [];
+
+                  return (
+                    <li
+                      key={note.id}
+                      className="rounded-lg border border-line bg-white/60"
+                    >
+                      {/* Note header row */}
+                      <div className="flex items-start justify-between gap-3 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          {note.title ? (
+                            <p className="truncate text-sm font-medium text-foreground">{note.title}</p>
+                          ) : null}
+                          <p className="mt-0.5 text-sm text-foreground whitespace-pre-wrap break-words line-clamp-3">
+                            {note.body}
+                          </p>
+                          {note.targetDate ? (
+                            <p className="mt-1 text-xs text-muted">{note.targetDate}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                            onClick={() => { void handleExpandNote(note.id); }}
+                            title={isExpanded
+                              ? (isFrench ? "Masquer les documents" : "Hide documents")
+                              : (isFrench ? "Documents" : "Documents")}
+                          >
+                            📎{noteAttachments[note.id] ? ` ${attachmentsForNote.length}` : ""}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                            onClick={() => openEditNoteDialog(note)}
+                          >
+                            {isFrench ? "Modifier" : "Edit"}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50"
+                            onClick={() => { void handleDeleteNote(note.id); }}
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Attachments panel */}
+                      {isExpanded ? (
+                        <div className="border-t border-line px-3 pb-3 pt-2">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                            {isFrench ? "Documents" : "Documents"} ({attachmentsForNote.length})
+                          </p>
+
+                          {/* Attachment list */}
+                          {attachmentsForNote.length > 0 ? (
+                            <ul className="mb-3 flex flex-col gap-1.5">
+                              {attachmentsForNote.map((attachment) => (
+                                <li
+                                  key={attachment.id}
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                    <a
+                                      href={attachment.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                      download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                    >
+                                      {isDataUrl(attachment.url)
+                                        ? isFrench ? "Ouvrir le fichier" : "Open file"
+                                        : attachment.url}
+                                    </a>
+                                    {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                      <p className="mt-0.5 text-[11px] text-muted">
+                                        {[
+                                          attachment.contentType ?? null,
+                                          typeof attachment.sizeBytes === "number"
+                                            ? formatFileSize(attachment.sizeBytes)
+                                            : null,
+                                        ]
+                                          .filter((v): v is string => Boolean(v))
+                                          .join(" · ")}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                                    disabled={pendingNoteAttachmentIds.includes(attachment.id)}
+                                    onClick={() => { void handleDeleteNoteAttachment(note.id, attachment.id); }}
+                                    aria-label={isFrench ? "Supprimer" : "Delete"}
+                                  >
+                                    {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                              {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                            </p>
+                          )}
+
+                          {/* Upload form */}
+                          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                            <label className="block text-xs font-medium text-muted">
+                              {isFrench ? "Nom" : "Name"}
+                              <input
+                                type="text"
+                                value={noteAttachmentNameDraft}
+                                onChange={(e) => setNoteAttachmentNameDraft(e.target.value)}
+                                className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                placeholder={isFrench ? "Nom du fichier" : "File name"}
+                                disabled={isCreatingNoteAttachment}
+                              />
+                            </label>
+                            <label className="block text-xs font-medium text-muted">
+                              {isFrench ? "Fichier" : "File"}
+                              <input
+                                ref={noteAttachmentFileInputRef}
+                                type="file"
+                                onChange={(e) => setNoteAttachmentFileDraft(e.target.files?.[0] ?? null)}
+                                className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                disabled={isCreatingNoteAttachment}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                              disabled={isCreatingNoteAttachment}
+                              onClick={() => { void handleCreateNoteAttachment(note.id); }}
+                            >
+                              {isCreatingNoteAttachment
+                                ? isFrench ? "Envoi..." : "Uploading..."
+                                : isFrench ? "Ajouter" : "Add"}
+                            </button>
+                          </div>
+                          {noteAttachmentErrorMessage ? (
+                            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                              {noteAttachmentErrorMessage}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </>
         )}
       </section>

@@ -45,6 +45,7 @@ model User {
   googleCalendarConnections GoogleCalendarConnection[]
   calendarEvents CalendarEvent[]
   reminders    Reminder[]
+  notes        Note[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -307,6 +308,38 @@ model Reminder {
 
   @@index([userId, remindAt])
   @@index([userId, isFired, isDismissed])
+}
+
+model Note {
+  id          String           @id @default(cuid())
+  userId      String
+  title       String?
+  body        String
+  color       String?
+  targetDate  DateTime?        @db.Date
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments NoteAttachment[]
+
+  @@index([userId])
+  @@index([userId, targetDate])
+  @@index([userId, createdAt])
+}
+
+model NoteAttachment {
+  id          String   @id @default(cuid())
+  noteId      String
+  userId      String
+  name        String
+  url         String
+  contentType String?
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
+  note        Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt])
+  @@index([userId])
 }
 
 model AssistantSearchDocument {

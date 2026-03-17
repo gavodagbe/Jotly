@@ -22,7 +22,11 @@ import {
 import {
   createAssistantSearchSyncService,
   AssistantSearchSyncService,
+  SearchIndexPlugin,
 } from "./assistant/assistant-search-sync";
+import { createTaskSearchPlugin } from "./tasks/task-search-plugin";
+import { createAssistantContextSearchPlugin } from "./assistant/assistant-context-search-plugin";
+import { createNoteSearchPlugin } from "./notes/note-search-plugin";
 import {
   createAssistantService,
   AssistantService,
@@ -46,6 +50,7 @@ import dayBilanRoutes from "./routes/day-bilan";
 import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
+import noteRoutes from "./routes/notes";
 import reminderRoutes from "./routes/reminders";
 import searchRoutes from "./routes/search";
 import tasksRoutes from "./routes/tasks";
@@ -76,6 +81,8 @@ import {
   GoogleCalendarSyncService,
 } from "./google-calendar/google-calendar-sync-service";
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
+import { createPrismaNoteAttachmentStore, NoteAttachmentStore } from "./notes/note-attachment-store";
+import { createPrismaNoteStore, NoteStore } from "./notes/note-store";
 import { createPrismaReminderStore, ReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
 
@@ -90,6 +97,8 @@ export type BuildAppOptions = {
   dayBilanStore?: DayBilanStore;
   gamingTrackStore?: GamingTrackStore;
   gamingTrackService?: GamingTrackService;
+  noteStore?: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
   reminderStore?: ReminderStore;
   profileStore?: ProfileStore;
   assistantContextStore?: AssistantContextStore;
@@ -119,6 +128,40 @@ export type BuildAppOptions = {
 
 const APP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
+function buildSearchPlugins(options: {
+  taskStore: TaskStore;
+  commentStore?: CommentStore;
+  attachmentStore?: AttachmentStore;
+  assistantContextStore?: AssistantContextStore;
+  noteStore?: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
+}): SearchIndexPlugin[] {
+  const plugins: SearchIndexPlugin[] = [];
+
+  plugins.push(
+    createTaskSearchPlugin({
+      taskStore: options.taskStore,
+      commentStore: options.commentStore,
+      attachmentStore: options.attachmentStore,
+    })
+  );
+
+  if (options.assistantContextStore) {
+    plugins.push(createAssistantContextSearchPlugin(options.assistantContextStore));
+  }
+
+  if (options.noteStore) {
+    plugins.push(
+      createNoteSearchPlugin({
+        noteStore: options.noteStore,
+        noteAttachmentStore: options.noteAttachmentStore,
+      })
+    );
+  }
+
+  return plugins;
+}
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     bodyLimit: APP_BODY_LIMIT_BYTES,
@@ -144,6 +187,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const dayBilanStore =
     options.dayBilanStore ??
     (options.taskStore ? undefined : createPrismaDayBilanStore());
+  const noteStore =
+    options.noteStore ??
+    (options.taskStore ? undefined : createPrismaNoteStore());
+  const noteAttachmentStore =
+    options.noteAttachmentStore ??
+    (options.taskStore ? undefined : createPrismaNoteAttachmentStore());
   const reminderStore =
     options.reminderStore ??
     (options.taskStore ? undefined : createPrismaReminderStore());
@@ -176,10 +225,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     options.assistantSearchSyncService ??
     (assistantSearchDocumentStore
       ? createAssistantSearchSyncService({
-          taskStore,
-          commentStore,
-          attachmentStore,
-          assistantContextStore,
+          plugins: buildSearchPlugins({
+            taskStore,
+            commentStore,
+            attachmentStore,
+            assistantContextStore,
+            noteStore,
+            noteAttachmentStore,
+          }),
           searchDocumentStore: assistantSearchDocumentStore,
           documentExtractor: assistantDocumentExtractor,
           embeddingClient: assistantEmbeddingClient,
@@ -285,6 +338,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (dayBilanStore) {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
+  if (noteStore) {
+    app.register(noteRoutes, { noteStore, noteAttachmentStore, authService, assistantSearchSyncService });
+  }
   if (reminderStore) {
     app.register(reminderRoutes, { reminderStore, authService });
   }
@@ -386,6 +442,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (gamingTrackStore?.close) {
       await gamingTrackStore.close();
+    }
+
+    if (noteStore?.close) {
+      await noteStore.close();
+    }
+
+    if (noteAttachmentStore?.close) {
+      await noteAttachmentStore.close();
     }
 
     if (reminderStore?.close) {
