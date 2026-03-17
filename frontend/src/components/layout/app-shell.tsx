@@ -225,6 +225,16 @@ type NoteAttachment = {
   createdAt: string;
 };
 
+type ReminderAttachment = {
+  id: string;
+  reminderId: string;
+  name: string;
+  url: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+};
+
 type NoteFormValues = {
   title: string;
   body: string;
@@ -581,7 +591,7 @@ const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
   dailyControls: false,
   affirmation: true,
   reminders: false,
-  notes: false,
+  notes: true,
   board: false,
   bilan: true,
 };
@@ -3231,6 +3241,64 @@ async function updateReminderApi(
   return payload.data;
 }
 
+async function loadReminderAttachments(reminderId: string, token: string): Promise<ReminderAttachment[]> {
+  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(reminderId)}/attachments`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: ReminderAttachment[]; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load attachments"));
+  }
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function createReminderAttachmentApi(
+  reminderId: string,
+  input: { name: string; file: File },
+  token: string
+): Promise<ReminderAttachment> {
+  const fileDataUrl = await readFileAsDataUrl(input.file);
+  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(reminderId)}/attachments`, {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      name: input.name,
+      url: fileDataUrl,
+      contentType: input.file.type || null,
+      sizeBytes: input.file.size,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: ReminderAttachment; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create attachment"));
+  }
+  if (!payload?.data) throw new Error("Unable to create attachment.");
+  return payload.data;
+}
+
+async function deleteReminderAttachmentApi(
+  reminderId: string,
+  attachmentId: string,
+  token: string
+): Promise<void> {
+  const response = await fetch(
+    `/backend-api/reminders/${encodeURIComponent(reminderId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    { method: "DELETE", headers: createAuthHeaders(token, false) }
+  );
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete attachment"));
+  }
+}
+
 async function deleteReminderApi(id: string, token: string): Promise<void> {
   const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -4724,6 +4792,14 @@ export function AppShell() {
   const [noteAttachmentErrorMessage, setNoteAttachmentErrorMessage] = useState<string | null>(null);
   const [isCreatingNoteAttachment, setIsCreatingNoteAttachment] = useState(false);
   const [pendingNoteAttachmentIds, setPendingNoteAttachmentIds] = useState<string[]>([]);
+
+  const [reminderAttachments, setReminderAttachments] = useState<Record<string, ReminderAttachment[]>>({});
+  const [reminderAttachmentNameDraft, setReminderAttachmentNameDraft] = useState("");
+  const [reminderAttachmentFileDraft, setReminderAttachmentFileDraft] = useState<File | null>(null);
+  const reminderAttachmentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [reminderAttachmentErrorMessage, setReminderAttachmentErrorMessage] = useState<string | null>(null);
+  const [isCreatingReminderAttachment, setIsCreatingReminderAttachment] = useState(false);
+  const [pendingReminderAttachmentIds, setPendingReminderAttachmentIds] = useState<string[]>([]);
   const [gamingTrackPeriod, setGamingTrackPeriod] = useState<GamingTrackPeriod>("week");
   const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
@@ -6172,12 +6248,24 @@ export function AppShell() {
       remindAt: remindAtLocal,
     });
     setReminderErrorMessage(null);
+    // Load attachments for this reminder if not already loaded
+    if (authToken && !reminderAttachments[reminder.id]) {
+      void loadReminderAttachments(reminder.id, authToken).then((attachments) => {
+        setReminderAttachments((prev) => ({ ...prev, [reminder.id]: attachments }));
+      }).catch(() => {
+        setReminderAttachments((prev) => ({ ...prev, [reminder.id]: [] }));
+      });
+    }
   }
 
   function closeReminderDialog() {
     setReminderDialogMode(null);
     setEditingReminderId(null);
     setReminderErrorMessage(null);
+    setReminderAttachmentNameDraft("");
+    setReminderAttachmentFileDraft(null);
+    if (reminderAttachmentFileInputRef.current) reminderAttachmentFileInputRef.current.value = "";
+    setReminderAttachmentErrorMessage(null);
   }
 
   async function handleReminderFormSubmit(event: React.FormEvent) {
@@ -6213,6 +6301,8 @@ export function AppShell() {
           authToken
         );
         setReminders((prev) => [...prev, created].sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()));
+        openEditReminderDialog(created);
+        return;
       }
       closeReminderDialog();
     } catch (error) {
@@ -6295,7 +6385,8 @@ export function AppShell() {
       } else {
         const created = await createNoteApi(payload, authToken);
         setNotes((prev) => [created, ...prev]);
-        void handleExpandNote(created.id);
+        openEditNoteDialog(created);
+        return;
       }
       closeNoteDialog();
     } catch (error) {
@@ -6394,6 +6485,66 @@ export function AppShell() {
       // silent
     } finally {
       setPendingNoteAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
+    }
+  }
+
+  async function handleCreateReminderAttachment(reminderId: string) {
+    if (!authToken || isCreatingReminderAttachment) return;
+    const file = reminderAttachmentFileDraft;
+    const name = reminderAttachmentNameDraft.trim() || file?.name?.trim() || "";
+
+    if (!name) {
+      setReminderAttachmentErrorMessage(isFrench ? "Le nom de la piece jointe est requis." : "Attachment name is required.");
+      return;
+    }
+    if (!file) {
+      setReminderAttachmentErrorMessage(isFrench ? "Selectionnez un fichier a televerser." : "Select a file to upload.");
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      setReminderAttachmentErrorMessage(
+        isFrench
+          ? `La piece jointe depasse la limite de ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)}.`
+          : `Attachment exceeds ${formatFileSize(MAX_ATTACHMENT_UPLOAD_BYTES)} limit.`
+      );
+      return;
+    }
+
+    setReminderAttachmentErrorMessage(null);
+    setIsCreatingReminderAttachment(true);
+    try {
+      const attachment = await createReminderAttachmentApi(reminderId, { name, file }, authToken);
+      setReminderAttachments((prev) => ({
+        ...prev,
+        [reminderId]: [...(prev[reminderId] ?? []), attachment],
+      }));
+      setReminderAttachmentNameDraft("");
+      setReminderAttachmentFileDraft(null);
+      if (reminderAttachmentFileInputRef.current) reminderAttachmentFileInputRef.current.value = "";
+    } catch (error) {
+      setReminderAttachmentErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench ? "Impossible de creer la piece jointe." : "Unable to create attachment."
+      );
+    } finally {
+      setIsCreatingReminderAttachment(false);
+    }
+  }
+
+  async function handleDeleteReminderAttachment(reminderId: string, attachmentId: string) {
+    if (!authToken) return;
+    setPendingReminderAttachmentIds((prev) => [...prev, attachmentId]);
+    try {
+      await deleteReminderAttachmentApi(reminderId, attachmentId, authToken);
+      setReminderAttachments((prev) => ({
+        ...prev,
+        [reminderId]: (prev[reminderId] ?? []).filter((a) => a.id !== attachmentId),
+      }));
+    } catch {
+      // silent
+    } finally {
+      setPendingReminderAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
     }
   }
 
@@ -6942,10 +7093,18 @@ export function AppShell() {
         }
       }
 
-      setTaskDialogMode(null);
-      setEditingTaskId(null);
-      setTaskFormErrorMessage(null);
-      resetTaskDetailsState();
+      if (taskDialogMode === "create") {
+        setTaskDialogMode("edit");
+        setEditingTaskId(savedTask.id);
+        setTaskFormValues(getTaskFormValues(savedTask));
+        setTaskFormErrorMessage(null);
+        resetTaskDetailsState();
+      } else {
+        setTaskDialogMode(null);
+        setEditingTaskId(null);
+        setTaskFormErrorMessage(null);
+        resetTaskDetailsState();
+      }
     } catch (error) {
       setTaskFormErrorMessage(
         error instanceof Error
@@ -10910,6 +11069,86 @@ export function AppShell() {
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   {reminderErrorMessage}
                 </p>
+              ) : null}
+
+              {/* Attachment section — visible when editing an existing reminder */}
+              {reminderDialogMode === "edit" && editingReminderId ? (
+                <div className="border-t border-line pt-4">
+                  <p className="mb-2 text-sm font-semibold text-foreground">
+                    {isFrench ? "Documents" : "Documents"} ({(reminderAttachments[editingReminderId] ?? []).length})
+                  </p>
+                  {(reminderAttachments[editingReminderId] ?? []).length > 0 ? (
+                    <ul className="mb-3 flex flex-col gap-1.5">
+                      {(reminderAttachments[editingReminderId] ?? []).map((attachment) => (
+                        <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                            <a
+                              href={attachment.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                              download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                            >
+                              {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
+                            </a>
+                            {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                              <p className="mt-0.5 text-[11px] text-muted">
+                                {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((v): v is string => Boolean(v)).join(" · ")}
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                            disabled={pendingReminderAttachmentIds.includes(attachment.id)}
+                            onClick={() => { void handleDeleteReminderAttachment(editingReminderId, attachment.id); }}
+                          >
+                            {pendingReminderAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                      {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                    </p>
+                  )}
+                  {reminderAttachmentErrorMessage ? (
+                    <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{reminderAttachmentErrorMessage}</p>
+                  ) : null}
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                    <label className="block text-xs font-medium text-muted">
+                      {isFrench ? "Nom" : "Name"}
+                      <input
+                        type="text"
+                        value={reminderAttachmentNameDraft}
+                        onChange={(e) => setReminderAttachmentNameDraft(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                        placeholder={isFrench ? "Nom du fichier" : "File name"}
+                        disabled={isCreatingReminderAttachment}
+                      />
+                    </label>
+                    <label className="block text-xs font-medium text-muted">
+                      {isFrench ? "Fichier" : "File"}
+                      <input
+                        ref={reminderAttachmentFileInputRef}
+                        type="file"
+                        onChange={(e) => setReminderAttachmentFileDraft(e.target.files?.[0] ?? null)}
+                        className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                        disabled={isCreatingReminderAttachment}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                      disabled={isCreatingReminderAttachment}
+                      onClick={() => { void handleCreateReminderAttachment(editingReminderId); }}
+                    >
+                      {isCreatingReminderAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
+                    </button>
+                  </div>
+                </div>
               ) : null}
 
             </div>
