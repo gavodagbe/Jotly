@@ -87,6 +87,7 @@ import {
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
 import { createPrismaNoteAttachmentStore, NoteAttachmentStore } from "./notes/note-attachment-store";
 import { createPrismaNoteStore, NoteStore } from "./notes/note-store";
+import { createPrismaReminderAttachmentStore, ReminderAttachmentStore } from "./reminders/reminder-attachment-store";
 import { createPrismaReminderStore, ReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
 
@@ -104,6 +105,7 @@ export type BuildAppOptions = {
   noteStore?: NoteStore;
   noteAttachmentStore?: NoteAttachmentStore;
   reminderStore?: ReminderStore;
+  reminderAttachmentStore?: ReminderAttachmentStore;
   profileStore?: ProfileStore;
   assistantContextStore?: AssistantContextStore;
   assistantSearchDocumentStore?: AssistantSearchDocumentStore;
@@ -201,6 +203,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const reminderStore =
     options.reminderStore ??
     (options.taskStore ? undefined : createPrismaReminderStore());
+  const reminderAttachmentStore =
+    options.reminderAttachmentStore ??
+    (options.taskStore ? undefined : createPrismaReminderAttachmentStore());
   const gamingTrackStore =
     options.gamingTrackStore ??
     (options.taskStore ? undefined : createPrismaGamingTrackStore());
@@ -350,7 +355,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.register(noteRoutes, { noteStore, noteAttachmentStore, authService, assistantSearchSyncService });
   }
   if (reminderStore) {
-    app.register(reminderRoutes, { reminderStore, authService });
+    app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService });
   }
   if (gamingTrackService) {
     app.register(gamingTrackRoutes, { gamingTrackService, authService });
@@ -463,6 +468,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (reminderStore?.close) {
       await reminderStore.close();
+    }
+
+    if (reminderAttachmentStore?.close) {
+      await reminderAttachmentStore.close();
     }
 
     if (profileStore?.close) {
