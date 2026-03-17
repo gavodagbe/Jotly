@@ -286,7 +286,23 @@ model CalendarEventNote {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   calendarEvent   CalendarEvent @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
+  attachments     CalendarEventNoteAttachment[]
 
+  @@index([userId])
+}
+
+model CalendarEventNoteAttachment {
+  id                  String            @id @default(cuid())
+  calendarEventNoteId String
+  userId              String
+  name                String
+  url                 String
+  contentType         String?
+  sizeBytes           Int?
+  createdAt           DateTime          @default(now())
+  calendarEventNote   CalendarEventNote @relation(fields: [calendarEventNoteId], references: [id], onDelete: Cascade)
+
+  @@index([calendarEventNoteId])
   @@index([userId])
 }
 

@@ -1,9 +1,10 @@
 import { FastifyPluginAsync } from "fastify";
-import { CalendarEventNote, Task } from "@prisma/client";
+import { CalendarEventNote, CalendarEventNoteAttachment, Task } from "@prisma/client";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
 import { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { CalendarEventNoteStore } from "../google-calendar/calendar-event-note-store";
+import { CalendarEventNoteAttachmentStore } from "../google-calendar/calendar-event-note-attachment-store";
 import { GoogleCalendarSyncService } from "../google-calendar/google-calendar-sync-service";
 import { parseDateOnly, formatDateOnly, TaskStore } from "../tasks/task-store";
 import {
@@ -11,10 +12,13 @@ import {
   sendError,
 } from "./route-helpers";
 
+const MAX_CALENDAR_NOTE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
 type GoogleCalendarEventsRoutesOptions = {
   authService: AuthService;
   calendarEventStore: CalendarEventStore;
   calendarEventNoteStore?: CalendarEventNoteStore;
+  calendarEventNoteAttachmentStore?: CalendarEventNoteAttachmentStore;
   taskStore: TaskStore;
   googleCalendarSyncService: GoogleCalendarSyncService;
 };
@@ -138,6 +142,7 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     authService,
     calendarEventStore,
     calendarEventNoteStore,
+    calendarEventNoteAttachmentStore,
     taskStore,
     googleCalendarSyncService,
   } = options;
@@ -378,6 +383,146 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to delete calendar event note");
     }
   });
+
+  // GET /api/google-calendar/events/:id/note/attachments
+  app.get("/api/google-calendar/events/:id/note/attachments", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const paramsResult = calendarEventIdParamsSchema.safeParse(request.params);
+    if (!paramsResult.success) {
+      return sendError(reply, 400, "VALIDATION_ERROR", "Calendar event id is required");
+    }
+
+    if (!calendarEventNoteStore || !calendarEventNoteAttachmentStore) {
+      return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
+    }
+
+    try {
+      const event = await calendarEventStore.getById(paramsResult.data.id, authUserId);
+      if (!event) {
+        return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
+      }
+
+      const note = await calendarEventNoteStore.getByCalendarEventId(event.id, authUserId);
+      if (!note) {
+        return reply.send({ data: [] });
+      }
+
+      const attachments = await calendarEventNoteAttachmentStore.listByNoteId(note.id, authUserId);
+      return reply.send({ data: attachments.map(serializeCalendarEventNoteAttachment) });
+    } catch (error) {
+      request.log.error(error, "Failed to load calendar event note attachments");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to load calendar event note attachments");
+    }
+  });
+
+  const createCalendarEventNoteAttachmentSchema = z.object({
+    name: z.string().trim().min(1, "Name is required").max(255, "Name is too long"),
+    url: z.string().min(1, "File content is required"),
+    contentType: z.string().nullable().optional(),
+    sizeBytes: z.number().int().nonnegative().nullable().optional(),
+  });
+
+  const calendarEventNoteAttachmentIdParamsSchema = z.object({
+    id: z.string().trim().min(1, "Calendar event id is required"),
+    attachmentId: z.string().trim().min(1, "Attachment id is required"),
+  });
+
+  // POST /api/google-calendar/events/:id/note/attachments
+  app.post("/api/google-calendar/events/:id/note/attachments", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const paramsResult = calendarEventIdParamsSchema.safeParse(request.params);
+    if (!paramsResult.success) {
+      return sendError(reply, 400, "VALIDATION_ERROR", "Calendar event id is required");
+    }
+
+    const bodyResult = createCalendarEventNoteAttachmentSchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      return sendError(reply, 400, "VALIDATION_ERROR", bodyResult.error.issues[0]?.message ?? "Invalid attachment data");
+    }
+
+    if (!calendarEventNoteStore || !calendarEventNoteAttachmentStore) {
+      return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
+    }
+
+    const sizeBytes = bodyResult.data.sizeBytes ?? null;
+    if (sizeBytes !== null && sizeBytes > MAX_CALENDAR_NOTE_ATTACHMENT_BYTES) {
+      return sendError(reply, 400, "VALIDATION_ERROR", "Attachment exceeds maximum size of 5 MB");
+    }
+
+    try {
+      const event = await calendarEventStore.getById(paramsResult.data.id, authUserId);
+      if (!event) {
+        return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
+      }
+
+      const note = await calendarEventNoteStore.getByCalendarEventId(event.id, authUserId);
+      if (!note) {
+        return sendError(reply, 400, "VALIDATION_ERROR", "Save the note before adding attachments");
+      }
+
+      const attachment = await calendarEventNoteAttachmentStore.create({
+        calendarEventNoteId: note.id,
+        userId: authUserId,
+        name: bodyResult.data.name,
+        url: bodyResult.data.url,
+        contentType: bodyResult.data.contentType ?? null,
+        sizeBytes: sizeBytes,
+      });
+
+      return reply.code(201).send({ data: serializeCalendarEventNoteAttachment(attachment) });
+    } catch (error) {
+      request.log.error(error, "Failed to create calendar event note attachment");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to create calendar event note attachment");
+    }
+  });
+
+  // DELETE /api/google-calendar/events/:id/note/attachments/:attachmentId
+  app.delete("/api/google-calendar/events/:id/note/attachments/:attachmentId", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const paramsResult = calendarEventNoteAttachmentIdParamsSchema.safeParse(request.params);
+    if (!paramsResult.success) {
+      return sendError(reply, 400, "VALIDATION_ERROR", "Calendar event id and attachment id are required");
+    }
+
+    if (!calendarEventNoteAttachmentStore) {
+      return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
+    }
+
+    try {
+      const removed = await calendarEventNoteAttachmentStore.remove(paramsResult.data.attachmentId, authUserId);
+      if (!removed) {
+        return sendError(reply, 404, "NOT_FOUND", "Attachment not found");
+      }
+      return reply.send({ data: { deleted: true } });
+    } catch (error) {
+      request.log.error(error, "Failed to delete calendar event note attachment");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to delete calendar event note attachment");
+    }
+  });
 };
+
+function serializeCalendarEventNoteAttachment(attachment: CalendarEventNoteAttachment) {
+  return {
+    id: attachment.id,
+    calendarEventNoteId: attachment.calendarEventNoteId,
+    name: attachment.name,
+    url: attachment.url,
+    contentType: attachment.contentType,
+    sizeBytes: attachment.sizeBytes,
+    createdAt: attachment.createdAt.toISOString(),
+  };
+}
 
 export default googleCalendarEventsRoutes;
