@@ -77,6 +77,10 @@ import {
   CalendarEventNoteStore,
 } from "./google-calendar/calendar-event-note-store";
 import {
+  createPrismaCalendarEventNoteAttachmentStore,
+  CalendarEventNoteAttachmentStore,
+} from "./google-calendar/calendar-event-note-attachment-store";
+import {
   createGoogleCalendarSyncService,
   GoogleCalendarSyncService,
 } from "./google-calendar/google-calendar-sync-service";
@@ -123,6 +127,7 @@ export type BuildAppOptions = {
   frontendOrigin?: string;
   calendarEventStore?: CalendarEventStore;
   calendarEventNoteStore?: CalendarEventNoteStore;
+  calendarEventNoteAttachmentStore?: CalendarEventNoteAttachmentStore;
   googleCalendarSyncService?: GoogleCalendarSyncService;
 };
 
@@ -292,6 +297,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const calendarEventNoteStore =
     options.calendarEventNoteStore ??
     (calendarEventStore ? createPrismaCalendarEventNoteStore() : undefined);
+  const calendarEventNoteAttachmentStore =
+    options.calendarEventNoteAttachmentStore ??
+    (calendarEventNoteStore ? createPrismaCalendarEventNoteAttachmentStore() : undefined);
   const googleCalendarSyncService =
     options.googleCalendarSyncService ??
     (googleCalendarOAuthService &&
@@ -363,6 +371,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       authService,
       calendarEventStore,
       calendarEventNoteStore,
+      calendarEventNoteAttachmentStore,
       taskStore,
       googleCalendarSyncService,
     });
@@ -470,6 +479,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (calendarEventNoteStore?.close) {
       await calendarEventNoteStore.close();
+    }
+
+    if (calendarEventNoteAttachmentStore?.close) {
+      await calendarEventNoteAttachmentStore.close();
     }
   });
 

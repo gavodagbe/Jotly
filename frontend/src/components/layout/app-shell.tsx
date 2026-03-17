@@ -72,6 +72,16 @@ type CalendarEventNote = {
   updatedAt: string;
 };
 
+type CalendarEventNoteAttachment = {
+  id: string;
+  calendarEventNoteId: string;
+  name: string;
+  url: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+};
+
 type CalendarEventSummary = {
   id: string;
   connectionId: string;
@@ -1916,6 +1926,10 @@ function formatInlineMarkdown(value: string): string {
   return formatted;
 }
 
+function isRichTextEmpty(html: string): boolean {
+  return html.replace(/<[^>]*>/g, "").trim() === "";
+}
+
 function renderDescriptionHtml(markdown: string): string {
   const trimmed = markdown.trim();
 
@@ -3110,6 +3124,62 @@ async function deleteNoteAttachmentApi(
   }
 }
 
+async function loadCalendarEventNoteAttachments(eventId: string, token: string): Promise<CalendarEventNoteAttachment[]> {
+  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note/attachments`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: CalendarEventNoteAttachment[]; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load calendar event note attachments"));
+  }
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function createCalendarEventNoteAttachmentApi(
+  eventId: string,
+  input: { name: string; file: File },
+  token: string
+): Promise<CalendarEventNoteAttachment> {
+  const fileDataUrl = await readFileAsDataUrl(input.file);
+  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note/attachments`, {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      name: input.name,
+      url: fileDataUrl,
+      contentType: input.file.type || null,
+      sizeBytes: input.file.size,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: CalendarEventNoteAttachment; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create calendar event note attachment"));
+  }
+  if (!payload?.data) throw new Error("Unable to create calendar event note attachment.");
+  return payload.data;
+}
+
+async function deleteCalendarEventNoteAttachmentApi(
+  eventId: string,
+  attachmentId: string,
+  token: string
+): Promise<void> {
+  const response = await fetch(
+    `/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note/attachments/${encodeURIComponent(attachmentId)}`,
+    { method: "DELETE", headers: createAuthHeaders(token, false) }
+  );
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete calendar event note attachment"));
+  }
+}
+
 async function createReminderApi(
   input: { title: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt: string },
   token: string
@@ -3758,6 +3828,10 @@ function AppNavbar({
             <a href="#gaming" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
               <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
               Gaming Track
+            </a>
+            <a href="#notes" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>
+              {isFrench ? "Notes" : "Notes"}
             </a>
           </nav>
         </div>
@@ -4582,6 +4656,13 @@ export function AppShell() {
   const [isCalendarEventsLoading, setIsCalendarEventsLoading] = useState(false);
   const [calendarEventNoteDrafts, setCalendarEventNoteDrafts] = useState<Record<string, string>>({});
   const [pendingCalendarEventNoteIds, setPendingCalendarEventNoteIds] = useState<string[]>([]);
+  const [calendarEventNoteAttachments, setCalendarEventNoteAttachments] = useState<Record<string, CalendarEventNoteAttachment[]>>({});
+  const [calendarEventNoteAttachmentNameDraft, setCalendarEventNoteAttachmentNameDraft] = useState("");
+  const [calendarEventNoteAttachmentFileDraft, setCalendarEventNoteAttachmentFileDraft] = useState<File | null>(null);
+  const calendarEventNoteAttachmentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [calendarEventNoteAttachmentErrorMessage, setCalendarEventNoteAttachmentErrorMessage] = useState<string | null>(null);
+  const [isCreatingCalendarEventNoteAttachment, setIsCreatingCalendarEventNoteAttachment] = useState(false);
+  const [pendingCalendarEventNoteAttachmentIds, setPendingCalendarEventNoteAttachmentIds] = useState<string[]>([]);
   const [pendingCalendarEventTaskIds, setPendingCalendarEventTaskIds] = useState<string[]>([]);
   const [expandedCalendarEventId, setExpandedCalendarEventId] = useState<string | null>(null);
   const [calendarEventSearchQuery, setCalendarEventSearchQuery] = useState("");
@@ -4916,6 +4997,8 @@ export function AppShell() {
     setIsCalendarEventsLoading(false);
     setCalendarEventNoteDrafts({});
     setPendingCalendarEventNoteIds([]);
+    setCalendarEventNoteAttachments({});
+    setPendingCalendarEventNoteAttachmentIds([]);
     setPendingCalendarEventTaskIds([]);
     setExpandedCalendarEventId(null);
     setCalendarEventSearchQuery("");
@@ -5347,6 +5430,67 @@ export function AppShell() {
       );
     } finally {
       setPendingCalendarEventNoteIds((current) => current.filter((candidate) => candidate !== eventId));
+    }
+  }
+
+  async function handleLoadCalendarEventNoteAttachments(eventId: string) {
+    if (!authToken || calendarEventNoteAttachments[eventId]) return;
+    try {
+      const attachments = await loadCalendarEventNoteAttachments(eventId, authToken);
+      setCalendarEventNoteAttachments((prev) => ({ ...prev, [eventId]: attachments }));
+    } catch {
+      setCalendarEventNoteAttachments((prev) => ({ ...prev, [eventId]: [] }));
+    }
+  }
+
+  async function handleCreateCalendarEventNoteAttachment(eventId: string) {
+    if (!authToken || isCreatingCalendarEventNoteAttachment) return;
+    const file = calendarEventNoteAttachmentFileDraft;
+    const name = calendarEventNoteAttachmentNameDraft.trim() || file?.name?.trim() || "";
+
+    if (!name) {
+      setCalendarEventNoteAttachmentErrorMessage(isFrench ? "Le nom de la piece jointe est requis." : "Attachment name is required.");
+      return;
+    }
+    if (!file) {
+      setCalendarEventNoteAttachmentErrorMessage(isFrench ? "Veuillez selectionner un fichier." : "Please select a file.");
+      return;
+    }
+
+    setCalendarEventNoteAttachmentErrorMessage(null);
+    setIsCreatingCalendarEventNoteAttachment(true);
+
+    try {
+      const attachment = await createCalendarEventNoteAttachmentApi(eventId, { name, file }, authToken);
+      setCalendarEventNoteAttachments((prev) => ({
+        ...prev,
+        [eventId]: [...(prev[eventId] ?? []), attachment],
+      }));
+      setCalendarEventNoteAttachmentNameDraft("");
+      setCalendarEventNoteAttachmentFileDraft(null);
+      if (calendarEventNoteAttachmentFileInputRef.current) calendarEventNoteAttachmentFileInputRef.current.value = "";
+    } catch (error) {
+      setCalendarEventNoteAttachmentErrorMessage(
+        error instanceof Error ? error.message : isFrench ? "Impossible d'ajouter le document." : "Unable to add document."
+      );
+    } finally {
+      setIsCreatingCalendarEventNoteAttachment(false);
+    }
+  }
+
+  async function handleDeleteCalendarEventNoteAttachment(eventId: string, attachmentId: string) {
+    if (!authToken) return;
+    setPendingCalendarEventNoteAttachmentIds((prev) => [...prev, attachmentId]);
+    try {
+      await deleteCalendarEventNoteAttachmentApi(eventId, attachmentId, authToken);
+      setCalendarEventNoteAttachments((prev) => ({
+        ...prev,
+        [eventId]: (prev[eventId] ?? []).filter((a) => a.id !== attachmentId),
+      }));
+    } catch {
+      // silent
+    } finally {
+      setPendingCalendarEventNoteAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
     }
   }
 
@@ -6111,6 +6255,14 @@ export function AppShell() {
       targetDate: note.targetDate ?? "",
     });
     setNoteErrorMessage(null);
+    // Load attachments for this note if not already loaded
+    if (authToken && !noteAttachments[note.id]) {
+      void loadNoteAttachments(note.id, authToken).then((attachments) => {
+        setNoteAttachments((prev) => ({ ...prev, [note.id]: attachments }));
+      }).catch(() => {
+        setNoteAttachments((prev) => ({ ...prev, [note.id]: [] }));
+      });
+    }
   }
 
   function closeNoteDialog() {
@@ -6121,7 +6273,7 @@ export function AppShell() {
 
   async function handleSubmitNote() {
     if (!authToken) return;
-    if (!noteFormValues.body.trim()) {
+    if (isRichTextEmpty(noteFormValues.body)) {
       setNoteErrorMessage(isFrench ? "Le contenu de la note est requis." : "Note body is required.");
       return;
     }
@@ -6143,6 +6295,7 @@ export function AppShell() {
       } else {
         const created = await createNoteApi(payload, authToken);
         setNotes((prev) => [created, ...prev]);
+        void handleExpandNote(created.id);
       }
       closeNoteDialog();
     } catch (error) {
@@ -8705,6 +8858,94 @@ export function AppShell() {
                                     </button>
                                   ) : null}
                                 </div>
+
+                                {/* Note attachments — only when note is saved */}
+                                {hasNote ? (
+                                  <div className="mt-3 border-t border-line pt-3">
+                                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                                      {isFrench ? "Documents de la note" : "Note Documents"} ({(calendarEventNoteAttachments[event.id] ?? []).length})
+                                    </p>
+                                    {calendarEventNoteAttachments[event.id] === undefined ? (
+                                      <button
+                                        type="button"
+                                        className="mb-2 text-xs text-accent underline-offset-2 hover:underline"
+                                        onClick={() => { void handleLoadCalendarEventNoteAttachments(event.id); }}
+                                      >
+                                        {isFrench ? "Charger les documents" : "Load documents"}
+                                      </button>
+                                    ) : (calendarEventNoteAttachments[event.id] ?? []).length > 0 ? (
+                                      <ul className="mb-3 flex flex-col gap-1.5">
+                                        {(calendarEventNoteAttachments[event.id] ?? []).map((attachment) => (
+                                          <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
+                                            <div className="min-w-0 flex-1">
+                                              <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                              <a
+                                                href={attachment.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                                download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                              >
+                                                {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
+                                              </a>
+                                              {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                                <p className="mt-0.5 text-[11px] text-muted">
+                                                  {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((v): v is string => Boolean(v)).join(" · ")}
+                                                </p>
+                                              ) : null}
+                                            </div>
+                                            <button
+                                              type="button"
+                                              className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                                              disabled={pendingCalendarEventNoteAttachmentIds.includes(attachment.id)}
+                                              onClick={() => { void handleDeleteCalendarEventNoteAttachment(event.id, attachment.id); }}
+                                            >
+                                              {pendingCalendarEventNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                                            </button>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                                        {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                                      </p>
+                                    )}
+                                    {calendarEventNoteAttachmentErrorMessage ? (
+                                      <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{calendarEventNoteAttachmentErrorMessage}</p>
+                                    ) : null}
+                                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                                      <label className="block text-xs font-medium text-muted">
+                                        {isFrench ? "Nom" : "Name"}
+                                        <input
+                                          type="text"
+                                          value={calendarEventNoteAttachmentNameDraft}
+                                          onChange={(e) => setCalendarEventNoteAttachmentNameDraft(e.target.value)}
+                                          className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                          placeholder={isFrench ? "Nom du fichier" : "File name"}
+                                          disabled={isCreatingCalendarEventNoteAttachment}
+                                        />
+                                      </label>
+                                      <label className="block text-xs font-medium text-muted">
+                                        {isFrench ? "Fichier" : "File"}
+                                        <input
+                                          ref={calendarEventNoteAttachmentFileInputRef}
+                                          type="file"
+                                          onChange={(e) => setCalendarEventNoteAttachmentFileDraft(e.target.files?.[0] ?? null)}
+                                          className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                          disabled={isCreatingCalendarEventNoteAttachment}
+                                        />
+                                      </label>
+                                      <button
+                                        type="button"
+                                        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                                        disabled={isCreatingCalendarEventNoteAttachment}
+                                        onClick={() => { void handleCreateCalendarEventNoteAttachment(event.id); }}
+                                      >
+                                        {isCreatingCalendarEventNoteAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           ) : null}
@@ -9106,12 +9347,11 @@ export function AppShell() {
                     <label className="block text-xs font-medium text-muted mb-1">
                       {isFrench ? "Contenu" : "Body"}
                     </label>
-                    <textarea
-                      rows={5}
-                      className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent resize-y"
-                      placeholder={isFrench ? "Écrivez votre note..." : "Write your note..."}
+                    <RichTextEditor
+                      locale={activeLocale}
                       value={noteFormValues.body}
-                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, body: e.target.value }))}
+                      disabled={isSubmittingNote}
+                      onChange={(nextValue) => setNoteFormValues((prev) => ({ ...prev, body: nextValue }))}
                     />
                   </div>
                   <div>
@@ -9149,6 +9389,86 @@ export function AppShell() {
                       {isFrench ? "Annuler" : "Cancel"}
                     </button>
                   </div>
+
+                  {/* Attachment section — only available when editing an existing note */}
+                  {noteDialogMode === "edit" && editingNoteId ? (
+                    <div className="border-t border-line pt-3">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                        {isFrench ? "Documents" : "Documents"} ({(noteAttachments[editingNoteId] ?? []).length})
+                      </p>
+                      {(noteAttachments[editingNoteId] ?? []).length > 0 ? (
+                        <ul className="mb-3 flex flex-col gap-1.5">
+                          {(noteAttachments[editingNoteId] ?? []).map((attachment) => (
+                            <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                <a
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                  download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                >
+                                  {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
+                                </a>
+                                {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                  <p className="mt-0.5 text-[11px] text-muted">
+                                    {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((v): v is string => Boolean(v)).join(" · ")}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                                disabled={pendingNoteAttachmentIds.includes(attachment.id)}
+                                onClick={() => { void handleDeleteNoteAttachment(editingNoteId, attachment.id); }}
+                              >
+                                {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                          {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                        </p>
+                      )}
+                      {noteAttachmentErrorMessage ? (
+                        <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{noteAttachmentErrorMessage}</p>
+                      ) : null}
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                        <label className="block text-xs font-medium text-muted">
+                          {isFrench ? "Nom" : "Name"}
+                          <input
+                            type="text"
+                            value={noteAttachmentNameDraft}
+                            onChange={(e) => setNoteAttachmentNameDraft(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                            placeholder={isFrench ? "Nom du fichier" : "File name"}
+                            disabled={isCreatingNoteAttachment}
+                          />
+                        </label>
+                        <label className="block text-xs font-medium text-muted">
+                          {isFrench ? "Fichier" : "File"}
+                          <input
+                            ref={noteAttachmentFileInputRef}
+                            type="file"
+                            onChange={(e) => setNoteAttachmentFileDraft(e.target.files?.[0] ?? null)}
+                            className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                            disabled={isCreatingNoteAttachment}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                          disabled={isCreatingNoteAttachment}
+                          onClick={() => { void handleCreateNoteAttachment(editingNoteId); }}
+                        >
+                          {isCreatingNoteAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
