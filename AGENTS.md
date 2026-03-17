@@ -26,6 +26,8 @@ Use Atlassian MCP for Jira and Confluence context when needed.
 - Keep changes minimal, clean, and testable.
 - Do not refactor unrelated code.
 - Update documentation only if the ticket changes architecture, scope, or technical conventions.
+- After the mobile client is shipped, any new end-user web feature must also define and deliver its mobile implementation by default.
+- Any web-only or desktop-only exception must be explicit in the Jira ticket scope before implementation starts.
 
 ## End-of-task output
 Always end with:

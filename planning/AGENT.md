@@ -72,6 +72,9 @@ This section reflects the current repository implementation.
 - Rescheduling must be explicit.
 - Backend is the source of truth for business rules.
 - Frontend must use backend APIs, not fake business state.
+- After the mobile client is released, new end-user features must preserve web/mobile parity by default.
+- Web-only or desktop-only exceptions must be explicit in ticket scope before implementation starts.
+- Backend and shared-contract changes for new user-facing features must be validated against both web and mobile clients once mobile is in production use.
 
 ## Current task model
 Current task fields:

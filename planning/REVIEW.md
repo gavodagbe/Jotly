@@ -122,7 +122,15 @@ Reason:
 - cleaner Git history
 - safer delivery workflow
 
-### 9. Google Calendar stays read-only in the first slice
+### 9. Mobile becomes a first-class client after release
+Once the mobile application is shipped, new end-user product features should be treated as cross-platform by default.
+
+Reason:
+- prevents feature drift between the web and mobile experiences
+- keeps backend and shared-contract work aligned with both clients
+- avoids accumulating a permanent "mobile catch-up" backlog after each web release
+
+### 10. Google Calendar stays read-only in the first slice
 Google Calendar is currently treated as an imported context layer, not as a source of task mutations.
 
 Reason:
@@ -130,7 +138,7 @@ Reason:
 - reduces cross-system coupling while OAuth/sync behavior stabilizes
 - allows future task-linking to build on persisted `CalendarEvent` data instead of live Google calls
 
-### 10. Assistant pipeline: structured retrieval first, then unified search with full-text + vector
+### 11. Assistant pipeline: structured retrieval first, then unified search with full-text + vector
 The assistant evolves through a 2-phase pipeline. Phase 1 is structured SQL retrieval with context budget. Phase 2 adds a unified search table with both PostgreSQL full-text and pgvector semantic search, including document extraction from uploaded PDFs and images.
 
 Reason:
@@ -140,7 +148,7 @@ Reason:
 - building one unified table with `tsvector` + `vector(1536)` avoids a third migration later
 - keeping the heuristic fallback working without OpenAI remains a product requirement
 
-### 10b. Document extraction stays local (no external service)
+### 11b. Document extraction stays local (no external service)
 PDF parsing and image OCR run in the backend Node.js process, not via external APIs.
 
 Reason:
@@ -149,7 +157,7 @@ Reason:
 - extraction happens asynchronously after upload — does not block the upload response
 - limitation accepted: handwriting recognition is out of scope (Tesseract.js handles printed text only)
 
-### 11. No LLM-based intent classification
+### 12. No LLM-based intent classification
 The query analyzer uses regex/heuristic patterns, not a separate LLM call.
 
 Reason:
@@ -451,3 +459,11 @@ Mitigation:
 - weight scores by priority and completion quality, not raw volume only
 - include reflection consistency (affirmation + bilan) in composite scoring
 - monitor anomalies and recalibrate scoring rules via explicit product iterations
+
+### Risk 10 - Web/mobile feature drift after mobile launch
+If new web features continue to ship without a coordinated mobile implementation, the product will split into unequal client capabilities and create a permanent mobile catch-up backlog.
+
+Mitigation:
+- require web/mobile parity by default for new end-user features after the mobile app is shipped
+- treat web-only exceptions as explicit ticket-level decisions, not defaults
+- validate backend/shared-contract changes against both clients before closing related tickets

@@ -143,6 +143,33 @@ Still not implemented:
 - real-time sync
 - offline-first behavior
 
+## Mobile program and post-mobile delivery rule
+
+Mobile delivery is now an active program under the Jira umbrella ticket `JOT-13`.
+
+Planned mobile rollout sequence:
+- backend mobile readiness
+- shared domain + API client extraction
+- Expo mobile workspace foundation
+- auth/session flows
+- day view + task flows
+- daily workflow modules
+- reminders
+- profile/preferences
+- QA/release foundations
+- post-V1 extensions: comments, recurrence, gaming track, calendar read model, assistant
+
+Global product rule after the mobile client is shipped:
+- any new end-user feature introduced on the web app must also define and deliver its mobile implementation
+- the default expectation is cross-platform parity within the same initiative, not a later catch-up ticket
+- a feature may remain web-only only if the ticket explicitly scopes it as web-only or desktop-only and explains why
+- backend and shared-contract changes for new product features must be validated against both clients before closure
+
+Implication for future tickets:
+- new feature tickets should include both web and mobile scope, or be paired with a linked mobile ticket before implementation starts
+- exceptions must be explicit, not implicit
+- parity applies to user-facing product functionality, not necessarily to internal tooling or platform-specific release operations
+
 ## Working rules per ticket
 1. Move Jira ticket to In Progress.
 2. Let the agent read the ticket context.
