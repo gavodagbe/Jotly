@@ -46,6 +46,7 @@ import dayBilanRoutes from "./routes/day-bilan";
 import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
+import noteRoutes from "./routes/notes";
 import reminderRoutes from "./routes/reminders";
 import searchRoutes from "./routes/search";
 import tasksRoutes from "./routes/tasks";
@@ -76,6 +77,7 @@ import {
   GoogleCalendarSyncService,
 } from "./google-calendar/google-calendar-sync-service";
 import { createPrismaRecurrenceStore, RecurrenceStore } from "./recurrence/recurrence-store";
+import { createPrismaNoteStore, NoteStore } from "./notes/note-store";
 import { createPrismaReminderStore, ReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
 
@@ -90,6 +92,7 @@ export type BuildAppOptions = {
   dayBilanStore?: DayBilanStore;
   gamingTrackStore?: GamingTrackStore;
   gamingTrackService?: GamingTrackService;
+  noteStore?: NoteStore;
   reminderStore?: ReminderStore;
   profileStore?: ProfileStore;
   assistantContextStore?: AssistantContextStore;
@@ -144,6 +147,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const dayBilanStore =
     options.dayBilanStore ??
     (options.taskStore ? undefined : createPrismaDayBilanStore());
+  const noteStore =
+    options.noteStore ??
+    (options.taskStore ? undefined : createPrismaNoteStore());
   const reminderStore =
     options.reminderStore ??
     (options.taskStore ? undefined : createPrismaReminderStore());
@@ -285,6 +291,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (dayBilanStore) {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
+  if (noteStore) {
+    app.register(noteRoutes, { noteStore, authService });
+  }
   if (reminderStore) {
     app.register(reminderRoutes, { reminderStore, authService });
   }
@@ -386,6 +395,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (gamingTrackStore?.close) {
       await gamingTrackStore.close();
+    }
+
+    if (noteStore?.close) {
+      await noteStore.close();
     }
 
     if (reminderStore?.close) {

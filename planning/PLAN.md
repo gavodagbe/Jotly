@@ -31,16 +31,17 @@ Historical JOT-10 out-of-scope (ticket-level):
 - adding full schema for future modules
 - broad refactors unrelated to documentation clarity
 
-## Current implementation status (as of 2026-03-11)
+## Current implementation status (as of 2026-03-17)
 Completed:
 - JOT-1 to JOT-10 baseline deliverables
 - authentication/session flow (`register`, `login`, `me`, `logout`)
+- password reset flow (`forgot-password`, `reset-password`)
 - authenticated ownership boundaries on task domain routes
 - comments module (API + tests)
 - attachments module (API + tests)
 - recurrence module (API + tests)
 - frontend task details integrations for comments/attachments/recurrence
-- AI assistant module (backend route + frontend panel — pre-pipeline, evolving to structured retrieval + RAG)
+- AI assistant module (backend route + frontend panel — full DB context, evolving to structured retrieval + RAG)
 - day affirmation module (API + frontend panel)
 - yesterday carry-over action for non-completed tasks (API + frontend action)
 - day bilan module (API + frontend panel)
@@ -58,6 +59,9 @@ Completed:
 - gaming track phase 3 (levels/badges, streak protection, and historical trend views)
 - gaming track phase 4 (weekly challenge, personal leaderboard, recap, and nudges)
 - gaming track phase 5 (persistent engagement actions: challenge claim, streak protection usage, and nudge dismiss)
+- reminders module (API + frontend modal — create, update, delete, dismiss, pending poll)
+- global search (backend `GET /api/search` with full-text via `AssistantSearchDocument` + frontend Cmd/Ctrl+K modal)
+- `AssistantSearchDocument` unified search table with PostgreSQL full-text (`tsvector`) indexing across all text-bearing domains
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal
@@ -77,6 +81,28 @@ Latest daily workflow conventions:
   - `GET /api/day-bilan?date=YYYY-MM-DD`
   - `PUT /api/day-bilan`
 
+Latest reminders conventions:
+- endpoints:
+  - `GET /api/reminders` — list all (optional `?date=YYYY-MM-DD` filter, 24h window)
+  - `GET /api/reminders/pending` — unfired reminders (auto-marks as fired)
+  - `GET /api/reminders/:id`
+  - `POST /api/reminders` — create
+  - `PUT /api/reminders/:id` — update (partial)
+  - `DELETE /api/reminders/:id`
+  - `POST /api/reminders/:id/dismiss`
+- fields: `title`, `description`, `project`, `assignees`, `remindAt` (ISO-8601)
+- lifecycle flags: `isFired` (auto), `isDismissed` (manual)
+- all reminders scoped to authenticated user
+
+Latest global search conventions:
+- endpoint: `GET /api/search?q=...`
+- minimum query length: 2 characters
+- filterable by: `types` (comma-separated), `from`/`to` date range, `page`, `limit` (max 50)
+- source types indexed: `task`, `comment`, `affirmation`, `bilan`, `reminder`, `calendarEvent`, `calendarNote`, `attachment`
+- backend uses `AssistantSearchDocument` table with PostgreSQL `websearch_to_tsquery` full-text search
+- response includes: `snippet` (ts_headline excerpt), `score`, `matchedBy` (`fulltext` or `vector`), `totalCount`, `hasMore`
+- frontend: Cmd/Ctrl+K shortcut opens global search modal; results navigate to source content
+
 Latest AI assistant conventions:
 - endpoint: `POST /api/assistant/reply`
 - workspace-first assistant: answers only questions about the authenticated user's Jotly workspace, not external knowledge
@@ -84,9 +110,10 @@ Latest AI assistant conventions:
 - locale defaults to the user's profile locale when omitted from the request
 - provider modes: `heuristic` (default) or `openai`
 - automatic fallback to heuristic when OpenAI is unavailable
+- current implementation: full DB context (all user data loaded per request — pre-pipeline)
 - evolution plan (2 phases):
   - Phase 1: refactor into pipeline (analyzeQuery -> retrieveByDomain -> buildContext with ~4000 char budget -> generateAnswer). No new table, no LLM classifier. Domain-targeted SQL replaces full context dump.
-  - Phase 2: unified `AssistantSearchDocument` table with PostgreSQL full-text (`tsvector`) + vector search (`pgvector` with `text-embedding-3-small`). Includes document extraction pipeline: PDF parsing (`pdf-parse`) + image OCR (`Tesseract.js`), both local backend. Covers attachments, comments, bilans, affirmations, notes, and all text-bearing domains.
+  - Phase 2: extend search retriever to use `AssistantSearchDocument` vector column with `pgvector` (`text-embedding-3-small`) for semantic queries. Document extraction pipeline: PDF parsing (`pdf-parse`) + image OCR (`Tesseract.js`), both local backend.
 - see `planning/AGENT.md` AI assistant section for full implementation details
 
 Latest Google Calendar conventions:
@@ -132,12 +159,12 @@ Gaming Track status:
   - deeper social loops and collaborative mechanics
 
 Still not implemented:
-- assistant pipeline Phase 1 (structured retrieval + context budget)
-- assistant pipeline Phase 2 (unified search table + full-text + vector + document extraction)
+- assistant pipeline Phase 1 (structured retrieval + context budget — full DB context still in use)
+- assistant pipeline Phase 2 (vector search via pgvector + document extraction from PDFs/images)
 - reporting
 - gaming track phase 6+ collaborative/social engagement layer
-- calendar event note workflows
 - calendar write-back to Google
+- background/webhook calendar sync
 - notifications
 - mobile client
 - real-time sync

@@ -195,6 +195,23 @@ type DayBilanMutationInput = {
   tomorrowTop3: string | null;
 };
 
+type Note = {
+  id: string;
+  title: string | null;
+  body: string;
+  color: string | null;
+  targetDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type NoteFormValues = {
+  title: string;
+  body: string;
+  color: string;
+  targetDate: string;
+};
+
 type Reminder = {
   id: string;
   title: string;
@@ -497,7 +514,7 @@ type GlobalSearchState = {
 };
 
 type ApiErrorPayload = { error?: { message?: string } } | null;
-type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders";
+type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders" | "notes";
 type DashboardLayoutConfig = {
   order: DashboardBlockId[];
   collapsed: Record<DashboardBlockId, boolean>;
@@ -532,6 +549,7 @@ const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "dailyControls",
   "affirmation",
   "reminders",
+  "notes",
   "board",
   "bilan",
 ];
@@ -541,6 +559,7 @@ const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
   dailyControls: false,
   affirmation: true,
   reminders: false,
+  notes: false,
   board: false,
   bilan: true,
 };
@@ -810,6 +829,10 @@ function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale
 
   if (blockId === "reminders") {
     return isFrench ? "Rappels" : "Reminders";
+  }
+
+  if (blockId === "notes") {
+    return isFrench ? "Notes" : "Notes";
   }
 
   if (blockId === "board") {
@@ -2939,6 +2962,84 @@ async function loadPendingReminders(
   return payload?.data ?? [];
 }
 
+async function loadNotes(token: string, signal?: AbortSignal): Promise<Note[]> {
+  const response = await fetch("/backend-api/notes", {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Note[]; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load notes"));
+  }
+
+  return payload?.data ?? [];
+}
+
+async function createNoteApi(
+  input: { title?: string | null; body: string; color?: string | null; targetDate?: string | null },
+  token: string
+): Promise<Note> {
+  const response = await fetch("/backend-api/notes", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Note; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create note"));
+  }
+
+  if (!payload?.data) throw new Error("Unable to create note");
+  return payload.data;
+}
+
+async function updateNoteApi(
+  id: string,
+  input: { title?: string | null; body?: string; color?: string | null; targetDate?: string | null },
+  token: string
+): Promise<Note> {
+  const response = await fetch(`/backend-api/notes/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Note; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update note"));
+  }
+
+  if (!payload?.data) throw new Error("Unable to update note");
+  return payload.data;
+}
+
+async function deleteNoteApi(id: string, token: string): Promise<void> {
+  const response = await fetch(`/backend-api/notes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: createAuthHeaders(token, false),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete note"));
+  }
+}
+
 async function createReminderApi(
   input: { title: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt: string },
   token: string
@@ -4451,6 +4552,13 @@ export function AppShell() {
   const [reminderErrorMessage, setReminderErrorMessage] = useState<string | null>(null);
   const [isSubmittingReminder, setIsSubmittingReminder] = useState(false);
   const [pendingReminders, setPendingReminders] = useState<Reminder[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [noteDialogMode, setNoteDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteFormValues, setNoteFormValues] = useState<NoteFormValues>({ title: "", body: "", color: "", targetDate: "" });
+  const [noteErrorMessage, setNoteErrorMessage] = useState<string | null>(null);
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [gamingTrackPeriod, setGamingTrackPeriod] = useState<GamingTrackPeriod>("week");
   const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
@@ -5902,6 +6010,80 @@ export function AppShell() {
     }
   }
 
+  function openCreateNoteDialog() {
+    setNoteDialogMode("create");
+    setEditingNoteId(null);
+    setNoteFormValues({ title: "", body: "", color: "", targetDate: "" });
+    setNoteErrorMessage(null);
+  }
+
+  function openEditNoteDialog(note: Note) {
+    setNoteDialogMode("edit");
+    setEditingNoteId(note.id);
+    setNoteFormValues({
+      title: note.title ?? "",
+      body: note.body,
+      color: note.color ?? "",
+      targetDate: note.targetDate ?? "",
+    });
+    setNoteErrorMessage(null);
+  }
+
+  function closeNoteDialog() {
+    setNoteDialogMode(null);
+    setEditingNoteId(null);
+    setNoteErrorMessage(null);
+  }
+
+  async function handleSubmitNote() {
+    if (!authToken) return;
+    if (!noteFormValues.body.trim()) {
+      setNoteErrorMessage(isFrench ? "Le contenu de la note est requis." : "Note body is required.");
+      return;
+    }
+
+    setIsSubmittingNote(true);
+    setNoteErrorMessage(null);
+
+    const payload = {
+      title: noteFormValues.title.trim() || null,
+      body: noteFormValues.body,
+      color: noteFormValues.color.trim() || null,
+      targetDate: noteFormValues.targetDate.trim() || null,
+    };
+
+    try {
+      if (noteDialogMode === "edit" && editingNoteId) {
+        const updated = await updateNoteApi(editingNoteId, payload, authToken);
+        setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+      } else {
+        const created = await createNoteApi(payload, authToken);
+        setNotes((prev) => [created, ...prev]);
+      }
+      closeNoteDialog();
+    } catch (error) {
+      setNoteErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer la note."
+          : "Unable to save note."
+      );
+    } finally {
+      setIsSubmittingNote(false);
+    }
+  }
+
+  async function handleDeleteNote(id: string) {
+    if (!authToken) return;
+    try {
+      await deleteNoteApi(id, authToken);
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+    } catch {
+      // silent
+    }
+  }
+
   async function handleDismissReminder(id: string) {
     if (!authToken) return;
     try {
@@ -6785,6 +6967,32 @@ export function AppShell() {
 
     return () => controller.abort();
   }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+
+  // Fetch notes
+  useEffect(() => {
+    if (!isAuthReady) return;
+    if (!authToken || !authUser) {
+      setNotes([]);
+      setIsLoadingNotes(false);
+      return;
+    }
+
+    setIsLoadingNotes(true);
+    const controller = new AbortController();
+
+    loadNotes(authToken, controller.signal)
+      .then((nextNotes) => {
+        if (!controller.signal.aborted) setNotes(nextNotes);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setNotes([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingNotes(false);
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady]);
 
   // Poll for pending reminders every 30s
   useEffect(() => {
@@ -8639,6 +8847,187 @@ export function AppShell() {
                 {reminderErrorMessage}
               </p>
             ) : null}
+          </>
+        )}
+      </section>
+
+      {/* Notes section */}
+      <section
+        id="notes"
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getDashboardDropClassName("notes")}`}
+        style={{ order: getDashboardBlockVisualOrder("notes"), animationDelay: "0.19s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("notes", event)}
+        onDrop={(event) => handleDashboardBlockDrop("notes", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Notes" : "Notes"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench ? "Vos notes libres." : "Your standalone notes."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90"
+              onClick={openCreateNoteDialog}
+            >
+              {isFrench ? "+ Nouvelle note" : "+ New note"}
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("notes", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("notes")}
+              title={getDashboardDragHandleLabel("notes")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("notes")}
+              aria-expanded={!dashboardBlockCollapsed.notes}
+              aria-label={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
+              title={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.notes} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.notes ? (
+          <p className="mt-3 text-xs text-muted">
+            {collapsedHintLabel}{" "}
+            {notes.length === 0
+              ? isFrench ? "Aucune note." : "No notes."
+              : isFrench ? `${notes.length} note(s).` : `${notes.length} note(s).`}
+          </p>
+        ) : (
+          <>
+            {/* Create / Edit note dialog */}
+            {noteDialogMode !== null ? (
+              <div className="mt-4 rounded-xl border border-line bg-white/80 p-4">
+                <p className="mb-3 text-sm font-semibold text-foreground">
+                  {noteDialogMode === "create"
+                    ? isFrench ? "Nouvelle note" : "New note"
+                    : isFrench ? "Modifier la note" : "Edit note"}
+                </p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">
+                      {isFrench ? "Titre (facultatif)" : "Title (optional)"}
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                      placeholder={isFrench ? "Titre..." : "Title..."}
+                      value={noteFormValues.title}
+                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, title: e.target.value }))}
+                      maxLength={300}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">
+                      {isFrench ? "Contenu" : "Body"}
+                    </label>
+                    <textarea
+                      rows={5}
+                      className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent resize-y"
+                      placeholder={isFrench ? "Écrivez votre note..." : "Write your note..."}
+                      value={noteFormValues.body}
+                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, body: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">
+                      {isFrench ? "Date cible (facultatif)" : "Target date (optional)"}
+                    </label>
+                    <input
+                      type="date"
+                      className="rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                      value={noteFormValues.targetDate}
+                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, targetDate: e.target.value }))}
+                    />
+                  </div>
+                  {noteErrorMessage ? (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      {noteErrorMessage}
+                    </p>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                      disabled={isSubmittingNote}
+                      onClick={() => { void handleSubmitNote(); }}
+                    >
+                      {isSubmittingNote
+                        ? isFrench ? "Enregistrement..." : "Saving..."
+                        : isFrench ? "Enregistrer" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-line px-4 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                      onClick={closeNoteDialog}
+                    >
+                      {isFrench ? "Annuler" : "Cancel"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {isLoadingNotes ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Chargement..." : "Loading..."}
+              </p>
+            ) : notes.length === 0 && noteDialogMode === null ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Aucune note. Créez votre première note." : "No notes yet. Create your first note."}
+              </p>
+            ) : (
+              <ul className="mt-4 flex flex-col gap-2">
+                {notes.map((note) => (
+                  <li
+                    key={note.id}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-line bg-white/60 px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      {note.title ? (
+                        <p className="truncate text-sm font-medium text-foreground">{note.title}</p>
+                      ) : null}
+                      <p className="mt-0.5 text-sm text-foreground whitespace-pre-wrap break-words line-clamp-3">
+                        {note.body}
+                      </p>
+                      {note.targetDate ? (
+                        <p className="mt-1 text-xs text-muted">{note.targetDate}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                        onClick={() => openEditNoteDialog(note)}
+                      >
+                        {isFrench ? "Modifier" : "Edit"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50"
+                        onClick={() => { void handleDeleteNote(note.id); }}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </section>

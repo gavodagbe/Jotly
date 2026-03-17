@@ -1,11 +1,11 @@
 # Jotly - Architecture Decisions and Risks
 
-## Current implementation reality check (as of 2026-03-13)
+## Current implementation reality check (as of 2026-03-17)
 Implemented in the current codebase:
 - backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
-- backend auth/session API (`backend/src/routes/auth.ts`)
+- backend auth/session API with password reset flow (`backend/src/routes/auth.ts`)
 - authenticated ownership boundaries on task-linked routes (tasks/comments/attachments/recurrence)
-- backend AI assistant reply API (`backend/src/routes/assistant.ts`)
+- backend AI assistant reply API with full DB context (`backend/src/routes/assistant.ts`)
 - backend comments API (`backend/src/routes/comments.ts`)
 - backend attachments API (`backend/src/routes/attachments.ts`)
 - backend recurrence API (`backend/src/routes/recurrence.ts`)
@@ -13,6 +13,8 @@ Implemented in the current codebase:
 - backend day bilan API (`backend/src/routes/day-bilan.ts`)
 - backend carry-over endpoint for yesterday non-completed tasks (`backend/src/routes/tasks.ts`)
 - backend profile/preferences API (`backend/src/routes/profile.ts`)
+- backend reminders API — create, update, delete, dismiss, pending poll (`backend/src/routes/reminders.ts`)
+- backend global search API with PostgreSQL full-text search (`backend/src/routes/search.ts`)
 - backend Google Calendar OAuth routes (`backend/src/routes/google-calendar-oauth.ts`)
 - backend Google Calendar sync/read routes (`backend/src/routes/google-calendar-events.ts`)
 - backend Google Calendar token encryption + OAuth exchange service (`backend/src/google-calendar/google-calendar-oauth-service.ts`)
@@ -21,13 +23,19 @@ Implemented in the current codebase:
 - attachment validation limit of 5 MB per attachment plus URL payload size guard (`backend/src/routes/attachments.ts`)
 - Prisma task model with status, priority, lifecycle timestamps, and carry-over linkage (`backend/prisma/schema.prisma`)
 - Prisma `DayAffirmation` and `DayBilan` models (`backend/prisma/schema.prisma`)
+- Prisma `Reminder` model with fire and dismiss lifecycle flags (`backend/prisma/schema.prisma`)
+- Prisma `PasswordResetToken` model (`backend/prisma/schema.prisma`)
 - Prisma `GoogleCalendarConnection`, `CalendarEvent`, and `CalendarEventNote` models plus optional `Task.calendarEventId` linkage (`backend/prisma/schema.prisma`)
+- Prisma `AssistantSearchDocument` model — unified full-text search table (`tsvector`); `vector(1536)` column reserved for Phase 2 (`backend/prisma/schema.prisma`)
+- `AssistantSearchDocumentStore` with `searchDirect` (full-text via `websearch_to_tsquery` + `ts_headline` snippets), `fullTextSearch`, and `vectorSearch` methods (`backend/src/assistant/assistant-search-document-store.ts`)
 - frontend date-driven Kanban board with create/edit/delete dialogs and drag-and-drop status updates (`frontend/src/components/layout/app-shell.tsx`)
 - frontend task details support for comments, recurrence, and file-based attachments converted to `data:` URLs before upload (`frontend/src/components/layout/app-shell.tsx`)
 - frontend day affirmation panel and day bilan panel (`frontend/src/components/layout/app-shell.tsx`)
 - frontend carry-over CTA in date controls (`frontend/src/components/layout/app-shell.tsx`)
 - daily completion percentage includes day affirmation completion (`frontend/src/components/layout/app-shell.tsx`)
 - frontend AI assistant chatbot (FAB) with workspace-first pipeline — evolving from global context dump to structured retrieval + RAG (`frontend/src/components/layout/app-shell.tsx`)
+- frontend reminders panel with create/edit/dismiss and rich text description (`frontend/src/components/layout/app-shell.tsx`)
+- frontend global search modal (Cmd/Ctrl+K) with type filtering, date range, debounced input, pagination, and result navigation (`frontend/src/components/layout/app-shell.tsx`)
 - frontend profile/settings modal with language/timezone preferences (`frontend/src/components/layout/app-shell.tsx`)
 - frontend Google Calendar connect/disconnect/sync controls in the profile dialog (`frontend/src/components/layout/app-shell.tsx`)
 - frontend selected-date Google Calendar event preview in the dashboard (`frontend/src/components/layout/app-shell.tsx`)
@@ -37,12 +45,15 @@ Implemented in the current codebase:
 - gaming track phase 4 updates: weekly challenge, personal leaderboard, recap, and nudges (`frontend/src/components/layout/app-shell.tsx`)
 - gaming track phase 5 updates: persistent engagement actions (challenge claim, streak protection consumption, and nudge dismissal) with summary-state integration
 - Docker Compose local runtime (frontend, backend, postgres)
-- route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile/gaming-track
+- route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile/gaming-track/reminders/search
 
 Not implemented yet:
+- assistant pipeline Phase 1 (structured retrieval + context budget — full DB context still in use)
+- assistant pipeline Phase 2 (vector search via pgvector + document extraction from PDFs/images)
 - reporting
 - gaming track phase 6+ (deeper collaborative loops)
 - calendar write-back to Google
+- background/webhook calendar sync
 - notifications
 - mobile client
 - real-time sync
@@ -232,6 +243,35 @@ The boundaries below reflect current ownership and future evolution points.
   - localized date/time rendering using preferred locale/timezone
 - Current posture: implemented.
 
+### Reminders
+- Relation to date workflow: user-defined timed reminders with fire and dismiss lifecycle, scoped per user.
+- Current backend module: `backend/src/routes/reminders.ts`.
+- Current API surface:
+  - `GET /api/reminders` (optional `?date=YYYY-MM-DD`)
+  - `GET /api/reminders/pending` (auto-marks returned reminders as fired)
+  - `GET /api/reminders/:id`
+  - `POST /api/reminders`
+  - `PUT /api/reminders/:id`
+  - `DELETE /api/reminders/:id`
+  - `POST /api/reminders/:id/dismiss`
+- Current behavior:
+  - date filter on list endpoint applies a 24-hour UTC window
+  - `/pending` marks all returned reminders as fired in the same request
+  - all reminders are scoped to the authenticated user
+- Current posture: implemented.
+
+### Global Search
+- Relation to workspace history: single search entry point across all user content domains.
+- Current backend module: `backend/src/routes/search.ts` backed by `backend/src/assistant/assistant-search-document-store.ts`.
+- Current API surface:
+  - `GET /api/search?q=...` (min 2 chars; optional `types`, `from`, `to`, `page`, `limit`)
+- Current behavior:
+  - queries `AssistantSearchDocument` table using PostgreSQL `websearch_to_tsquery`
+  - returns ranked results with `ts_headline` snippets, `score`, `matchedBy`
+  - filterable by source type and date range; paginated with `hasMore`
+  - results are always scoped by userId — no cross-user data exposure
+- Current posture: implemented (full-text only; vector search reserved for Phase 2).
+
 ### AI assistant
 - Relation to workspace history: workspace-first assistant over owned Jotly workspace data, not external knowledge.
 - Current backend module: `backend/src/assistant/`.
@@ -243,12 +283,12 @@ The boundaries below reflect current ownership and future evolution points.
   - falls back to heuristic when OpenAI is unavailable
   - request locale defaults from user's profile locale
 - Current limits (pre-pipeline):
-  - loads all user data across all domains and all dates into a single prompt
+  - loads all user data across all domains and all dates into a single prompt (full DB context)
   - no context budget — prompt grows linearly with account size
   - heuristic mode covers domain-specific questions but not free-text cross-domain queries
 - Planned evolution (2 phases — see `planning/AGENT.md` for full spec):
   - Phase 1: structured pipeline with domain-targeted retrieval + strict context budget
-  - Phase 2: unified `AssistantSearchDocument` table with PostgreSQL full-text (`tsvector`) + pgvector semantic search (`vector(1536)`) + document extraction (PDF via `pdf-parse`, image OCR via `Tesseract.js`, all local backend)
+  - Phase 2: extend search retriever to use `AssistantSearchDocument` vector column via pgvector (`vector(1536)` + `text-embedding-3-small`) + document extraction (PDF via `pdf-parse`, image OCR via `Tesseract.js`, all local backend)
 - Current posture: implemented (pre-pipeline). Pipeline evolution planned.
 
 ### Reporting
@@ -338,12 +378,15 @@ Existing entities:
 - `DayAffirmation`
 - `DayBilan`
 - `Reminder`
+- `PasswordResetToken`
 - `GoogleCalendarConnection`
 - `CalendarEvent`
 - `CalendarEventNote`
+- `AssistantSearchDocument` (unified full-text search table with `tsvector`; `vector(1536)` column reserved for Phase 2 pgvector semantic search)
 
-Planned entities (Phase 2 — assistant pipeline):
-- `AssistantSearchDocument` (unified search table with `tsvector` + `vector(1536)` for full-text and semantic search, including extracted document content)
+Planned extensions (Phase 2 — assistant pipeline):
+- Enable pgvector extension and populate `AssistantSearchDocument.embedding` for semantic search
+- Document extraction pipeline (PDF via `pdf-parse`, image OCR via `Tesseract.js`) feeding into `AssistantSearchDocument`
 
 Likely future entities:
 - `TaskActivityEvent` (if event-level analytics becomes required)
@@ -352,6 +395,7 @@ Current extension points to preserve:
 - backend route split by domain in `backend/src/routes/`
 - optional `Task.calendarEventId` for future task/event linking
 - `CalendarEventNote` for future event annotations without overloading task comments
+- `AssistantSearchDocument` as the canonical search index — all new text-bearing domains must write to it on create/update/delete
 - backend domain modules in `backend/src/tasks/`, `backend/src/auth/`, `backend/src/recurrence/`, `backend/src/day-affirmation/`, `backend/src/day-bilan/`, `backend/src/assistant/`, and `backend/src/gaming-track/`
 - frontend feature folders in `frontend/src/features/`
 - stable task API contract for frontend/backend integration
