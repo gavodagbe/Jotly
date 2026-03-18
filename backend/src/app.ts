@@ -385,6 +385,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.register(searchRoutes, {
       authService,
       searchDocumentStore: assistantSearchDocumentStore,
+      assistantSearchSyncService,
     });
   }
   app.register(assistantRoutes, {

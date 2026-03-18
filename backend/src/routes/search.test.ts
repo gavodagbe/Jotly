@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "../app";
 import { createInMemoryAssistantSearchDocumentStore } from "../assistant/assistant-search-document-store";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import {
   AuthSession,
   AuthStore,
@@ -13,12 +14,32 @@ import {
 import { TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 
 class NoopTaskStore implements TaskStore {
-  async listByDate(): Promise<Task[]> { return []; }
-  async listByUser(): Promise<Task[]> { return []; }
-  async getById(): Promise<Task | null> { return null; }
-  async create(): Promise<Task> { throw new Error("Not implemented"); }
-  async update(): Promise<Task | null> { return null; }
-  async remove(): Promise<Task | null> { return null; }
+  async listByDate(_targetDate: Date, _userId: string): Promise<Task[]> { return []; }
+  async listByUser(_userId: string): Promise<Task[]> { return []; }
+  async getById(_id: string, _userId: string): Promise<Task | null> { return null; }
+  async create(_input: TaskCreateInput): Promise<Task> { throw new Error("Not implemented"); }
+  async update(_id: string, _input: TaskUpdateInput, _userId: string): Promise<Task | null> { return null; }
+  async remove(_id: string, _userId: string): Promise<Task | null> { return null; }
+}
+
+class MutableTaskStore extends NoopTaskStore {
+  private tasks: Task[] = [];
+
+  setTasks(tasks: Task[]) {
+    this.tasks = tasks;
+  }
+
+  async listByDate(targetDate: Date, userId: string): Promise<Task[]> {
+    const targetDateKey = targetDate.toISOString().slice(0, 10);
+    return this.tasks.filter(
+      (task) =>
+        task.userId === userId && task.targetDate.toISOString().slice(0, 10) === targetDateKey
+    );
+  }
+
+  async listByUser(userId: string): Promise<Task[]> {
+    return this.tasks.filter((task) => task.userId === userId);
+  }
 }
 
 class InMemoryAuthStore implements AuthStore {
@@ -88,14 +109,51 @@ class InMemoryAuthStore implements AuthStore {
   }
 }
 
-function makeApp() {
+const noopAssistantSearchSyncService: AssistantSearchSyncService = {
+  async syncUserWorkspace() {
+    return { documentCount: 0, changedCount: 0 };
+  },
+};
+
+function makeTask(input: { id: string; userId: string; title: string; description: string | null }): Task {
+  const now = new Date();
+  return {
+    id: input.id,
+    userId: input.userId,
+    rolledFromTaskId: null,
+    title: input.title,
+    description: input.description,
+    status: "todo",
+    targetDate: new Date("2026-03-18T00:00:00.000Z"),
+    dueDate: null,
+    priority: "medium",
+    project: "Search",
+    plannedTime: null,
+    recurrenceSourceTaskId: null,
+    recurrenceOccurrenceDate: null,
+    calendarEventId: null,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+    cancelledAt: null,
+  };
+}
+
+function makeApp(options?: {
+  taskStore?: TaskStore;
+  assistantSearchSyncService?: AssistantSearchSyncService | null;
+}) {
   const authStore = new InMemoryAuthStore();
   const searchDocumentStore = createInMemoryAssistantSearchDocumentStore();
   const app = buildApp({
     logLevel: "silent",
     authStore,
-    taskStore: new NoopTaskStore(),
+    taskStore: options?.taskStore ?? new NoopTaskStore(),
     assistantSearchDocumentStore: searchDocumentStore,
+    assistantSearchSyncService:
+      options?.assistantSearchSyncService === null
+        ? undefined
+        : options?.assistantSearchSyncService ?? noopAssistantSearchSyncService,
   });
   return { app, authStore, searchDocumentStore };
 }
@@ -190,6 +248,47 @@ test("GET /api/search — returns matching documents", async () => {
   );
 });
 
+test("GET /api/search — syncs the workspace index before searching", async () => {
+  const taskStore = new MutableTaskStore();
+  const { app } = makeApp({
+    taskStore,
+    assistantSearchSyncService: null,
+  });
+  const { token, user } = await registerAndLogin(app);
+
+  taskStore.setTasks([
+    makeTask({
+      id: "task-sync-1",
+      userId: user.id,
+      title: "Focus block",
+      description: "Deep focus session for the morning",
+    }),
+  ]);
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/search?q=focus",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body) as {
+    data: {
+      results: Array<{ sourceType: string; sourceId: string; title: string | null }>;
+      totalCount: number;
+    };
+  };
+  assert.equal(body.data.totalCount, 1);
+  assert.deepEqual(body.data.results.map((result) => ({
+    sourceType: result.sourceType,
+    sourceId: result.sourceId,
+    title: result.title,
+  })), [{
+    sourceType: "task",
+    sourceId: "task-sync-1",
+    title: "Focus block",
+  }]);
+});
+
 test("GET /api/search — filters by sourceType", async () => {
   const { app, searchDocumentStore } = makeApp();
   const { token, user } = await registerAndLogin(app);
@@ -229,6 +328,51 @@ test("GET /api/search — filters by sourceType", async () => {
   for (const result of body.data.results) {
     assert.equal(result.sourceType, "reminder");
   }
+});
+
+test("GET /api/search — filters by note sourceType", async () => {
+  const { app, searchDocumentStore } = makeApp();
+  const { token, user } = await registerAndLogin(app);
+
+  await searchDocumentStore.replaceUserDocuments(user.id, [
+    {
+      userId: user.id,
+      sourceType: "task",
+      sourceId: "task-1",
+      title: "Focus task",
+      bodyText: "Task body for focus",
+      metadataJson: null,
+      contentHash: "hash-task",
+      sourceUpdatedAt: new Date(),
+    },
+    {
+      userId: user.id,
+      sourceType: "note",
+      sourceId: "note-1",
+      title: "Focus note",
+      bodyText: "Note body for focus",
+      metadataJson: null,
+      contentHash: "hash-note",
+      sourceUpdatedAt: new Date(),
+    },
+  ]);
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/search?q=focus&types=note",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body) as {
+    data: { results: Array<{ sourceType: string; sourceId: string }> };
+  };
+  assert.deepEqual(
+    body.data.results.map((result) => ({
+      sourceType: result.sourceType,
+      sourceId: result.sourceId,
+    })),
+    [{ sourceType: "note", sourceId: "note-1" }]
+  );
 });
 
 test("GET /api/search — pagination works", async () => {

@@ -4822,6 +4822,7 @@ export function AppShell() {
   const [taskFilterValues, setTaskFilterValues] = useState<TaskFilterValues>(DEFAULT_TASK_FILTER_VALUES);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [pendingOpenTaskId, setPendingOpenTaskId] = useState<string | null>(null);
+  const [pendingOpenReminderId, setPendingOpenReminderId] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState<GlobalSearchState>({
     query: "",
     results: [],
@@ -7320,6 +7321,15 @@ export function AppShell() {
   }, [tasks, pendingOpenTaskId]);
 
   useEffect(() => {
+    if (!pendingOpenReminderId) return;
+    const reminder = reminders.find((entry) => entry.id === pendingOpenReminderId);
+    if (reminder) {
+      openEditReminderDialog(reminder);
+      setPendingOpenReminderId(null);
+    }
+  }, [pendingOpenReminderId, reminders]);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
@@ -7969,69 +7979,80 @@ export function AppShell() {
     );
   }
 
+  function navigateToSearchDate(targetDate: string | null | undefined) {
+    if (!targetDate) {
+      return;
+    }
+    handleDateChange(targetDate);
+  }
+
   function handleSearchResultClick(result: SearchResult) {
     const meta = result.metadataJson as Record<string, unknown> | null;
 
     switch (result.sourceType) {
       case "task": {
         const targetDate = meta?.targetDate as string | undefined;
-        if (targetDate) setSelectedDate(targetDate);
+        navigateToSearchDate(targetDate);
         setPendingOpenTaskId(result.sourceId);
         setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 100);
         break;
       }
       case "comment":
       case "attachment": {
+        const targetDate = meta?.targetDate as string | undefined;
         const taskId = meta?.taskId as string | undefined;
+        navigateToSearchDate(targetDate);
         if (taskId) setPendingOpenTaskId(taskId);
         setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 100);
         break;
       }
       case "affirmation": {
         const targetDate = meta?.targetDate as string | undefined;
-        if (targetDate) setSelectedDate(targetDate);
+        navigateToSearchDate(targetDate);
         setTimeout(() => document.getElementById("affirmation")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
       case "bilan": {
         const targetDate = meta?.targetDate as string | undefined;
-        if (targetDate) setSelectedDate(targetDate);
+        navigateToSearchDate(targetDate);
         setTimeout(() => document.getElementById("bilan")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
       case "reminder": {
-        const reminder = reminders.find((r) => r.id === result.sourceId);
-        if (reminder) {
-          openEditReminderDialog(reminder);
-        } else {
-          setTimeout(() => document.getElementById("reminders")?.scrollIntoView({ behavior: "smooth" }), 100);
-        }
+        const remindAt = meta?.remindAt as string | undefined;
+        navigateToSearchDate(remindAt?.slice(0, 10));
+        setPendingOpenReminderId(result.sourceId);
+        setTimeout(() => document.getElementById("reminders")?.scrollIntoView({ behavior: "smooth" }), 100);
         break;
       }
       case "calendarEvent": {
         const startTime = meta?.startTime as string | undefined;
-        if (startTime) setSelectedDate(startTime.slice(0, 10));
+        navigateToSearchDate(startTime?.slice(0, 10));
         setExpandedCalendarEventId(result.sourceId);
         setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
       case "calendarNote": {
         const calendarEventId = meta?.calendarEventId as string | undefined;
+        const startTime = meta?.startTime as string | undefined;
+        navigateToSearchDate(startTime?.slice(0, 10));
         if (calendarEventId) {
-          const event = calendarEvents.find((e) => e.id === calendarEventId);
-          if (event?.startTime) setSelectedDate(event.startTime.slice(0, 10));
           setExpandedCalendarEventId(calendarEventId);
         }
         setTimeout(() => document.getElementById("board")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
       case "note": {
+        const targetDate = meta?.targetDate as string | undefined;
+        navigateToSearchDate(targetDate);
         setExpandedNoteId(result.sourceId);
         setTimeout(() => document.getElementById("notes")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
       case "noteAttachment": {
+        const targetDate = meta?.targetDate as string | undefined;
         const noteId = meta?.noteId as string | undefined;
+        navigateToSearchDate(targetDate);
         if (noteId) setExpandedNoteId(noteId);
         setTimeout(() => document.getElementById("notes")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
