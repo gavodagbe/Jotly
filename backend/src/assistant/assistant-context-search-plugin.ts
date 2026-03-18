@@ -12,6 +12,9 @@ export function createAssistantContextSearchPlugin(
       const eventTitlesById = new Map(
         snapshot.calendarEvents.map((event) => [event.id, event.title])
       );
+      const eventStartTimesById = new Map(
+        snapshot.calendarEvents.map((event) => [event.id, event.startTime.toISOString()])
+      );
 
       for (const affirmation of snapshot.dayAffirmations) {
         entries.push({
@@ -94,6 +97,7 @@ export function createAssistantContextSearchPlugin(
           metadata: {
             calendarEventId: note.calendarEventId,
             calendarEventTitle: eventTitlesById.get(note.calendarEventId) ?? null,
+            startTime: eventStartTimesById.get(note.calendarEventId) ?? null,
           },
           updatedAt: note.updatedAt,
         });

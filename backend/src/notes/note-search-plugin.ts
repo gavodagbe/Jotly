@@ -40,6 +40,9 @@ export function createNoteSearchPlugin(options: {
               metadata: {
                 noteId: note.id,
                 noteTitle: note.title ?? null,
+                targetDate: note.targetDate
+                  ? note.targetDate.toISOString().substring(0, 10)
+                  : null,
                 contentType: attachment.contentType,
                 sizeBytes: attachment.sizeBytes,
               },

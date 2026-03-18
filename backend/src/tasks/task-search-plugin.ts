@@ -41,6 +41,7 @@ export function createTaskSearchPlugin(options: {
               metadata: {
                 taskId: task.id,
                 taskTitle: task.title,
+                targetDate: formatDateOnly(task.targetDate),
                 createdAt: comment.createdAt.toISOString(),
               },
               updatedAt: comment.updatedAt,
@@ -59,6 +60,7 @@ export function createTaskSearchPlugin(options: {
               metadata: {
                 taskId: task.id,
                 taskTitle: task.title,
+                targetDate: formatDateOnly(task.targetDate),
                 contentType: attachment.contentType,
                 sizeBytes: attachment.sizeBytes,
               },

@@ -5,6 +5,7 @@ import {
   AssistantSearchDocumentStore,
   AssistantSearchSourceType,
 } from "../assistant/assistant-search-document-store";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import {
   getBearerToken,
   isStorageNotInitializedPrismaError,
@@ -16,6 +17,7 @@ import {
 type SearchRoutesOptions = {
   authService: AuthService;
   searchDocumentStore: AssistantSearchDocumentStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const VALID_SOURCE_TYPES: AssistantSearchSourceType[] = [
@@ -27,6 +29,8 @@ const VALID_SOURCE_TYPES: AssistantSearchSourceType[] = [
   "calendarEvent",
   "calendarNote",
   "attachment",
+  "note",
+  "noteAttachment",
 ];
 
 const searchQuerySchema = z.object({
@@ -46,7 +50,7 @@ function getAuthenticatedUserId(request: { authUserId?: string }): string | null
 }
 
 const searchRoutes: FastifyPluginAsync<SearchRoutesOptions> = async (app, options) => {
-  const { authService, searchDocumentStore } = options;
+  const { authService, searchDocumentStore, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -102,6 +106,12 @@ const searchRoutes: FastifyPluginAsync<SearchRoutesOptions> = async (app, option
     }
 
     try {
+      try {
+        await assistantSearchSyncService?.syncUserWorkspace(authUserId);
+      } catch (error) {
+        request.log.warn(error, "Failed to refresh search index before search");
+      }
+
       const result = await searchDocumentStore.searchDirect(authUserId, q, {
         sourceTypes,
         from: fromDate,
