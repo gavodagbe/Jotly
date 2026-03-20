@@ -124,6 +124,39 @@ export function createGoogleCalendarOAuthService(
 ): GoogleCalendarOAuthService {
   const { oauth2ClientFactory, encryptionKey, connectionStore } = options;
 
+  function canStillUseStoredAccessToken(connection: { tokenExpiresAt: Date }): boolean {
+    return connection.tokenExpiresAt.getTime() > Date.now();
+  }
+
+  async function getAccessTokenWithRefreshFallback(
+    connection: Awaited<ReturnType<GoogleCalendarConnectionStore["getById"]>>
+  ): Promise<string | null> {
+    if (!connection) {
+      return null;
+    }
+
+    const isExpiringSoon =
+      connection.tokenExpiresAt.getTime() - Date.now() < TOKEN_REFRESH_BUFFER_MS;
+
+    if (!isExpiringSoon) {
+      return decrypt(connection.accessToken, encryptionKey);
+    }
+
+    try {
+      return await refreshAccessToken(connection.id);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "GOOGLE_CALENDAR_RECONNECT_REQUIRED" &&
+        canStillUseStoredAccessToken(connection)
+      ) {
+        return decrypt(connection.accessToken, encryptionKey);
+      }
+
+      throw error;
+    }
+  }
+
   async function refreshAccessToken(connectionId: string): Promise<string | null> {
     const connection = await connectionStore.getById(connectionId);
     if (!connection) return null;
@@ -261,16 +294,7 @@ export function createGoogleCalendarOAuthService(
 
     async getValidAccessToken(connectionId) {
       const connection = await connectionStore.getById(connectionId);
-      if (!connection) return null;
-
-      const isExpiringSoon =
-        connection.tokenExpiresAt.getTime() - Date.now() < TOKEN_REFRESH_BUFFER_MS;
-
-      if (isExpiringSoon) {
-        return refreshAccessToken(connectionId);
-      }
-
-      return decrypt(connection.accessToken, encryptionKey);
+      return getAccessTokenWithRefreshFallback(connection);
     },
 
     async disconnect(connectionId, userId) {
@@ -311,11 +335,7 @@ export function createGoogleCalendarOAuthService(
       const connection = await connectionStore.getById(connectionId);
       if (!connection) return [];
 
-      const isExpiringSoon =
-        connection.tokenExpiresAt.getTime() - Date.now() < TOKEN_REFRESH_BUFFER_MS;
-      const accessToken = isExpiringSoon
-        ? await refreshAccessToken(connectionId)
-        : decrypt(connection.accessToken, encryptionKey);
+      const accessToken = await getAccessTokenWithRefreshFallback(connection);
       if (!accessToken) return [];
 
       const client = oauth2ClientFactory.createClientWithTokens({
