@@ -2718,6 +2718,36 @@ async function loadTasksByDate(date: string, token: string, signal?: AbortSignal
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
+async function loadAllTasks(
+  token: string,
+  filters: { project?: string; status?: string; dateFrom?: string; dateTo?: string },
+  signal?: AbortSignal
+): Promise<Task[]> {
+  const params = new URLSearchParams();
+  if (filters.project) params.set("project", filters.project);
+  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  const query = params.toString() ? `?${params.toString()}` : "";
+
+  const response = await fetch(`/backend-api/tasks/all${query}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Task[]; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load tasks"));
+  }
+
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
 async function loadTaskAlerts(date: string, token: string, signal?: AbortSignal): Promise<TaskAlertsSummary> {
   const response = await fetch(`/backend-api/tasks/alerts?date=${encodeURIComponent(date)}`, {
     method: "GET",
@@ -3735,6 +3765,551 @@ async function dismissGamingTrackNudge(
   return payload.data;
 }
 
+// ─── Project Planning View ───────────────────────────────────────────────────
+
+type ProjectPlanningViewProps = {
+  locale: UserLocale;
+  tasks: Task[];
+  isLoading: boolean;
+  errorMessage: string | null;
+  filters: { project: string; status: string; dateFrom: string; dateTo: string };
+  sort: { column: string; dir: "asc" | "desc" };
+  viewMode: "table" | "gantt";
+  projectOptions: string[];
+  onFilterChange: (key: "project" | "status" | "dateFrom" | "dateTo", value: string) => void;
+  onSortChange: (column: string) => void;
+  onViewModeChange: (mode: "table" | "gantt") => void;
+  onClose: () => void;
+  onEditTask: (task: Task) => void;
+};
+
+const STATUS_COLORS: Record<TaskStatus, string> = {
+  todo: "bg-slate-100 text-slate-600",
+  in_progress: "bg-blue-100 text-blue-700",
+  done: "bg-emerald-100 text-emerald-700",
+  cancelled: "bg-red-50 text-red-500",
+};
+
+const PRIORITY_COLORS: Record<TaskPriority, string> = {
+  low: "bg-slate-100 text-slate-500",
+  medium: "bg-amber-100 text-amber-700",
+  high: "bg-rose-100 text-rose-600",
+};
+
+const GANTT_STATUS_BAR: Record<TaskStatus, string> = {
+  todo: "bg-slate-300",
+  in_progress: "bg-blue-400",
+  done: "bg-emerald-400",
+  cancelled: "bg-red-300",
+};
+
+function sortTasks(tasks: Task[], column: string, dir: "asc" | "desc"): Task[] {
+  const sorted = [...tasks].sort((a, b) => {
+    let cmp = 0;
+    switch (column) {
+      case "title":
+        cmp = a.title.localeCompare(b.title);
+        break;
+      case "project":
+        cmp = (a.project ?? "").localeCompare(b.project ?? "");
+        break;
+      case "status":
+        cmp = a.status.localeCompare(b.status);
+        break;
+      case "priority": {
+        const rank: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
+        cmp = rank[a.priority] - rank[b.priority];
+        break;
+      }
+      case "targetDate":
+        cmp = a.targetDate.localeCompare(b.targetDate);
+        break;
+      case "dueDate":
+        cmp = (a.dueDate ?? "").localeCompare(b.dueDate ?? "");
+        break;
+      case "plannedTime":
+        cmp = (a.plannedTime ?? 0) - (b.plannedTime ?? 0);
+        break;
+      default:
+        cmp = a.targetDate.localeCompare(b.targetDate);
+    }
+    return dir === "asc" ? cmp : -cmp;
+  });
+  return sorted;
+}
+
+function formatMinutes(minutes: number | null): string {
+  if (!minutes) return "—";
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+function ProjectPlanningView({
+  locale,
+  tasks,
+  isLoading,
+  errorMessage,
+  filters,
+  sort,
+  viewMode,
+  projectOptions,
+  onFilterChange,
+  onSortChange,
+  onViewModeChange,
+  onClose,
+  onEditTask,
+}: ProjectPlanningViewProps) {
+  const isFrench = locale === "fr";
+
+  const sorted = useMemo(() => sortTasks(tasks, sort.column, sort.dir), [tasks, sort]);
+
+  // ── Gantt chart computation ───────────────────────────────────────────────
+  const ganttData = useMemo(() => {
+    if (sorted.length === 0) return null;
+
+    const allDates = sorted.flatMap((t) => {
+      const dates: string[] = [t.targetDate];
+      if (t.dueDate) dates.push(t.dueDate);
+      return dates;
+    });
+
+    const minDate = allDates.reduce((a, b) => (a < b ? a : b));
+    const maxDate = allDates.reduce((a, b) => (a > b ? a : b));
+
+    const start = new Date(minDate + "T00:00:00Z");
+    const end = new Date(maxDate + "T00:00:00Z");
+    end.setUTCDate(end.getUTCDate() + 1);
+
+    const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000));
+
+    function dayOffset(dateStr: string): number {
+      const d = new Date(dateStr + "T00:00:00Z");
+      return Math.round((d.getTime() - start.getTime()) / 86400000);
+    }
+
+    // Build month labels
+    const months: { label: string; left: number; width: number }[] = [];
+    let cursor = new Date(start);
+    while (cursor < end) {
+      const monthStart = new Date(cursor);
+      const nextMonth = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+      const clampedEnd = nextMonth < end ? nextMonth : end;
+      const left = ((monthStart.getTime() - start.getTime()) / 86400000 / totalDays) * 100;
+      const width = ((clampedEnd.getTime() - monthStart.getTime()) / 86400000 / totalDays) * 100;
+      months.push({
+        label: monthStart.toLocaleDateString(isFrench ? "fr-FR" : "en-US", { month: "short", year: "numeric" }),
+        left,
+        width,
+      });
+      cursor = nextMonth;
+    }
+
+    // Build day columns (only show if totalDays <= 60)
+    const days: { label: string; left: number }[] = [];
+    if (totalDays <= 60) {
+      for (let i = 0; i < totalDays; i++) {
+        const d = new Date(start);
+        d.setUTCDate(d.getUTCDate() + i);
+        days.push({
+          label: String(d.getUTCDate()),
+          left: (i / totalDays) * 100,
+        });
+      }
+    }
+
+    const bars = sorted.map((task) => {
+      const startOffset = dayOffset(task.targetDate);
+      const endOffset = task.dueDate ? dayOffset(task.dueDate) + 1 : startOffset + 1;
+      const left = (startOffset / totalDays) * 100;
+      const width = Math.max(0.5, ((endOffset - startOffset) / totalDays) * 100);
+      return { task, left, width };
+    });
+
+    return { totalDays, months, days, bars, minDate, maxDate };
+  }, [sorted, isFrench]);
+
+  function SortIcon({ column }: { column: string }) {
+    if (sort.column !== column) {
+      return (
+        <svg viewBox="0 0 10 12" className="ml-1 inline h-3 w-3 opacity-30" fill="currentColor">
+          <path d="M5 1l3 4H2zM5 11l-3-4h6z" />
+        </svg>
+      );
+    }
+    return sort.dir === "asc" ? (
+      <svg viewBox="0 0 10 6" className="ml-1 inline h-3 w-3 text-accent" fill="currentColor">
+        <path d="M5 0l5 6H0z" />
+      </svg>
+    ) : (
+      <svg viewBox="0 0 10 6" className="ml-1 inline h-3 w-3 text-accent" fill="currentColor">
+        <path d="M5 6L0 0h10z" />
+      </svg>
+    );
+  }
+
+  function formatStatusLabel(status: TaskStatus): string {
+    const labels: Record<TaskStatus, { fr: string; en: string }> = {
+      todo: { fr: "A faire", en: "To do" },
+      in_progress: { fr: "En cours", en: "In progress" },
+      done: { fr: "Termine", en: "Done" },
+      cancelled: { fr: "Annule", en: "Cancelled" },
+    };
+    return isFrench ? labels[status].fr : labels[status].en;
+  }
+
+  function formatPriorityLabel(priority: TaskPriority): string {
+    const labels: Record<TaskPriority, { fr: string; en: string }> = {
+      low: { fr: "Faible", en: "Low" },
+      medium: { fr: "Moyen", en: "Medium" },
+      high: { fr: "Elevee", en: "High" },
+    };
+    return isFrench ? labels[priority].fr : labels[priority].en;
+  }
+
+  const th = "cursor-pointer select-none whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-muted hover:text-foreground";
+  const td = "px-3 py-2.5 text-sm";
+
+  // Stats
+  const statsDone = tasks.filter((t) => t.status === "done").length;
+  const statsInProgress = tasks.filter((t) => t.status === "in_progress").length;
+  const statsTodo = tasks.filter((t) => t.status === "todo").length;
+  const totalPlanned = tasks.reduce((s, t) => s + (t.plannedTime ?? 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-background lg:pl-[260px]">
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          <svg viewBox="0 0 20 20" className="h-5 w-5 text-accent" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <rect x="2" y="4" width="16" height="2.5" rx="1"/>
+            <rect x="2" y="8.75" width="11" height="2.5" rx="1"/>
+            <rect x="2" y="13.5" width="14" height="2.5" rx="1"/>
+          </svg>
+          <h2 className="text-base font-semibold text-foreground">
+            {isFrench ? "Planification projet" : "Project Planning"}
+          </h2>
+          {!isLoading && (
+            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
+              {tasks.length} {isFrench ? "taches" : "tasks"}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          <div className="flex rounded-lg border border-line bg-surface-soft p-0.5">
+            <button
+              type="button"
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === "table" ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground"
+              }`}
+              onClick={() => onViewModeChange("table")}
+            >
+              <svg viewBox="0 0 16 12" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="1" y="1" width="14" height="10" rx="1.5"/>
+                <path d="M1 4.5h14M1 8h14M5.5 1v10M11 1v10"/>
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === "gantt" ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground"
+              }`}
+              onClick={() => onViewModeChange("gantt")}
+            >
+              <svg viewBox="0 0 16 12" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="1" y="1.5" width="8" height="2" rx="1" fill="currentColor" stroke="none"/>
+                <rect x="4" y="5" width="7" height="2" rx="1" fill="currentColor" stroke="none"/>
+                <rect x="1" y="8.5" width="11" height="2" rx="1" fill="currentColor" stroke="none"/>
+              </svg>
+            </button>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+            onClick={onClose}
+            aria-label={isFrench ? "Fermer" : "Close"}
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M3 3l10 10M13 3L3 13"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Stats bar */}
+      {!isLoading && tasks.length > 0 && (
+        <div className="flex shrink-0 items-center gap-4 border-b border-line bg-surface-soft px-4 py-2 sm:px-6">
+          <span className="text-xs text-muted">
+            <span className="font-semibold text-emerald-600">{statsDone}</span> {isFrench ? "terminées" : "done"}
+          </span>
+          <span className="text-xs text-muted">
+            <span className="font-semibold text-blue-600">{statsInProgress}</span> {isFrench ? "en cours" : "in progress"}
+          </span>
+          <span className="text-xs text-muted">
+            <span className="font-semibold text-slate-600">{statsTodo}</span> {isFrench ? "à faire" : "to do"}
+          </span>
+          {totalPlanned > 0 && (
+            <span className="text-xs text-muted">
+              <span className="font-semibold text-foreground">{formatMinutes(totalPlanned)}</span> {isFrench ? "planifiées" : "planned"}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-3 sm:px-6">
+        {/* Project filter */}
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs text-muted">{isFrench ? "Projet" : "Project"}</label>
+          <select
+            className="rounded-md border border-line bg-surface-soft px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+            value={filters.project}
+            onChange={(e) => onFilterChange("project", e.target.value)}
+          >
+            <option value="">{isFrench ? "Tous" : "All"}</option>
+            {projectOptions.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Status filter */}
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs text-muted">{isFrench ? "Statut" : "Status"}</label>
+          <select
+            className="rounded-md border border-line bg-surface-soft px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+            value={filters.status}
+            onChange={(e) => onFilterChange("status", e.target.value)}
+          >
+            <option value="all">{isFrench ? "Tous" : "All"}</option>
+            <option value="todo">{isFrench ? "A faire" : "To do"}</option>
+            <option value="in_progress">{isFrench ? "En cours" : "In progress"}</option>
+            <option value="done">{isFrench ? "Termine" : "Done"}</option>
+            <option value="cancelled">{isFrench ? "Annule" : "Cancelled"}</option>
+          </select>
+        </div>
+
+        {/* Date from */}
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs text-muted">{isFrench ? "Du" : "From"}</label>
+          <input
+            type="date"
+            className="rounded-md border border-line bg-surface-soft px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+            value={filters.dateFrom}
+            onChange={(e) => onFilterChange("dateFrom", e.target.value)}
+          />
+        </div>
+
+        {/* Date to */}
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs text-muted">{isFrench ? "Au" : "To"}</label>
+          <input
+            type="date"
+            className="rounded-md border border-line bg-surface-soft px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+            value={filters.dateTo}
+            onChange={(e) => onFilterChange("dateTo", e.target.value)}
+          />
+        </div>
+
+        {/* Reset filters */}
+        {(filters.project || filters.status !== "all" || filters.dateFrom || filters.dateTo) && (
+          <button
+            type="button"
+            className="rounded-md border border-line px-2 py-1.5 text-xs text-muted transition-colors hover:border-accent/30 hover:text-accent"
+            onClick={() => {
+              onFilterChange("project", "");
+              onFilterChange("status", "all");
+              onFilterChange("dateFrom", "");
+              onFilterChange("dateTo", "");
+            }}
+          >
+            {isFrench ? "Reinitialiser" : "Reset"}
+          </button>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="min-h-0 flex-1 overflow-auto">
+        {isLoading ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="flex items-center gap-3 text-muted">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+              <span className="text-sm">{isFrench ? "Chargement..." : "Loading..."}</span>
+            </div>
+          </div>
+        ) : errorMessage ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="max-w-sm rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</p>
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted">
+            <svg viewBox="0 0 48 48" className="h-12 w-12 opacity-30" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="6" y="6" width="36" height="36" rx="4"/>
+              <path d="M14 18h20M14 24h14M14 30h18"/>
+            </svg>
+            <p className="text-sm">{isFrench ? "Aucune tache trouvee" : "No tasks found"}</p>
+          </div>
+        ) : viewMode === "table" ? (
+          // ── Table view ──────────────────────────────────────────────────────
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10 border-b border-line bg-surface">
+              <tr>
+                <th className={th} onClick={() => onSortChange("title")}>
+                  {isFrench ? "Titre" : "Title"}<SortIcon column="title" />
+                </th>
+                <th className={th} onClick={() => onSortChange("project")}>
+                  {isFrench ? "Projet" : "Project"}<SortIcon column="project" />
+                </th>
+                <th className={th} onClick={() => onSortChange("status")}>
+                  {isFrench ? "Statut" : "Status"}<SortIcon column="status" />
+                </th>
+                <th className={th} onClick={() => onSortChange("priority")}>
+                  {isFrench ? "Priorite" : "Priority"}<SortIcon column="priority" />
+                </th>
+                <th className={th} onClick={() => onSortChange("targetDate")}>
+                  {isFrench ? "Date planifiee" : "Planned date"}<SortIcon column="targetDate" />
+                </th>
+                <th className={th} onClick={() => onSortChange("dueDate")}>
+                  {isFrench ? "Echeance" : "Due date"}<SortIcon column="dueDate" />
+                </th>
+                <th className={th} onClick={() => onSortChange("plannedTime")}>
+                  {isFrench ? "Temps" : "Time"}<SortIcon column="plannedTime" />
+                </th>
+                <th className="px-3 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {sorted.map((task) => (
+                <tr
+                  key={task.id}
+                  className="group cursor-pointer transition-colors hover:bg-surface-soft"
+                  onClick={() => onEditTask(task)}
+                >
+                  <td className={`${td} max-w-[240px]`}>
+                    <span className="line-clamp-2 font-medium text-foreground">{task.title}</span>
+                  </td>
+                  <td className={td}>
+                    {task.project ? (
+                      <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent">{task.project}</span>
+                    ) : (
+                      <span className="text-muted/50">—</span>
+                    )}
+                  </td>
+                  <td className={td}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[task.status]}`}>
+                      {formatStatusLabel(task.status)}
+                    </span>
+                  </td>
+                  <td className={td}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PRIORITY_COLORS[task.priority]}`}>
+                      {formatPriorityLabel(task.priority)}
+                    </span>
+                  </td>
+                  <td className={`${td} text-muted`}>{task.targetDate}</td>
+                  <td className={`${td} text-muted`}>{task.dueDate ?? "—"}</td>
+                  <td className={`${td} text-muted`}>{formatMinutes(task.plannedTime)}</td>
+                  <td className="px-3 py-2.5">
+                    <button
+                      type="button"
+                      className="rounded-md px-2 py-1 text-xs text-muted opacity-0 transition-all hover:bg-accent-soft hover:text-accent group-hover:opacity-100"
+                      onClick={(e) => { e.stopPropagation(); onEditTask(task); }}
+                    >
+                      {isFrench ? "Modifier" : "Edit"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          // ── Gantt view ───────────────────────────────────────────────────────
+          ganttData ? (
+            <div className="min-w-[700px] px-4 py-4 sm:px-6">
+              {/* Month labels */}
+              <div className="relative mb-1 h-6 border-b border-line">
+                {ganttData.months.map((m, i) => (
+                  <span
+                    key={i}
+                    className="absolute text-[10px] text-muted"
+                    style={{ left: `${m.left}%`, width: `${m.width}%` }}
+                  >
+                    {m.label}
+                  </span>
+                ))}
+              </div>
+
+              {/* Day markers */}
+              {ganttData.days.length > 0 && (
+                <div className="relative mb-2 h-4">
+                  {ganttData.days.map((d, i) => (
+                    <span
+                      key={i}
+                      className="absolute text-[9px] text-muted/60"
+                      style={{ left: `${d.left}%` }}
+                    >
+                      {d.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Task rows */}
+              <div className="space-y-1.5">
+                {ganttData.bars.map(({ task, left, width }) => (
+                  <div key={task.id} className="flex items-center gap-3">
+                    {/* Task label */}
+                    <div
+                      className="w-40 shrink-0 cursor-pointer truncate text-xs text-foreground hover:text-accent"
+                      title={task.title}
+                      onClick={() => onEditTask(task)}
+                    >
+                      {task.title}
+                    </div>
+                    {/* Bar track */}
+                    <div className="relative h-6 flex-1 rounded bg-surface-soft">
+                      <div
+                        className={`absolute h-full cursor-pointer rounded transition-opacity hover:opacity-80 ${GANTT_STATUS_BAR[task.status]}`}
+                        style={{ left: `${left}%`, width: `${width}%` }}
+                        title={`${task.title} · ${task.targetDate}${task.dueDate ? ` → ${task.dueDate}` : ""}`}
+                        onClick={() => onEditTask(task)}
+                      >
+                        {width > 5 && (
+                          <span className="absolute inset-0 flex items-center justify-center truncate px-1.5 text-[10px] font-medium text-white/90">
+                            {task.title}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Legend */}
+              <div className="mt-4 flex flex-wrap gap-3 border-t border-line pt-3">
+                {(["todo", "in_progress", "done", "cancelled"] as TaskStatus[]).map((s) => (
+                  <div key={s} className="flex items-center gap-1.5">
+                    <span className={`h-3 w-3 rounded ${GANTT_STATUS_BAR[s]}`} />
+                    <span className="text-xs text-muted">
+                      {s === "todo" ? (isFrench ? "A faire" : "To do")
+                        : s === "in_progress" ? (isFrench ? "En cours" : "In progress")
+                        : s === "done" ? (isFrench ? "Termine" : "Done")
+                        : isFrench ? "Annule" : "Cancelled"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 type AppNavbarProps = {
   locale: UserLocale;
   user: AuthUser | null;
@@ -3746,6 +4321,8 @@ type AppNavbarProps = {
   onOpenTaskAlerts?: () => void;
   onOpenSearch?: () => void;
   isBusy?: boolean;
+  isProjectPlanningOpen?: boolean;
+  onOpenProjectPlanning?: () => void;
 };
 
 const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> = {
@@ -4291,6 +4868,8 @@ function AppNavbar({
   onOpenTaskAlerts,
   onOpenSearch,
   isBusy = false,
+  isProjectPlanningOpen = false,
+  onOpenProjectPlanning,
 }: AppNavbarProps) {
   const isLoggedIn = user !== null;
   const isFrench = locale === "fr";
@@ -4334,6 +4913,23 @@ function AppNavbar({
               <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
               {isFrench ? "Tableau Kanban" : "Kanban Board"}
             </a>
+            <button
+              type="button"
+              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ${
+                isProjectPlanningOpen
+                  ? "bg-accent-soft text-accent"
+                  : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
+              }`}
+              onClick={onOpenProjectPlanning}
+              disabled={isBusy || !onOpenProjectPlanning}
+            >
+              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <rect x="2" y="4" width="16" height="2.5" rx="1"/>
+                <rect x="2" y="8.75" width="11" height="2.5" rx="1"/>
+                <rect x="2" y="13.5" width="14" height="2.5" rx="1"/>
+              </svg>
+              <span className="flex-1">{isFrench ? "Planification projet" : "Project Planning"}</span>
+            </button>
             <button
               type="button"
               className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ${
@@ -5395,6 +5991,23 @@ export function AppShell() {
 
   const [taskFormErrorMessage, setTaskFormErrorMessage] = useState<string | null>(null);
   const [isSubmittingTask, setIsSubmittingTask] = useState(false);
+
+  // Project planning view state
+  const [isProjectPlanningOpen, setIsProjectPlanningOpen] = useState(false);
+  const [allProjectTasks, setAllProjectTasks] = useState<Task[]>([]);
+  const [isLoadingAllTasks, setIsLoadingAllTasks] = useState(false);
+  const [allTasksErrorMessage, setAllTasksErrorMessage] = useState<string | null>(null);
+  const [projectPlanningViewMode, setProjectPlanningViewMode] = useState<"table" | "gantt">("table");
+  const [projectPlanningFilters, setProjectPlanningFilters] = useState({
+    project: "",
+    status: "all",
+    dateFrom: "",
+    dateTo: "",
+  });
+  const [projectPlanningSort, setProjectPlanningSort] = useState<{ column: string; dir: "asc" | "desc" }>({
+    column: "targetDate",
+    dir: "asc",
+  });
 
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
@@ -6668,6 +7281,44 @@ export function AppShell() {
   function toggleTaskAlertsPanel() {
     setIsAssistantPanelOpen(false);
     setIsTaskAlertsPanelOpen((isOpen) => !isOpen);
+  }
+
+  async function fetchAllProjectTasks(filters = projectPlanningFilters) {
+    if (!authToken) return;
+    setIsLoadingAllTasks(true);
+    setAllTasksErrorMessage(null);
+    try {
+      const tasks = await loadAllTasks(authToken, filters);
+      setAllProjectTasks(tasks);
+    } catch (error) {
+      setAllTasksErrorMessage(
+        error instanceof Error ? error.message : isFrench ? "Impossible de charger les taches." : "Unable to load tasks."
+      );
+    } finally {
+      setIsLoadingAllTasks(false);
+    }
+  }
+
+  function openProjectPlanning() {
+    setIsProjectPlanningOpen(true);
+    void fetchAllProjectTasks();
+  }
+
+  function closeProjectPlanning() {
+    setIsProjectPlanningOpen(false);
+  }
+
+  function handleProjectPlanningFilterChange(key: keyof typeof projectPlanningFilters, value: string) {
+    const nextFilters = { ...projectPlanningFilters, [key]: value };
+    setProjectPlanningFilters(nextFilters);
+    void fetchAllProjectTasks(nextFilters);
+  }
+
+  function handleProjectPlanningSort(column: string) {
+    setProjectPlanningSort((current) => ({
+      column,
+      dir: current.column === column && current.dir === "asc" ? "desc" : "asc",
+    }));
   }
 
   async function handleAssistantSubmit(event: FormEvent<HTMLFormElement>) {
@@ -8907,7 +9558,31 @@ export function AppShell() {
         onOpenTaskAlerts={toggleTaskAlertsPanel}
         onOpenSearch={() => setIsSearchModalOpen(true)}
         isBusy={isMutationPending || isLoading}
+        isProjectPlanningOpen={isProjectPlanningOpen}
+        onOpenProjectPlanning={openProjectPlanning}
       />
+
+    {isProjectPlanningOpen ? (
+      <ProjectPlanningView
+        locale={activeLocale}
+        tasks={allProjectTasks}
+        isLoading={isLoadingAllTasks}
+        errorMessage={allTasksErrorMessage}
+        filters={projectPlanningFilters}
+        sort={projectPlanningSort}
+        viewMode={projectPlanningViewMode}
+        projectOptions={projectOptions}
+        onFilterChange={handleProjectPlanningFilterChange}
+        onSortChange={handleProjectPlanningSort}
+        onViewModeChange={setProjectPlanningViewMode}
+        onClose={closeProjectPlanning}
+        onEditTask={(task) => {
+          closeProjectPlanning();
+          handleDateChange(task.targetDate);
+          setTimeout(() => openEditTaskDialog(task), 100);
+        }}
+      />
+    ) : null}
 
     <div className="flex min-h-screen flex-col gap-6 px-4 py-6 sm:px-8 lg:ml-[260px] lg:px-10 lg:py-8">
       <div className="flex items-center justify-between">

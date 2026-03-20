@@ -68,6 +68,13 @@ const listTasksQuerySchema = z.object({
   date: targetDateSchema
 });
 
+const listAllTasksQuerySchema = z.object({
+  project: z.string().trim().optional(),
+  status: z.enum(["all", "todo", "in_progress", "done", "cancelled"]).optional(),
+  dateFrom: targetDateSchema.optional(),
+  dateTo: targetDateSchema.optional(),
+});
+
 const listTaskAlertsQuerySchema = z.object({
   date: targetDateSchema
 });
@@ -333,6 +340,73 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       request.log.error(error, "Failed to list tasks");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list tasks");
+    }
+  });
+
+  app.get("/api/tasks/all", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const queryResult = listAllTasksQuerySchema.safeParse(request.query);
+
+    if (!queryResult.success) {
+      const details = zodIssuesToStrings(queryResult.error);
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        details[0] ?? "Invalid request query",
+        details
+      );
+    }
+
+    const { project, status, dateFrom, dateTo } = queryResult.data;
+
+    const parsedDateFrom = dateFrom ? parseDateOnly(dateFrom) : null;
+    const parsedDateTo = dateTo ? parseDateOnly(dateTo) : null;
+
+    try {
+      let tasks = await taskStore.listByUser(authUserId);
+
+      if (project && project.trim() !== "") {
+        const normalizedProject = project.trim().toLowerCase();
+        tasks = tasks.filter(
+          (task) => task.project !== null && task.project.trim().toLowerCase() === normalizedProject
+        );
+      }
+
+      if (status && status !== "all") {
+        tasks = tasks.filter((task) => task.status === status);
+      }
+
+      if (parsedDateFrom) {
+        tasks = tasks.filter(
+          (task) => task.targetDate.getTime() >= parsedDateFrom.getTime()
+        );
+      }
+
+      if (parsedDateTo) {
+        const endExclusive = new Date(parsedDateTo);
+        endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+        tasks = tasks.filter(
+          (task) => task.targetDate.getTime() < endExclusive.getTime()
+        );
+      }
+
+      return reply.send({
+        data: tasks.map(serializeTask)
+      });
+    } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
+      request.log.error(error, "Failed to list all tasks");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list all tasks");
     }
   });
 
