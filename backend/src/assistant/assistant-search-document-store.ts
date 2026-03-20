@@ -63,6 +63,12 @@ export type SearchDirectOptions = {
   to?: Date;
   page?: number;
   limit?: number;
+  /**
+   * Optional pre-computed query embedding. When provided and vector search is
+   * supported, the store runs a hybrid full-text + vector search and merges
+   * the results before returning the requested page.
+   */
+  embedding?: number[];
 };
 
 export type SearchDirectResult = {
@@ -72,6 +78,7 @@ export type SearchDirectResult = {
 
 export type AssistantSearchDocumentStore = {
   listByUser(userId: string): Promise<AssistantSearchDocumentRecord[]>;
+  listRecentByUser(userId: string, limit: number): Promise<AssistantSearchResult[]>;
   replaceUserDocuments(userId: string, documents: AssistantSearchDocumentUpsertInput[]): Promise<void>;
   fullTextSearch(
     userId: string,
@@ -219,6 +226,24 @@ export function createInMemoryAssistantSearchDocumentStore(): AssistantSearchDoc
         .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
     },
 
+    async listRecentByUser(userId, limit) {
+      const rows = [...records.values()]
+        .filter((row) => row.userId === userId)
+        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+        .slice(0, limit);
+      return rows.map((row) => ({
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+        title: row.title,
+        bodyText: row.bodyText,
+        snippet: row.bodyText.slice(0, 120),
+        score: 0,
+        matchedBy: "fulltext" as const,
+        metadataJson: row.metadataJson,
+        updatedAt: row.updatedAt,
+      }));
+    },
+
     async replaceUserDocuments(userId, documents) {
       const nextKeys = uniqueSourceKeys(documents);
 
@@ -318,18 +343,51 @@ export function createInMemoryAssistantSearchDocumentStore(): AssistantSearchDoc
       const page = Math.max(1, options?.page ?? 1);
       const limit = Math.min(50, Math.max(1, options?.limit ?? 20));
 
-      const candidates = [...records.values()].filter((row) => {
+      const allRows = [...records.values()].filter((row) => {
         if (row.userId !== userId) return false;
         if (!filterBySourceTypes(options?.sourceTypes, row)) return false;
         if (options?.from && row.updatedAt < options.from) return false;
         if (options?.to && row.updatedAt > options.to) return false;
-        return rankFullText(trimmed, row) > 0;
+        return true;
       });
 
-      candidates.sort((a, b) => {
-        const scoreDiff = rankFullText(trimmed, b) - rankFullText(trimmed, a);
+      // Build a score map keyed by sourceType:sourceId, preferring the higher score
+      const scoreMap = new Map<
+        string,
+        { row: AssistantSearchDocumentRecord; score: number; matchedBy: "fulltext" | "vector" }
+      >();
+
+      // Full-text candidates
+      for (const row of allRows) {
+        const ftScore = rankFullText(trimmed, row);
+        if (ftScore > 0) {
+          const key = `${row.sourceType}:${row.sourceId}`;
+          const existing = scoreMap.get(key);
+          if (!existing || ftScore > existing.score) {
+            scoreMap.set(key, { row, score: ftScore, matchedBy: "fulltext" });
+          }
+        }
+      }
+
+      // Vector candidates (when embedding is provided)
+      if (options?.embedding && options.embedding.length > 0) {
+        for (const row of allRows) {
+          if (!Array.isArray(row.embedding) || row.embedding.length === 0) continue;
+          const vecScore = cosineSimilarity(options.embedding, row.embedding);
+          if (vecScore > 0) {
+            const key = `${row.sourceType}:${row.sourceId}`;
+            const existing = scoreMap.get(key);
+            if (!existing || vecScore > existing.score) {
+              scoreMap.set(key, { row, score: vecScore, matchedBy: "vector" });
+            }
+          }
+        }
+      }
+
+      const candidates = [...scoreMap.values()].sort((a, b) => {
+        const scoreDiff = b.score - a.score;
         if (scoreDiff !== 0) return scoreDiff;
-        return b.updatedAt.getTime() - a.updatedAt.getTime();
+        return b.row.updatedAt.getTime() - a.row.updatedAt.getTime();
       });
 
       const totalCount = candidates.length;
@@ -338,20 +396,17 @@ export function createInMemoryAssistantSearchDocumentStore(): AssistantSearchDoc
 
       return {
         totalCount,
-        results: paged.map((row) => {
-          const score = rankFullText(trimmed, row);
-          return {
-            sourceType: row.sourceType,
-            sourceId: row.sourceId,
-            title: row.title,
-            bodyText: row.bodyText,
-            snippet: row.bodyText.slice(0, 280),
-            score,
-            matchedBy: "fulltext" as const,
-            metadataJson: row.metadataJson,
-            updatedAt: row.updatedAt,
-          };
-        }),
+        results: paged.map(({ row, score, matchedBy }) => ({
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          title: row.title,
+          bodyText: row.bodyText,
+          snippet: row.bodyText.slice(0, 280),
+          score,
+          matchedBy,
+          metadataJson: row.metadataJson,
+          updatedAt: row.updatedAt,
+        })),
       };
     },
 
@@ -435,6 +490,25 @@ export function createPrismaAssistantSearchDocumentStore(
       return rows.map((row) => ({
         ...row,
         sourceType: toSourceType(row.sourceType),
+      }));
+    },
+
+    async listRecentByUser(userId, limit) {
+      const rows = await prisma.assistantSearchDocument.findMany({
+        where: { userId },
+        orderBy: { updatedAt: "desc" },
+        take: limit,
+      });
+      return rows.map((row) => ({
+        sourceType: toSourceType(row.sourceType),
+        sourceId: row.sourceId,
+        title: row.title,
+        bodyText: row.bodyText,
+        snippet: row.bodyText.slice(0, 120),
+        score: 0,
+        matchedBy: "fulltext" as const,
+        metadataJson: row.metadataJson,
+        updatedAt: new Date(row.updatedAt),
       }));
     },
 
@@ -525,7 +599,7 @@ export function createPrismaAssistantSearchDocumentStore(
             'simple',
             concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')),
             websearch_to_tsquery('simple', ${trimmedQuery}),
-            'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false'
+            'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false, StartSel=[[, StopSel=]]'
           ) AS snippet
         FROM "AssistantSearchDocument"
         WHERE "userId" = ${userId}
@@ -582,6 +656,95 @@ export function createPrismaAssistantSearchDocumentStore(
       const fromWhere = options?.from ? Prisma.sql`AND "updatedAt" >= ${options.from}` : Prisma.empty;
       const toWhere = options?.to ? Prisma.sql`AND "updatedAt" <= ${options.to}` : Prisma.empty;
 
+      const vectorEnabled =
+        options?.embedding &&
+        options.embedding.length > 0 &&
+        (await checkVectorSupport());
+
+      if (vectorEnabled && options?.embedding) {
+        // Hybrid mode: combine full-text and vector results, deduplicate by sourceId, re-rank
+        const vectorLiteral = buildVectorLiteral(options.embedding);
+
+        const ftRows = await prisma.$queryRaw<PrismaFullTextRow[]>(Prisma.sql`
+          SELECT
+            "sourceType",
+            "sourceId",
+            "title",
+            "bodyText",
+            "metadataJson",
+            "updatedAt",
+            ts_rank_cd(search_vector, websearch_to_tsquery('simple', ${trimmedQuery})) AS score,
+            ts_headline(
+              'simple',
+              concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')),
+              websearch_to_tsquery('simple', ${trimmedQuery}),
+              'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false, StartSel=[[, StopSel=]]'
+            ) AS snippet
+          FROM "AssistantSearchDocument"
+          WHERE "userId" = ${userId}
+            ${sourceTypeWhere}
+            ${fromWhere}
+            ${toWhere}
+            AND search_vector @@ websearch_to_tsquery('simple', ${trimmedQuery})
+          ORDER BY score DESC, "updatedAt" DESC
+          LIMIT 100
+        `);
+
+        const vecRows = await prisma.$queryRaw<PrismaVectorRow[]>(Prisma.sql`
+          SELECT
+            "sourceType",
+            "sourceId",
+            "title",
+            "bodyText",
+            "metadataJson",
+            "updatedAt",
+            1 - (embedding <=> ${vectorLiteral}::vector) AS score,
+            left(concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')), 280) AS snippet
+          FROM "AssistantSearchDocument"
+          WHERE "userId" = ${userId}
+            ${sourceTypeWhere}
+            ${fromWhere}
+            ${toWhere}
+            AND embedding IS NOT NULL
+          ORDER BY embedding <=> ${vectorLiteral}::vector ASC, "updatedAt" DESC
+          LIMIT 100
+        `);
+
+        // Merge: keep highest score per (sourceType, sourceId)
+        const merged = new Map<string, { row: PrismaFullTextRow | PrismaVectorRow; matchedBy: "fulltext" | "vector" }>();
+
+        for (const row of ftRows) {
+          const key = `${row.sourceType}:${row.sourceId}`;
+          const existing = merged.get(key);
+          if (!existing || parseScore(row.score) > parseScore(existing.row.score)) {
+            merged.set(key, { row, matchedBy: "fulltext" });
+          }
+        }
+
+        for (const row of vecRows) {
+          const key = `${row.sourceType}:${row.sourceId}`;
+          const existing = merged.get(key);
+          if (!existing || parseScore(row.score) > parseScore(existing.row.score)) {
+            merged.set(key, { row, matchedBy: "vector" });
+          }
+        }
+
+        const sorted = [...merged.values()].sort((a, b) => {
+          const scoreDiff = parseScore(b.row.score) - parseScore(a.row.score);
+          if (scoreDiff !== 0) return scoreDiff;
+          return new Date(b.row.updatedAt).getTime() - new Date(a.row.updatedAt).getTime();
+        });
+
+        const totalCount = sorted.length;
+        const paged = sorted.slice(offset, offset + limit);
+
+        return {
+          totalCount,
+          results: paged.map(({ row, matchedBy }) => toResult(row, matchedBy)),
+        };
+      }
+
+      // Full-text only mode
       const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
         SELECT COUNT(*) AS total
         FROM "AssistantSearchDocument"
@@ -607,7 +770,7 @@ export function createPrismaAssistantSearchDocumentStore(
             'simple',
             concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')),
             websearch_to_tsquery('simple', ${trimmedQuery}),
-            'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false'
+            'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false, StartSel=[[, StopSel=]]'
           ) AS snippet
         FROM "AssistantSearchDocument"
         WHERE "userId" = ${userId}

@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
+import { AssistantEmbeddingClient } from "../assistant/assistant-embedding-client";
 import {
   AssistantSearchDocumentStore,
   AssistantSearchSourceType,
@@ -18,6 +19,7 @@ type SearchRoutesOptions = {
   authService: AuthService;
   searchDocumentStore: AssistantSearchDocumentStore;
   assistantSearchSyncService?: AssistantSearchSyncService;
+  embeddingClient?: AssistantEmbeddingClient;
 };
 
 const VALID_SOURCE_TYPES: AssistantSearchSourceType[] = [
@@ -42,6 +44,10 @@ const searchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
+const recentQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(15).default(10),
+});
+
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
   if (!request.authUserId || request.authUserId.trim() === "") {
     return null;
@@ -50,7 +56,7 @@ function getAuthenticatedUserId(request: { authUserId?: string }): string | null
 }
 
 const searchRoutes: FastifyPluginAsync<SearchRoutesOptions> = async (app, options) => {
-  const { authService, searchDocumentStore, assistantSearchSyncService } = options;
+  const { authService, searchDocumentStore, assistantSearchSyncService, embeddingClient } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -106,10 +112,17 @@ const searchRoutes: FastifyPluginAsync<SearchRoutesOptions> = async (app, option
     }
 
     try {
-      try {
-        await assistantSearchSyncService?.syncUserWorkspace(authUserId);
-      } catch (error) {
-        request.log.warn(error, "Failed to refresh search index before search");
+      // Attempt to compute a query embedding for hybrid search when the client is available
+      let queryEmbedding: number[] | undefined;
+      if (embeddingClient?.isEnabled()) {
+        try {
+          const [embedding] = await embeddingClient.embedTexts([q]);
+          if (Array.isArray(embedding) && embedding.length > 0) {
+            queryEmbedding = embedding;
+          }
+        } catch (error) {
+          request.log.warn(error, "Failed to compute query embedding; falling back to full-text only");
+        }
       }
 
       const result = await searchDocumentStore.searchDirect(authUserId, q, {
@@ -118,6 +131,7 @@ const searchRoutes: FastifyPluginAsync<SearchRoutesOptions> = async (app, option
         to: toDate,
         page,
         limit,
+        embedding: queryEmbedding,
       });
 
       return reply.send({
@@ -144,6 +158,46 @@ const searchRoutes: FastifyPluginAsync<SearchRoutesOptions> = async (app, option
       }
       request.log.error(error, "Failed to perform search");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to perform search");
+    }
+  });
+  // GET /api/search/recent?limit=10
+  app.get("/api/search/recent", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const parsed = recentQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      const details = zodIssuesToStrings(parsed.error);
+      return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid query parameters", details);
+    }
+
+    const { limit } = parsed.data;
+
+    try {
+      const results = await searchDocumentStore.listRecentByUser(authUserId, limit);
+
+      return reply.send({
+        data: {
+          results: results.map((r) => ({
+            sourceType: r.sourceType,
+            sourceId: r.sourceId,
+            title: r.title,
+            snippet: r.snippet,
+            score: r.score,
+            matchedBy: r.matchedBy,
+            metadataJson: r.metadataJson,
+            updatedAt: r.updatedAt.toISOString(),
+          })),
+        },
+      });
+    } catch (error) {
+      if (isStorageNotInitializedPrismaError(error)) {
+        return sendStorageNotInitializedError(reply, "Search");
+      }
+      request.log.error(error, "Failed to fetch recent documents");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to fetch recent documents");
     }
   });
 };

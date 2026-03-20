@@ -129,6 +129,8 @@ function sourceTypesForDomains(domains: AssistantDomain[]): AssistantSearchSourc
         values.add("task");
         values.add("comment");
         values.add("attachment");
+        values.add("note");
+        values.add("noteAttachment");
         break;
       case "reminders":
         values.add("reminder");
@@ -150,6 +152,8 @@ function sourceTypesForDomains(domains: AssistantDomain[]): AssistantSearchSourc
         values.add("reminder");
         values.add("calendarEvent");
         values.add("calendarNote");
+        values.add("note");
+        values.add("noteAttachment");
         break;
       case "profile":
         break;

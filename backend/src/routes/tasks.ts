@@ -13,12 +13,14 @@ import {
   zodIssuesToStrings,
 } from "./route-helpers";
 import { formatDateOnly, parseDateOnly, TaskStore, TaskUpdateInput } from "../tasks/task-store";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 
 type TasksRouteOptions = {
   taskStore: TaskStore;
   authService: AuthService;
   recurrenceStore?: RecurrenceStore;
   calendarEventStore?: CalendarEventStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -265,7 +267,7 @@ async function resolveCalendarEventId(
 }
 
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore, authService, recurrenceStore, calendarEventStore } = options;
+  const { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -478,6 +480,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         ...getTimestampsForNewStatus(status, now)
       });
 
+      assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["task"] }).catch(() => {});
       return reply.code(201).send({
         data: serializeTask(task)
       });
@@ -561,6 +564,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         }
       }
 
+      assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["task"] }).catch(() => {});
       return reply.send({
         data: {
           copiedCount: createdTasks.length,
@@ -748,6 +752,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
       }
 
+      assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["task"] }).catch(() => {});
       return reply.send({
         data: serializeTask(updatedTask)
       });
@@ -789,6 +794,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
       }
 
+      assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["task"] }).catch(() => {});
       return reply.send({
         data: serializeTask(deletedTask)
       });

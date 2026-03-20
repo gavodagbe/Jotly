@@ -1,4 +1,5 @@
 import { SearchIndexEntry, SearchIndexPlugin, normalizePlainText } from "../assistant/assistant-search-sync";
+import { AssistantSearchSourceType } from "../assistant/assistant-search-document-store";
 import { NoteAttachmentStore } from "./note-attachment-store";
 import { NoteStore } from "./note-store";
 
@@ -7,6 +8,7 @@ export function createNoteSearchPlugin(options: {
   noteAttachmentStore?: NoteAttachmentStore;
 }): SearchIndexPlugin {
   return {
+    sourceTypes: ["note", "noteAttachment"] as AssistantSearchSourceType[],
     async fetchEntries(userId) {
       const entries: SearchIndexEntry[] = [];
       const notes = await options.noteStore.listByUser(userId);

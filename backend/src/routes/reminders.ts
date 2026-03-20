@@ -11,6 +11,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_ATTACHMENT_URL_LENGTH = 7_100_000;
@@ -19,6 +20,7 @@ type ReminderRoutesOptions = {
   authService: AuthService;
   reminderStore: ReminderStore;
   reminderAttachmentStore?: ReminderAttachmentStore;
+  assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
 const dateQuerySchema = z
@@ -133,7 +135,7 @@ function serializeAttachment(a: {
 }
 
 const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, options) => {
-  const { authService, reminderStore, reminderAttachmentStore } = options;
+  const { authService, reminderStore, reminderAttachmentStore, assistantSearchSyncService } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -260,6 +262,7 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
         assignees: bodyResult.data.assignees ?? null,
         remindAt: new Date(bodyResult.data.remindAt),
       });
+      assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["reminder"] }).catch(() => {});
       return reply.code(201).send({ data: serializeReminder(reminder) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
@@ -296,6 +299,7 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
       if (!updated) {
         return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
       }
+      assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["reminder"] }).catch(() => {});
       return reply.send({ data: serializeReminder(updated) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
@@ -320,6 +324,7 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
       if (!removed) {
         return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
       }
+      assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["reminder"] }).catch(() => {});
       return reply.send({ data: serializeReminder(removed) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {

@@ -328,7 +328,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (profileStore) {
     app.register(profileRoutes, { authService, profileStore });
   }
-  app.register(tasksRoutes, { taskStore, authService, recurrenceStore, calendarEventStore });
+  app.register(tasksRoutes, { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService });
   if (commentStore) {
     app.register(commentsRoutes, { taskStore, commentStore, authService });
   }
@@ -361,7 +361,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     });
   }
   if (reminderStore) {
-    app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService });
+    app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService, assistantSearchSyncService });
   }
   if (gamingTrackService) {
     app.register(gamingTrackRoutes, { gamingTrackService, authService });
@@ -392,6 +392,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       authService,
       searchDocumentStore: assistantSearchDocumentStore,
       assistantSearchSyncService,
+      embeddingClient: assistantEmbeddingClient,
     });
   }
   app.register(assistantRoutes, {

@@ -1,6 +1,7 @@
 import { AttachmentStore } from "../attachments/attachment-store";
 import { CommentStore } from "../comments/comment-store";
 import { SearchIndexEntry, SearchIndexPlugin, normalizePlainText } from "../assistant/assistant-search-sync";
+import { AssistantSearchSourceType } from "../assistant/assistant-search-document-store";
 import { formatDateOnly, TaskStore } from "./task-store";
 
 export function createTaskSearchPlugin(options: {
@@ -9,6 +10,7 @@ export function createTaskSearchPlugin(options: {
   attachmentStore?: AttachmentStore;
 }): SearchIndexPlugin {
   return {
+    sourceTypes: ["task", "comment", "attachment"] as AssistantSearchSourceType[],
     async fetchEntries(userId) {
       const entries: SearchIndexEntry[] = [];
       const tasks = await options.taskStore.listByUser(userId);
