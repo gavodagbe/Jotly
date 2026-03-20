@@ -1,7 +1,9 @@
 import { FastifyPluginAsync } from "fastify";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
 import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
+import { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { NoteAttachmentStore } from "../notes/note-attachment-store";
 import { NoteStore } from "../notes/note-store";
 import { parseDateOnly } from "../tasks/task-store";
@@ -17,6 +19,7 @@ type NoteRoutesOptions = {
   authService: AuthService;
   noteStore: NoteStore;
   noteAttachmentStore?: NoteAttachmentStore;
+  calendarEventStore?: CalendarEventStore;
   assistantSearchSyncService?: AssistantSearchSyncService;
 };
 
@@ -43,6 +46,7 @@ const createNoteBodySchema = z.object({
     })
     .optional()
     .nullable(),
+  calendarEventId: z.string().trim().min(1, "calendarEventId must not be empty").optional().nullable(),
 });
 
 const updateNoteBodySchema = z.object({
@@ -56,7 +60,15 @@ const updateNoteBodySchema = z.object({
     })
     .optional()
     .nullable(),
+  calendarEventId: z.string().trim().min(1, "calendarEventId must not be empty").optional().nullable(),
 });
+
+function isUniqueConstraintPrismaError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    typeof error === "object" && error !== null
+  ) && (error as { code?: unknown }).code === "P2002";
+}
 
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
   if (!request.authUserId || request.authUserId.trim() === "") {
@@ -105,15 +117,24 @@ function serializeAttachment(a: {
 
 function serializeNote(note: {
   id: string;
+  calendarEventId: string | null;
   title: string | null;
   body: string;
   color: string | null;
   targetDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  calendarEvent?: {
+    id: string;
+    title: string;
+    startTime: Date;
+    endTime: Date;
+    htmlLink: string | null;
+  } | null;
 }) {
   return {
     id: note.id,
+    calendarEventId: note.calendarEventId,
     title: note.title,
     body: note.body,
     color: note.color,
@@ -122,11 +143,26 @@ function serializeNote(note: {
       : null,
     createdAt: note.createdAt.toISOString(),
     updatedAt: note.updatedAt.toISOString(),
+    linkedCalendarEvent: note.calendarEvent
+      ? {
+          id: note.calendarEvent.id,
+          title: note.calendarEvent.title,
+          startTime: note.calendarEvent.startTime.toISOString(),
+          endTime: note.calendarEvent.endTime.toISOString(),
+          htmlLink: note.calendarEvent.htmlLink,
+        }
+      : null,
   };
 }
 
 const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) => {
-  const { authService, noteStore, noteAttachmentStore, assistantSearchSyncService } = options;
+  const {
+    authService,
+    noteStore,
+    noteAttachmentStore,
+    calendarEventStore,
+    assistantSearchSyncService,
+  } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -213,6 +249,18 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
     }
 
     try {
+      const calendarEventId = bodyResult.data.calendarEventId ?? null;
+      if (calendarEventId) {
+        if (!calendarEventStore) {
+          return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event storage is unavailable");
+        }
+
+        const event = await calendarEventStore.getById(calendarEventId, authUserId);
+        if (!event) {
+          return sendError(reply, 400, "VALIDATION_ERROR", "Linked calendar event not found");
+        }
+      }
+
       const note = await noteStore.create({
         userId: authUserId,
         title: bodyResult.data.title ?? null,
@@ -221,6 +269,7 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
         targetDate: bodyResult.data.targetDate
           ? parseDateOnly(bodyResult.data.targetDate)
           : null,
+        calendarEventId,
       });
       // Fire-and-forget sync (do not await)
       if (assistantSearchSyncService) {
@@ -228,6 +277,14 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       }
       return reply.code(201).send({ data: serializeNote(note) });
     } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        return sendError(
+          reply,
+          409,
+          "CONFLICT",
+          "This calendar event is already linked to another note"
+        );
+      }
       if (isStorageNotInitializedPrismaError(error)) {
         return sendStorageNotInitializedError(reply, "Note");
       }
@@ -256,6 +313,7 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
         body?: string;
         color?: string | null;
         targetDate?: Date | null;
+        calendarEventId?: string | null;
       } = {};
       if (bodyResult.data.title !== undefined) updateInput.title = bodyResult.data.title;
       if (bodyResult.data.body !== undefined) updateInput.body = bodyResult.data.body;
@@ -264,6 +322,21 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
         updateInput.targetDate = bodyResult.data.targetDate
           ? parseDateOnly(bodyResult.data.targetDate)
           : null;
+      }
+      if (bodyResult.data.calendarEventId !== undefined) {
+        const calendarEventId = bodyResult.data.calendarEventId ?? null;
+        if (calendarEventId) {
+          if (!calendarEventStore) {
+            return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event storage is unavailable");
+          }
+
+          const event = await calendarEventStore.getById(calendarEventId, authUserId);
+          if (!event) {
+            return sendError(reply, 400, "VALIDATION_ERROR", "Linked calendar event not found");
+          }
+        }
+
+        updateInput.calendarEventId = calendarEventId;
       }
 
       const updated = await noteStore.update(id, updateInput, authUserId);
@@ -276,6 +349,14 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       }
       return reply.send({ data: serializeNote(updated) });
     } catch (error) {
+      if (isUniqueConstraintPrismaError(error)) {
+        return sendError(
+          reply,
+          409,
+          "CONFLICT",
+          "This calendar event is already linked to another note"
+        );
+      }
       if (isStorageNotInitializedPrismaError(error)) {
         return sendStorageNotInitializedError(reply, "Note");
       }

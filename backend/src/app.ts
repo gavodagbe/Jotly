@@ -352,7 +352,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
   if (noteStore) {
-    app.register(noteRoutes, { noteStore, noteAttachmentStore, authService, assistantSearchSyncService });
+    app.register(noteRoutes, {
+      noteStore,
+      noteAttachmentStore,
+      calendarEventStore,
+      authService,
+      assistantSearchSyncService,
+    });
   }
   if (reminderStore) {
     app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService });
@@ -371,12 +377,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       frontendOrigin: options.frontendOrigin,
     });
   }
-  if (googleCalendarSyncService && calendarEventStore) {
+  if (googleCalendarSyncService && calendarEventStore && noteStore) {
     app.register(googleCalendarEventsRoutes, {
       authService,
       calendarEventStore,
-      calendarEventNoteStore,
-      calendarEventNoteAttachmentStore,
+      noteStore,
+      noteAttachmentStore,
       taskStore,
       googleCalendarSyncService,
     });

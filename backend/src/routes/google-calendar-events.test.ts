@@ -1,4 +1,4 @@
-import { CalendarEvent, Task } from "@prisma/client";
+import { CalendarEvent, Note, Task } from "@prisma/client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "../app";
@@ -13,8 +13,8 @@ import {
   CalendarEventStore,
   getTimedEventRangeForDate,
 } from "../google-calendar/calendar-event-store";
-import { CalendarEventNoteStore } from "../google-calendar/calendar-event-note-store";
 import { GoogleCalendarSyncService } from "../google-calendar/google-calendar-sync-service";
+import { NoteStore, StoredNote } from "../notes/note-store";
 import { formatDateOnly, parseDateOnly, TaskCreateInput, TaskStore } from "../tasks/task-store";
 
 class NoopTaskStore implements TaskStore {
@@ -45,15 +45,8 @@ class NoopTaskStore implements TaskStore {
   }
 }
 
-class InMemoryCalendarEventNoteStore implements CalendarEventNoteStore {
-  private readonly notes = new Map<string, {
-    id: string;
-    calendarEventId: string;
-    userId: string;
-    body: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }>();
+class InMemoryNoteStore implements NoteStore {
+  private readonly notes = new Map<string, StoredNote>();
   private idCounter = 1;
 
   constructor(
@@ -61,54 +54,118 @@ class InMemoryCalendarEventNoteStore implements CalendarEventNoteStore {
       id?: string;
       calendarEventId: string;
       userId: string;
+      title?: string | null;
       body: string;
+      color?: string | null;
+      targetDate?: Date | null;
     }> = []
   ) {
     const now = new Date("2026-03-11T09:00:00.000Z");
     for (const note of initialNotes) {
       const id = note.id ?? `event-note-${this.idCounter++}`;
-      this.notes.set(note.calendarEventId, {
+      this.notes.set(id, {
         id,
-        calendarEventId: note.calendarEventId,
         userId: note.userId,
+        calendarEventId: note.calendarEventId,
+        title: note.title ?? null,
         body: note.body,
+        color: note.color ?? null,
+        targetDate: note.targetDate ?? parseDateOnly("2026-03-11"),
         createdAt: now,
         updatedAt: now,
+        calendarEvent: null,
       });
     }
   }
 
-  async listByCalendarEventIds(calendarEventIds: string[], userId: string) {
+  async listByUser(userId: string): Promise<StoredNote[]> {
+    return [...this.notes.values()].filter((note) => note.userId === userId);
+  }
+
+  async listByCalendarEventIds(calendarEventIds: string[], userId: string): Promise<StoredNote[]> {
     return [...this.notes.values()].filter(
-      (note) => note.userId === userId && calendarEventIds.includes(note.calendarEventId)
+      (note) =>
+        note.userId === userId &&
+        typeof note.calendarEventId === "string" &&
+        calendarEventIds.includes(note.calendarEventId)
     );
   }
 
-  async getByCalendarEventId(calendarEventId: string, userId: string) {
-    const note = this.notes.get(calendarEventId) ?? null;
+  async getById(id: string, userId: string): Promise<StoredNote | null> {
+    const note = this.notes.get(id) ?? null;
     return note && note.userId === userId ? note : null;
   }
 
-  async upsert(calendarEventId: string, userId: string, body: string) {
-    const existing = this.notes.get(calendarEventId);
+  async getByCalendarEventId(calendarEventId: string, userId: string): Promise<StoredNote | null> {
+    return (
+      [...this.notes.values()].find(
+        (note) => note.userId === userId && note.calendarEventId === calendarEventId
+      ) ?? null
+    );
+  }
+
+  async create(input: {
+    userId: string;
+    title?: string | null;
+    body: string;
+    color?: string | null;
+    targetDate?: Date | null;
+    calendarEventId?: string | null;
+  }): Promise<StoredNote> {
     const now = new Date("2026-03-11T10:00:00.000Z");
-    const note = {
-      id: existing?.id ?? `event-note-${this.idCounter++}`,
-      calendarEventId,
-      userId,
-      body,
-      createdAt: existing?.createdAt ?? now,
+    const note: StoredNote = {
+      id: `event-note-${this.idCounter++}`,
+      userId: input.userId,
+      calendarEventId: input.calendarEventId ?? null,
+      title: input.title ?? null,
+      body: input.body,
+      color: input.color ?? null,
+      targetDate: input.targetDate ?? null,
+      createdAt: now,
       updatedAt: now,
+      calendarEvent: null,
     };
-    this.notes.set(calendarEventId, note);
+    this.notes.set(note.id, note);
     return note;
   }
 
-  async deleteByCalendarEventId(calendarEventId: string, userId: string): Promise<void> {
-    const note = this.notes.get(calendarEventId);
-    if (note && note.userId === userId) {
-      this.notes.delete(calendarEventId);
+  async update(
+    id: string,
+    input: {
+      title?: string | null;
+      body?: string;
+      color?: string | null;
+      targetDate?: Date | null;
+      calendarEventId?: string | null;
+    },
+    userId: string
+  ): Promise<StoredNote | null> {
+    const note = this.notes.get(id);
+    if (!note || note.userId !== userId) {
+      return null;
     }
+
+    const updated: StoredNote = {
+      ...note,
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.body !== undefined ? { body: input.body } : {}),
+      ...(input.color !== undefined ? { color: input.color } : {}),
+      ...(input.targetDate !== undefined ? { targetDate: input.targetDate } : {}),
+      ...(input.calendarEventId !== undefined ? { calendarEventId: input.calendarEventId } : {}),
+      updatedAt: new Date("2026-03-11T10:00:00.000Z"),
+    };
+    this.notes.set(id, updated);
+    return updated;
+  }
+
+  async remove(id: string, userId: string): Promise<StoredNote | null> {
+    const note = this.notes.get(id);
+    if (!note || note.userId !== userId) {
+      return null;
+    }
+
+    this.notes.delete(id);
+    return note;
   }
 }
 
@@ -266,7 +323,7 @@ function parsePayload(payload: string) {
 function createAppForTest(options?: {
   authStore?: AuthStore;
   calendarEventStore?: CalendarEventStore;
-  calendarEventNoteStore?: CalendarEventNoteStore;
+  noteStore?: NoteStore;
   taskStore?: TaskStore;
   googleCalendarSyncService?: GoogleCalendarSyncService;
 }) {
@@ -275,7 +332,7 @@ function createAppForTest(options?: {
     taskStore: options?.taskStore ?? new NoopTaskStore(),
     authStore: options?.authStore ?? new InMemoryAuthStore(),
     calendarEventStore: options?.calendarEventStore ?? new SpyCalendarEventStore(),
-    calendarEventNoteStore: options?.calendarEventNoteStore ?? new InMemoryCalendarEventNoteStore(),
+    noteStore: options?.noteStore ?? new InMemoryNoteStore(),
     googleCalendarSyncService:
       options?.googleCalendarSyncService ??
       createSyncServiceStub(async () => ({
@@ -353,7 +410,7 @@ test("GET /api/google-calendar/events includes linked tasks and notes", async (t
 
   const app = createAppForTest({
     calendarEventStore: new SpyCalendarEventStore([calendarEvent]),
-    calendarEventNoteStore: new InMemoryCalendarEventNoteStore([
+    noteStore: new InMemoryNoteStore([
       {
         calendarEventId: "calendar-event-1",
         userId: "user-1",
@@ -411,7 +468,7 @@ test("PUT /api/google-calendar/events/:id/note upserts a note for an owned event
 test("DELETE /api/google-calendar/events/:id/note deletes a note for an owned event", async (t) => {
   const app = createAppForTest({
     calendarEventStore: new SpyCalendarEventStore([createCalendarEvent()]),
-    calendarEventNoteStore: new InMemoryCalendarEventNoteStore([
+    noteStore: new InMemoryNoteStore([
       {
         calendarEventId: "calendar-event-1",
         userId: "user-1",
