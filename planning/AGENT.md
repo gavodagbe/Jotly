@@ -27,7 +27,7 @@ This section reflects the current repository implementation.
 - Feature surface currently centered in `frontend/src/components/layout/app-shell.tsx`
 - Profile settings include Google Calendar connect/disconnect/sync/color/calendar-selection controls
 - Daily dashboard can display synced Google Calendar events for the selected date
-- Dashboard includes due alerts, reminders, notes, gaming track, and global search
+- Dashboard includes a unified alerts panel, reminders, notes, gaming track, and global search
 
 ### Backend
 - Fastify
@@ -60,7 +60,7 @@ This section reflects the current repository implementation.
 - Prisma `GoogleCalendarConnection` for encrypted OAuth token storage and per-account sync metadata
 - Prisma `CalendarEvent` for synced Google events
 - Prisma `CalendarEventNote` and `CalendarEventNoteAttachment` for internal event-note workflows
-- Prisma `Reminder` and `ReminderAttachment` models for timed reminders and reminder files
+- Prisma `Reminder` and `ReminderAttachment` models for timed reminders, persistent reminder status lifecycle, compatibility fire/dismiss flags, and reminder files
 - Prisma `Note` and `NoteAttachment` models for standalone notes
 - Prisma `PasswordResetToken` model for password reset flow
 - Prisma `AssistantSearchDocument` model — unified full-text search table (`tsvector` via PostgreSQL full-text); the store also supports an optional future `embedding` column for Phase 2 semantic search
@@ -76,6 +76,7 @@ This section reflects the current repository implementation.
 ### Infrastructure
 - Docker
 - Docker Compose
+- operational entrypoints in `scripts/start.sh`, `scripts/stop.sh`, and `scripts/deploy.sh`
 
 ## Core product rules
 - A task belongs to one `targetDate`.
@@ -173,6 +174,8 @@ Implemented endpoints:
 - `POST /api/reminders`
 - `PUT /api/reminders/:id`
 - `DELETE /api/reminders/:id`
+- `POST /api/reminders/:id/complete`
+- `POST /api/reminders/:id/cancel`
 - `POST /api/reminders/:id/dismiss`
 - `GET /api/reminders/:id/attachments`
 - `POST /api/reminders/:id/attachments`
@@ -192,6 +195,8 @@ Rules:
 - Google Calendar callback redirects should use `FRONTEND_ORIGIN`, not a hard-coded frontend URL
 - task payloads may optionally carry `calendarEventId` when linking a Jotly task to a synced event
 - search endpoint requires minimum 2-character query; results scoped to authenticated user
+- `GET /api/tasks/alerts?date=YYYY-MM-DD` returns actionable due-date tasks that are overdue, due today, or due tomorrow
+- `GET /api/reminders?date=YYYY-MM-DD` returns active reminders (`pending` or `fired`) scheduled before the end of the selected day
 - `GET /api/reminders/pending` auto-marks returned reminders as fired; do not call repeatedly in tight loops
 
 Example error shape:
@@ -210,7 +215,7 @@ Main UI currently includes:
 - date selector
 - previous / today / next navigation
 - 4-column Kanban board
-- due alerts panel
+- alerts panel that combines unresolved reminders and due-date tasks across overdue / today / tomorrow
 - day affirmation panel
 - carry-over action for yesterday non-completed tasks
 - day bilan panel
@@ -218,7 +223,7 @@ Main UI currently includes:
 - profile settings dialog with persisted language/timezone preferences
 - profile settings dialog with Google Calendar account connection, color, and calendar-selection controls
 - selected-date Google Calendar event preview on the main dashboard
-- reminders panel with create/edit/dismiss flows, rich text description, and attachments
+- reminders panel with create/edit/complete/cancel flows, rich text description, and attachments
 - notes panel with standalone note editing and note attachments
 - gaming track summary block with engagement actions
 - global search modal (Cmd/Ctrl+K) with type filtering, date range, pagination, and result navigation
@@ -301,7 +306,7 @@ The modules below define intended boundaries without pre-building abstractions.
 - Current status: implemented.
 
 ### Reminders
-- Relation to date workflow: user-defined timed reminders with fire and dismiss lifecycle.
+- Relation to date workflow: user-defined timed reminders with persistent status lifecycle.
 - Current backend ownership: `backend/src/routes/reminders.ts`.
 - Current API surface:
   - `GET /api/reminders` (optional `?date=YYYY-MM-DD`)
@@ -310,14 +315,18 @@ The modules below define intended boundaries without pre-building abstractions.
   - `POST /api/reminders`
   - `PUT /api/reminders/:id`
   - `DELETE /api/reminders/:id`
+  - `POST /api/reminders/:id/complete`
+  - `POST /api/reminders/:id/cancel`
   - `POST /api/reminders/:id/dismiss`
   - `GET /api/reminders/:id/attachments`
   - `POST /api/reminders/:id/attachments`
   - `DELETE /api/reminders/:id/attachments/:attachmentId`
-- Current fields: `title`, `description`, `project`, `assignees`, `remindAt`, `isFired`, `firedAt`, `isDismissed`, `dismissedAt`.
+- Current fields: `title`, `description`, `project`, `assignees`, `remindAt`, `status`, `isFired`, `firedAt`, `isDismissed`, `dismissedAt`, `completedAt`, `cancelledAt`.
 - Current behavior:
+  - `GET /api/reminders?date=YYYY-MM-DD` returns only active reminders (`pending`, `fired`) with `remindAt` before the end of the selected day
   - `/pending` auto-marks all returned reminders as fired on read
-  - date filter on list endpoint matches a 24-hour UTC window
+  - `complete` and `cancel` keep reminders in storage history while removing them from active reminder and alert views
+  - moving a `fired` reminder into the future resets it to `pending`
   - reminder attachments use the current `data:` URL + metadata storage posture with a 5 MB per-file limit
   - all reminders scoped to authenticated user
 - Current status: implemented.

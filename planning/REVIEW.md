@@ -1,9 +1,9 @@
 # Jotly - Architecture Decisions and Risks
 
-## Current implementation reality check (as of 2026-03-19)
+## Current implementation reality check (as of 2026-03-20)
 Implemented in the current codebase:
 - backend task CRUD API with date filtering (`backend/src/routes/tasks.ts`)
-- backend task due-date alerts API (`backend/src/routes/tasks.ts`)
+- backend task due-date alerts API that keeps overdue actionable tasks visible until resolved (`backend/src/routes/tasks.ts`)
 - backend auth/session API with password reset flow (`backend/src/routes/auth.ts`)
 - authenticated ownership boundaries on task-linked routes (tasks/comments/attachments/recurrence)
 - backend AI assistant reply API with structured retrieval + optional workspace text search augmentation (`backend/src/routes/assistant.ts`)
@@ -14,7 +14,7 @@ Implemented in the current codebase:
 - backend day bilan API (`backend/src/routes/day-bilan.ts`)
 - backend carry-over endpoint for yesterday non-completed tasks (`backend/src/routes/tasks.ts`)
 - backend profile/preferences API (`backend/src/routes/profile.ts`)
-- backend reminders API — create, update, delete, dismiss, pending poll, and reminder attachments (`backend/src/routes/reminders.ts`)
+- backend reminders API — create, update, delete, complete/cancel, legacy dismiss compatibility, pending poll, and reminder attachments (`backend/src/routes/reminders.ts`)
 - backend standalone notes API with note attachments (`backend/src/routes/notes.ts`)
 - backend global search API with PostgreSQL full-text search (`backend/src/routes/search.ts`)
 - global search phase 2: pgvector migration, hybrid full-text + vector `searchDirect`, `note`/`noteAttachment` in assistant retriever overview domain
@@ -26,20 +26,20 @@ Implemented in the current codebase:
 - attachment validation limit of 5 MB per attachment plus URL payload size guard (`backend/src/routes/attachments.ts`)
 - Prisma task model with status, priority, due date, lifecycle timestamps, carry-over linkage, recurrence-instance linkage, and calendar-event linkage (`backend/prisma/schema.prisma`)
 - Prisma `DayAffirmation` and `DayBilan` models (`backend/prisma/schema.prisma`)
-- Prisma `Reminder` and `ReminderAttachment` models with fire/dismiss lifecycle flags and reminder files (`backend/prisma/schema.prisma`)
+- Prisma `Reminder` and `ReminderAttachment` models with persistent status lifecycle, compatibility fire/dismiss flags, and reminder files (`backend/prisma/schema.prisma`)
 - Prisma `Note` and `NoteAttachment` models for standalone notes (`backend/prisma/schema.prisma`)
 - Prisma `PasswordResetToken` model (`backend/prisma/schema.prisma`)
 - Prisma `GoogleCalendarConnection`, `CalendarEvent`, `CalendarEventNote`, and `CalendarEventNoteAttachment` models plus `Task.calendarEventId` linkage (`backend/prisma/schema.prisma`)
 - Prisma `AssistantSearchDocument` model — unified full-text search table (`tsvector`); store-level semantic-search support remains optional for a later `embedding` column (`backend/prisma/schema.prisma`)
 - `AssistantSearchDocumentStore` with `searchDirect` (full-text via `websearch_to_tsquery` + `ts_headline` snippets), `fullTextSearch`, and `vectorSearch` methods (`backend/src/assistant/assistant-search-document-store.ts`)
 - frontend date-driven Kanban board with create/edit/delete dialogs and drag-and-drop status updates (`frontend/src/components/layout/app-shell.tsx`)
-- frontend due-alert panel for today/tomorrow task urgency (`frontend/src/components/layout/app-shell.tsx`)
+- frontend unified alerts panel for overdue/today/tomorrow unresolved reminders and due-date tasks (`frontend/src/components/layout/app-shell.tsx`)
 - frontend task details support for comments, recurrence, and file-based attachments converted to `data:` URLs before upload (`frontend/src/components/layout/app-shell.tsx`)
 - frontend day affirmation panel and day bilan panel (`frontend/src/components/layout/app-shell.tsx`)
 - frontend carry-over CTA in date controls (`frontend/src/components/layout/app-shell.tsx`)
 - daily completion percentage includes day affirmation completion (`frontend/src/components/layout/app-shell.tsx`)
 - frontend AI assistant chatbot (FAB) with structured retrieval + optional workspace text search augmentation (`frontend/src/components/layout/app-shell.tsx`)
-- frontend reminders panel with create/edit/dismiss, rich text description, and attachments (`frontend/src/components/layout/app-shell.tsx`)
+- frontend reminders panel with create/edit/complete/cancel actions, rich text description, and attachments (`frontend/src/components/layout/app-shell.tsx`)
 - frontend standalone notes panel with note attachments (`frontend/src/components/layout/app-shell.tsx`)
 - frontend global search modal (Cmd/Ctrl+K) with type filtering, date range, debounced input, pagination, and result navigation (`frontend/src/components/layout/app-shell.tsx`)
 - frontend profile/settings modal with language/timezone preferences (`frontend/src/components/layout/app-shell.tsx`)
@@ -50,7 +50,7 @@ Implemented in the current codebase:
 - gaming track phase 3 updates: levels/badges, streak protection, and historical trends (`frontend/src/components/layout/app-shell.tsx`)
 - gaming track phase 4 updates: weekly challenge, personal leaderboard, recap, and nudges (`frontend/src/components/layout/app-shell.tsx`)
 - gaming track phase 5 updates: persistent engagement actions (challenge claim, streak protection consumption, and nudge dismissal) with summary-state integration
-- Docker Compose local runtime (frontend, backend, postgres)
+- Docker Compose local runtime (frontend, backend, postgres) driven through `scripts/start.sh` / `scripts/stop.sh`, plus `scripts/deploy.sh` for production rollout
 - route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile/gaming-track/reminders/search plus Google Calendar OAuth/events
 
 Not implemented yet:
@@ -250,7 +250,7 @@ The boundaries below reflect current ownership and future evolution points.
 - Current posture: implemented.
 
 ### Reminders
-- Relation to date workflow: user-defined timed reminders with fire and dismiss lifecycle, scoped per user.
+- Relation to date workflow: user-defined timed reminders with persistent status lifecycle, scoped per user.
 - Current backend module: `backend/src/routes/reminders.ts`.
 - Current API surface:
   - `GET /api/reminders` (optional `?date=YYYY-MM-DD`)
@@ -259,13 +259,17 @@ The boundaries below reflect current ownership and future evolution points.
   - `POST /api/reminders`
   - `PUT /api/reminders/:id`
   - `DELETE /api/reminders/:id`
+  - `POST /api/reminders/:id/complete`
+  - `POST /api/reminders/:id/cancel`
   - `POST /api/reminders/:id/dismiss`
   - `GET /api/reminders/:id/attachments`
   - `POST /api/reminders/:id/attachments`
   - `DELETE /api/reminders/:id/attachments/:attachmentId`
 - Current behavior:
-  - date filter on list endpoint applies a 24-hour UTC window
+  - date-filtered list endpoint returns only active reminders (`pending`, `fired`) with `remindAt` before the end of the selected day
   - `/pending` marks all returned reminders as fired in the same request
+  - `complete` and `cancel` preserve history while removing reminders from active reminder/alert views
+  - rescheduling a `fired` reminder into the future resets it to `pending`
   - reminder attachments follow the current `data:` URL + metadata storage posture with a 5 MB per-file limit
   - all reminders are scoped to the authenticated user
 - Current posture: implemented.
