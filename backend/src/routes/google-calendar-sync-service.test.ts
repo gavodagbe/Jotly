@@ -339,3 +339,154 @@ test("Google Calendar sync bubbles up generic failures when every connection fai
     (error: unknown) => error instanceof Error && error.message === "calendar exploded"
   );
 });
+
+test("Google Calendar sync maps Google auth failures during event fetch to reconnect-required", async () => {
+  const syncService = createGoogleCalendarSyncService({
+    oauthService: createOAuthServiceStub(),
+    oauth2ClientFactory: createOAuth2ClientFactoryStub(),
+    connectionStore: new InMemoryGoogleCalendarConnectionStore([createConnection()]),
+    eventStore: new SpyCalendarEventStore(),
+    calendarApiFactory: () =>
+      ({
+        events: {
+          list: async () => {
+            throw { response: { status: 401 } };
+          },
+        },
+      }) satisfies GoogleCalendarApi,
+  });
+
+  await assert.rejects(
+    () => syncService.syncEventsForUser("user-1"),
+    (error: unknown) =>
+      error instanceof Error && error.message === "GOOGLE_CALENDAR_RECONNECT_REQUIRED"
+  );
+});
+
+test("Google Calendar sync maps missing selected calendars to an actionable validation error", async () => {
+  const syncService = createGoogleCalendarSyncService({
+    oauthService: createOAuthServiceStub(),
+    oauth2ClientFactory: createOAuth2ClientFactoryStub(),
+    connectionStore: new InMemoryGoogleCalendarConnectionStore([createConnection()]),
+    eventStore: new SpyCalendarEventStore(),
+    calendarApiFactory: () =>
+      ({
+        events: {
+          list: async () => {
+            throw { response: { status: 404 } };
+          },
+        },
+      }) satisfies GoogleCalendarApi,
+  });
+
+  await assert.rejects(
+    () => syncService.syncEventsForUser("user-1"),
+    (error: unknown) =>
+      error instanceof Error && error.message === "GOOGLE_CALENDAR_INVALID_SELECTION"
+  );
+});
+
+test("Google Calendar sync reads nested Google auth errors from the response payload", async () => {
+  const syncService = createGoogleCalendarSyncService({
+    oauthService: createOAuthServiceStub(),
+    oauth2ClientFactory: createOAuth2ClientFactoryStub(),
+    connectionStore: new InMemoryGoogleCalendarConnectionStore([createConnection()]),
+    eventStore: new SpyCalendarEventStore(),
+    calendarApiFactory: () =>
+      ({
+        events: {
+          list: async () => {
+            throw {
+              response: {
+                data: {
+                  error: {
+                    code: 401,
+                    message: "Invalid Credentials",
+                    errors: [{ reason: "authError", message: "Invalid Credentials" }],
+                  },
+                },
+              },
+            };
+          },
+        },
+      }) satisfies GoogleCalendarApi,
+  });
+
+  await assert.rejects(
+    () => syncService.syncEventsForUser("user-1"),
+    (error: unknown) =>
+      error instanceof Error && error.message === "GOOGLE_CALENDAR_RECONNECT_REQUIRED"
+  );
+});
+
+test("Google Calendar sync reads nested not-found errors from the response payload", async () => {
+  const syncService = createGoogleCalendarSyncService({
+    oauthService: createOAuthServiceStub(),
+    oauth2ClientFactory: createOAuth2ClientFactoryStub(),
+    connectionStore: new InMemoryGoogleCalendarConnectionStore([createConnection()]),
+    eventStore: new SpyCalendarEventStore(),
+    calendarApiFactory: () =>
+      ({
+        events: {
+          list: async () => {
+            throw {
+              response: {
+                data: {
+                  error: {
+                    code: 404,
+                    message: "Not Found",
+                    errors: [{ reason: "notFound", message: "Not Found" }],
+                  },
+                },
+              },
+            };
+          },
+        },
+      }) satisfies GoogleCalendarApi,
+  });
+
+  await assert.rejects(
+    () => syncService.syncEventsForUser("user-1"),
+    (error: unknown) =>
+      error instanceof Error && error.message === "GOOGLE_CALENDAR_INVALID_SELECTION"
+  );
+});
+
+test("Google Calendar sync maps access-change errors to an actionable validation state", async () => {
+  const syncService = createGoogleCalendarSyncService({
+    oauthService: createOAuthServiceStub(),
+    oauth2ClientFactory: createOAuth2ClientFactoryStub(),
+    connectionStore: new InMemoryGoogleCalendarConnectionStore([createConnection()]),
+    eventStore: new SpyCalendarEventStore(),
+    calendarApiFactory: () =>
+      ({
+        events: {
+          list: async () => {
+            throw {
+              response: {
+                data: {
+                  error: {
+                    code: 403,
+                    message: "The user does not have sufficient permissions for this calendar.",
+                    errors: [
+                      {
+                        reason: "forbidden",
+                        message:
+                          "The user does not have sufficient permissions for this calendar.",
+                      },
+                    ],
+                  },
+                },
+              },
+            };
+          },
+        },
+      }) satisfies GoogleCalendarApi,
+  });
+
+  await assert.rejects(
+    () => syncService.syncEventsForUser("user-1"),
+    (error: unknown) =>
+      error instanceof Error && error.message === "GOOGLE_CALENDAR_ACCESS_CHANGED"
+  );
+});

@@ -216,6 +216,22 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       if (message === "GOOGLE_CALENDAR_RECONNECT_REQUIRED") {
         return sendError(reply, 400, "VALIDATION_ERROR", "Google Calendar reconnection required. Please reconnect your account.");
       }
+      if (message === "GOOGLE_CALENDAR_INVALID_SELECTION") {
+        return sendError(
+          reply,
+          400,
+          "VALIDATION_ERROR",
+          "Selected Google Calendar is no longer available. Please choose another calendar."
+        );
+      }
+      if (message === "GOOGLE_CALENDAR_ACCESS_CHANGED") {
+        return sendError(
+          reply,
+          400,
+          "VALIDATION_ERROR",
+          "Google Calendar access changed. Please reconnect your account or choose another calendar."
+        );
+      }
       request.log.error(error, "Google Calendar sync failed");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to sync calendar events");
     }

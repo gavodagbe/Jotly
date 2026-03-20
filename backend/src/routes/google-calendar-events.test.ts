@@ -460,6 +460,56 @@ test("POST /api/google-calendar/sync returns reconnect-required validation error
   });
 });
 
+test("POST /api/google-calendar/sync returns a validation error when the selected calendar is unavailable", async (t) => {
+  const app = createAppForTest({
+    googleCalendarSyncService: createSyncServiceStub(async () => {
+      throw new Error("GOOGLE_CALENDAR_INVALID_SELECTION");
+    }),
+  });
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/google-calendar/sync",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(response.statusCode, 400);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "VALIDATION_ERROR",
+    message: "Selected Google Calendar is no longer available. Please choose another calendar.",
+  });
+});
+
+test("POST /api/google-calendar/sync returns a validation error when Google Calendar access changed", async (t) => {
+  const app = createAppForTest({
+    googleCalendarSyncService: createSyncServiceStub(async () => {
+      throw new Error("GOOGLE_CALENDAR_ACCESS_CHANGED");
+    }),
+  });
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/google-calendar/sync",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(response.statusCode, 400);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "VALIDATION_ERROR",
+    message: "Google Calendar access changed. Please reconnect your account or choose another calendar.",
+  });
+});
+
 test("calendar day boundaries use the authenticated timezone for timed events", () => {
   const date = parseDateOnly("2026-03-11");
   assert.ok(date);
