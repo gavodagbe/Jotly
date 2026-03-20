@@ -26,7 +26,12 @@ const resetPasswordSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters")
 });
 
-type ApiErrorCode = "VALIDATION_ERROR" | "UNAUTHORIZED" | "CONFLICT" | "INTERNAL_ERROR";
+type ApiErrorCode =
+  | "VALIDATION_ERROR"
+  | "UNAUTHORIZED"
+  | "CONFLICT"
+  | "INVALID_RESET_TOKEN"
+  | "INTERNAL_ERROR";
 
 function sendError(
   reply: {
