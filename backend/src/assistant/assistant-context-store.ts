@@ -129,7 +129,7 @@ export function createPrismaAssistantContextStore(
     async getReminders(userId, options) {
       const where: Record<string, unknown> = { userId };
       if (options.activeOnly) {
-        where.isDismissed = false;
+        where.status = { in: ["pending", "fired"] };
       }
       return prisma.reminder.findMany({
         where,

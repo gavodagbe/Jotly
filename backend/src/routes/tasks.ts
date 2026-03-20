@@ -374,7 +374,6 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
           (task) =>
             task.dueDate !== null &&
             isTaskDueSoonStatus(task.status) &&
-            task.dueDate.getTime() >= anchorDate.getTime() &&
             task.dueDate.getTime() < endExclusive.getTime()
         )
         .sort(compareDueSoonTasks);

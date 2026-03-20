@@ -26,6 +26,8 @@ import { APP_NAME, APP_TAGLINE } from "@/lib/app-meta";
 type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
 type TaskPriority = "low" | "medium" | "high";
 type RecurrenceFrequency = "daily" | "weekly" | "monthly";
+type ReminderStatus = "pending" | "fired" | "completed" | "cancelled";
+type AlertUrgency = "overdue" | "today" | "tomorrow";
 
 type Task = {
   id: string;
@@ -115,6 +117,13 @@ type TaskAlertsSummary = {
   dueTodayCount: number;
   dueTomorrowCount: number;
   tasks: Task[];
+};
+
+type AlertsSummary = {
+  count: number;
+  overdueCount: number;
+  todayCount: number;
+  tomorrowCount: number;
 };
 
 type TaskComment = {
@@ -277,10 +286,13 @@ type Reminder = {
   project: string | null;
   assignees: string | null;
   remindAt: string;
+  status: ReminderStatus;
   isFired: boolean;
   firedAt: string | null;
   isDismissed: boolean;
   dismissedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -292,6 +304,20 @@ type ReminderFormValues = {
   assignees: string;
   remindAt: string;
 };
+
+type AlertPanelItem =
+  | {
+      sourceType: "task";
+      urgency: AlertUrgency;
+      sortValue: number;
+      task: Task;
+    }
+  | {
+      sourceType: "reminder";
+      urgency: AlertUrgency;
+      sortValue: number;
+      reminder: Reminder;
+    };
 
 type GamingTrackPeriod = "day" | "week" | "month" | "year";
 
@@ -861,6 +887,24 @@ const priorityChipClassByPriority: Record<TaskPriority, string> = {
   high: "border border-rose-200 bg-rose-50 text-rose-700",
 };
 
+const reminderStatusChipClassByStatus: Record<ReminderStatus, string> = {
+  pending: "border border-sky-200 bg-sky-50 text-sky-700",
+  fired: "border border-amber-200 bg-amber-50 text-amber-700",
+  completed: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  cancelled: "border border-slate-300 bg-slate-100 text-slate-600",
+};
+
+const alertUrgencyChipClassByUrgency: Record<AlertUrgency, string> = {
+  overdue: "border border-rose-200 bg-rose-50 text-rose-700",
+  today: "border border-amber-200 bg-amber-50 text-amber-700",
+  tomorrow: "border border-sky-200 bg-sky-50 text-sky-700",
+};
+
+const alertSourceChipClassByType: Record<AlertPanelItem["sourceType"], string> = {
+  task: "border border-indigo-200 bg-indigo-50 text-indigo-700",
+  reminder: "border border-teal-200 bg-teal-50 text-teal-700",
+};
+
 const controlButtonClass =
   "inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent px-3.5 py-2 text-sm font-medium text-foreground/80 transition-all duration-200 hover:border-line hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
 const primaryButtonClass =
@@ -1313,6 +1357,70 @@ function formatTaskAlertDueLabel(value: string, todayValue: string, locale: User
   return formatDateOnlyForLocale(value, locale);
 }
 
+function getAlertUrgency(value: string, todayValue: string): AlertUrgency | null {
+  if (value < todayValue) {
+    return "overdue";
+  }
+
+  if (value === todayValue) {
+    return "today";
+  }
+
+  if (value === shiftDate(todayValue, 1)) {
+    return "tomorrow";
+  }
+
+  return null;
+}
+
+function getAlertUrgencyRank(urgency: AlertUrgency): number {
+  if (urgency === "overdue") {
+    return 0;
+  }
+
+  if (urgency === "today") {
+    return 1;
+  }
+
+  return 2;
+}
+
+function formatAlertUrgencyLabel(urgency: AlertUrgency, locale: UserLocale): string {
+  if (urgency === "overdue") {
+    return locale === "fr" ? "En retard" : "Overdue";
+  }
+
+  if (urgency === "today") {
+    return locale === "fr" ? "Aujourd'hui" : "Today";
+  }
+
+  return locale === "fr" ? "Demain" : "Tomorrow";
+}
+
+function formatAlertSourceLabel(sourceType: AlertPanelItem["sourceType"], locale: UserLocale): string {
+  if (sourceType === "task") {
+    return locale === "fr" ? "Tache" : "Task";
+  }
+
+  return locale === "fr" ? "Rappel" : "Reminder";
+}
+
+function compareAlertPanelItems(left: AlertPanelItem, right: AlertPanelItem): number {
+  const urgencyDelta = getAlertUrgencyRank(left.urgency) - getAlertUrgencyRank(right.urgency);
+  if (urgencyDelta !== 0) {
+    return urgencyDelta;
+  }
+
+  const sortDelta = left.sortValue - right.sortValue;
+  if (sortDelta !== 0) {
+    return sortDelta;
+  }
+
+  const leftTitle = left.sourceType === "task" ? left.task.title : left.reminder.title;
+  const rightTitle = right.sourceType === "task" ? right.task.title : right.reminder.title;
+  return leftTitle.localeCompare(rightTitle);
+}
+
 function formatSignedDelta(value: number): string {
   if (value > 0) {
     return `+${value}`;
@@ -1706,6 +1814,30 @@ function formatPriority(priority: TaskPriority, locale: UserLocale): string {
 
 function formatTaskStatus(status: TaskStatus, locale: UserLocale): string {
   return getBoardColumns(locale).find((column) => column.status === status)?.label ?? status;
+}
+
+function formatReminderStatus(status: ReminderStatus, locale: UserLocale): string {
+  if (status === "pending") {
+    return locale === "fr" ? "En attente" : "Pending";
+  }
+
+  if (status === "fired") {
+    return locale === "fr" ? "Declenche" : "Fired";
+  }
+
+  if (status === "completed") {
+    return locale === "fr" ? "Traite" : "Completed";
+  }
+
+  return locale === "fr" ? "Annule" : "Cancelled";
+}
+
+function isReminderResolvedStatus(status: ReminderStatus): boolean {
+  return status === "completed" || status === "cancelled";
+}
+
+function sortRemindersByRemindAt(reminders: Reminder[]): Reminder[] {
+  return [...reminders].sort((left, right) => new Date(left.remindAt).getTime() - new Date(right.remindAt).getTime());
 }
 
 function formatPlannedTime(totalMinutes: number): string {
@@ -3358,20 +3490,8 @@ async function deleteReminderAttachmentApi(
   }
 }
 
-async function deleteReminderApi(id: string, token: string): Promise<void> {
-  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: createAuthHeaders(token, true),
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as ApiErrorPayload;
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete reminder"));
-  }
-}
-
-async function dismissReminderApi(id: string, token: string): Promise<Reminder> {
-  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}/dismiss`, {
+async function completeReminderApi(id: string, token: string): Promise<Reminder> {
+  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}/complete`, {
     method: "POST",
     headers: createAuthHeaders(token, true),
     body: JSON.stringify({}),
@@ -3382,11 +3502,33 @@ async function dismissReminderApi(id: string, token: string): Promise<Reminder> 
     | null;
 
   if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to dismiss reminder"));
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to complete reminder"));
   }
 
   if (!payload?.data) {
-    throw new Error("Unable to dismiss reminder.");
+    throw new Error("Unable to complete reminder.");
+  }
+
+  return payload.data;
+}
+
+async function cancelReminderApi(id: string, token: string): Promise<Reminder> {
+  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({}),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Reminder; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to cancel reminder"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to cancel reminder.");
   }
 
   return payload.data;
@@ -3597,7 +3739,7 @@ type AppNavbarProps = {
   onLogout?: () => void;
   onOpenProfile?: () => void;
   onLogin?: () => void;
-  taskAlertsSummary?: TaskAlertsSummary | null;
+  alertsSummary?: AlertsSummary | null;
   isTaskAlertsPanelOpen?: boolean;
   onOpenTaskAlerts?: () => void;
   onOpenSearch?: () => void;
@@ -3872,7 +4014,7 @@ function AppNavbar({
   onLogout,
   onOpenProfile,
   onLogin,
-  taskAlertsSummary,
+  alertsSummary,
   isTaskAlertsPanelOpen = false,
   onOpenTaskAlerts,
   onOpenSearch,
@@ -3882,8 +4024,8 @@ function AppNavbar({
   const isFrench = locale === "fr";
   const profileLabel = user?.displayName ?? user?.email ?? (isFrench ? "Invite" : "Guest");
   const initials = profileLabel.slice(0, 2).toUpperCase();
-  const taskAlertsCount = taskAlertsSummary?.count ?? 0;
-  const taskAlertsLabel = isFrench ? "Alertes d'echeance" : "Due alerts";
+  const taskAlertsCount = alertsSummary?.count ?? 0;
+  const taskAlertsLabel = isFrench ? "Alertes" : "Alerts";
 
   return (
     <>
@@ -4879,6 +5021,7 @@ export function AppShell() {
   const [isAssistantLoading, setIsAssistantLoading] = useState(false);
   const assistantMessagesEndRef = useRef<HTMLDivElement | null>(null);
   const [taskAlertsSummary, setTaskAlertsSummary] = useState<TaskAlertsSummary | null>(null);
+  const [alertReminders, setAlertReminders] = useState<Reminder[]>([]);
   const [taskAlertsErrorMessage, setTaskAlertsErrorMessage] = useState<string | null>(null);
   const [isTaskAlertsLoading, setIsTaskAlertsLoading] = useState(false);
   const [isTaskAlertsPanelOpen, setIsTaskAlertsPanelOpen] = useState(false);
@@ -5094,7 +5237,77 @@ export function AppShell() {
   const userLocaleOptions = getUserLocaleOptions(activeLocale);
   const activeTimeZone = authUser?.preferredTimeZone ?? null;
   const taskAlertsAnchorDate = getCurrentDateInputValue(activeTimeZone ?? getBrowserTimeZone());
+  const alertRemindersHorizonDate = shiftDate(taskAlertsAnchorDate, 1);
   const dashboardIconButtonClass = `${iconButtonClass} h-9 w-9 rounded-xl px-0`;
+  const alertPanelItems = useMemo(() => {
+    const taskItems: AlertPanelItem[] = (taskAlertsSummary?.tasks ?? []).flatMap((task) => {
+      if (!task.dueDate) {
+        return [];
+      }
+
+      const urgency = getAlertUrgency(task.dueDate, taskAlertsAnchorDate);
+      if (!urgency) {
+        return [];
+      }
+
+      return [
+        {
+          sourceType: "task",
+          urgency,
+          sortValue: parseDateInput(task.dueDate).getTime(),
+          task,
+        },
+      ];
+    });
+
+    const reminderItems: AlertPanelItem[] = alertReminders.flatMap((reminder) => {
+      const remindAt = new Date(reminder.remindAt);
+      if (Number.isNaN(remindAt.getTime())) {
+        return [];
+      }
+
+      const remindDateValue = formatDateInputForTimeZone(remindAt, activeTimeZone);
+      const urgency = getAlertUrgency(remindDateValue, taskAlertsAnchorDate);
+      if (!urgency) {
+        return [];
+      }
+
+      return [
+        {
+          sourceType: "reminder",
+          urgency,
+          sortValue: remindAt.getTime(),
+          reminder,
+        },
+      ];
+    });
+
+    return [...taskItems, ...reminderItems].sort(compareAlertPanelItems);
+  }, [activeTimeZone, alertReminders, taskAlertsAnchorDate, taskAlertsSummary]);
+  const alertsSummary = useMemo<AlertsSummary>(() => {
+    const summary: AlertsSummary = {
+      count: alertPanelItems.length,
+      overdueCount: 0,
+      todayCount: 0,
+      tomorrowCount: 0,
+    };
+
+    for (const item of alertPanelItems) {
+      if (item.urgency === "overdue") {
+        summary.overdueCount += 1;
+        continue;
+      }
+
+      if (item.urgency === "today") {
+        summary.todayCount += 1;
+        continue;
+      }
+
+      summary.tomorrowCount += 1;
+    }
+
+    return summary;
+  }, [alertPanelItems]);
   const dashboardBlockOrderIndex = useMemo(() => {
     const fallbackIndex = Object.fromEntries(
       DASHBOARD_BLOCK_IDS.map((blockId, index) => [blockId, index])
@@ -6473,13 +6686,15 @@ export function AppShell() {
           { title: title.trim(), description: description.trim() || null, project: normalizeProjectName(project) || null, assignees: assignees.trim() || null, remindAt: remindAtIso },
           authToken
         );
-        setReminders((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+        setReminders((prev) => sortRemindersByRemindAt(prev.map((r) => (r.id === updated.id ? updated : r))));
+        refreshTaskAlerts();
       } else {
         const created = await createReminderApi(
           { title: title.trim(), description: description.trim() || null, project: normalizeProjectName(project) || null, assignees: assignees.trim() || null, remindAt: remindAtIso },
           authToken
         );
-        setReminders((prev) => [...prev, created].sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()));
+        setReminders((prev) => sortRemindersByRemindAt([...prev, created]));
+        refreshTaskAlerts();
         openEditReminderDialog(created);
         return;
       }
@@ -6497,11 +6712,33 @@ export function AppShell() {
     }
   }
 
-  async function handleDeleteReminder(id: string) {
+  async function handleCompleteReminder(id: string) {
     if (!authToken) return;
     try {
-      await deleteReminderApi(id, authToken);
-      setReminders((prev) => prev.filter((r) => r.id !== id));
+      const completed = await completeReminderApi(id, authToken);
+      setReminders((prev) => prev.filter((r) => r.id !== completed.id));
+      setAlertReminders((prev) => prev.filter((r) => r.id !== completed.id));
+      setPendingReminders((prev) => prev.filter((r) => r.id !== completed.id));
+      if (editingReminderId === completed.id) {
+        closeReminderDialog();
+      }
+      refreshTaskAlerts();
+    } catch {
+      // silent
+    }
+  }
+
+  async function handleCancelReminder(id: string) {
+    if (!authToken) return;
+    try {
+      const cancelled = await cancelReminderApi(id, authToken);
+      setReminders((prev) => prev.filter((r) => r.id !== cancelled.id));
+      setAlertReminders((prev) => prev.filter((r) => r.id !== cancelled.id));
+      setPendingReminders((prev) => prev.filter((r) => r.id !== cancelled.id));
+      if (editingReminderId === cancelled.id) {
+        closeReminderDialog();
+      }
+      refreshTaskAlerts();
     } catch {
       // silent
     }
@@ -6793,17 +7030,6 @@ export function AppShell() {
       // silent
     } finally {
       setPendingReminderAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
-    }
-  }
-
-  async function handleDismissReminder(id: string) {
-    if (!authToken) return;
-    try {
-      const dismissed = await dismissReminderApi(id, authToken);
-      setReminders((prev) => prev.map((r) => (r.id === dismissed.id ? dismissed : r)));
-      setPendingReminders((prev) => prev.filter((r) => r.id !== id));
-    } catch {
-      // silent
     }
   }
 
@@ -7736,10 +7962,32 @@ export function AppShell() {
       loadPendingReminders(authToken)
         .then((pending) => {
           if (active) {
+            setReminders((prev) => {
+              if (pending.length === 0) {
+                return prev;
+              }
+
+              const byId = new Map(pending.map((reminder) => [reminder.id, reminder]));
+              return sortRemindersByRemindAt(
+                prev.map((reminder) => byId.get(reminder.id) ?? reminder)
+              );
+            });
             setPendingReminders((prev) => {
               const existingIds = new Set(prev.map((r) => r.id));
               const newOnes = pending.filter((r) => !existingIds.has(r.id));
               return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+            });
+            setAlertReminders((prev) => {
+              if (pending.length === 0) {
+                return prev;
+              }
+
+              const mergedById = new Map(prev.map((reminder) => [reminder.id, reminder]));
+              for (const reminder of pending) {
+                mergedById.set(reminder.id, reminder);
+              }
+
+              return sortRemindersByRemindAt([...mergedById.values()]);
             });
           }
         })
@@ -7764,6 +8012,7 @@ export function AppShell() {
 
     if (!authToken || !authUser) {
       setTaskAlertsSummary(null);
+      setAlertReminders([]);
       setTaskAlertsErrorMessage(null);
       setIsTaskAlertsLoading(false);
       setIsTaskAlertsPanelOpen(false);
@@ -7774,13 +8023,17 @@ export function AppShell() {
     setTaskAlertsErrorMessage(null);
     const controller = new AbortController();
 
-    loadTaskAlerts(taskAlertsAnchorDate, authToken, controller.signal)
-      .then((nextTaskAlerts) => {
+    Promise.all([
+      loadTaskAlerts(taskAlertsAnchorDate, authToken, controller.signal),
+      loadReminders(alertRemindersHorizonDate, authToken, controller.signal),
+    ])
+      .then(([nextTaskAlerts, nextAlertReminders]) => {
         if (controller.signal.aborted) {
           return;
         }
 
         setTaskAlertsSummary(nextTaskAlerts);
+        setAlertReminders(sortRemindersByRemindAt(nextAlertReminders));
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) {
@@ -7788,12 +8041,13 @@ export function AppShell() {
         }
 
         setTaskAlertsSummary(null);
+        setAlertReminders([]);
         setTaskAlertsErrorMessage(
           error instanceof Error
             ? error.message
             : isFrench
-            ? "Impossible de charger les alertes d'echeance."
-            : "Unable to load due alerts."
+            ? "Impossible de charger les alertes."
+            : "Unable to load alerts."
         );
       })
       .finally(() => {
@@ -7803,7 +8057,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, taskAlertsAnchorDate, taskAlertsReloadKey]);
+  }, [alertRemindersHorizonDate, authToken, authUser, isAuthReady, isFrench, taskAlertsAnchorDate, taskAlertsReloadKey]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -8349,7 +8603,7 @@ export function AppShell() {
         user={authUser}
         onLogout={handleLogout}
         onOpenProfile={openProfileDialog}
-        taskAlertsSummary={taskAlertsSummary}
+        alertsSummary={alertsSummary}
         isTaskAlertsPanelOpen={isTaskAlertsPanelOpen}
         onOpenTaskAlerts={toggleTaskAlertsPanel}
         onOpenSearch={() => setIsSearchModalOpen(true)}
@@ -9491,8 +9745,8 @@ export function AppShell() {
             </h2>
             <p className="text-sm text-muted">
               {isFrench
-                ? "Vos rappels pour la journee selectionnee."
-                : "Your reminders for the selected day."}
+                ? "Vos rappels actifs jusqu'a la journee selectionnee."
+                : "Your active reminders up to the selected day."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -9550,7 +9804,7 @@ export function AppShell() {
               </p>
             ) : reminders.length === 0 ? (
               <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Aucun rappel pour cette date." : "No reminders for this date."}
+                {isFrench ? "Aucun rappel actif." : "No active reminders."}
               </p>
             ) : (
               <ul className="mt-4 space-y-2">
@@ -9561,17 +9815,6 @@ export function AppShell() {
                     minute: "2-digit",
                     timeZone: activeTimeZone ?? undefined,
                   });
-                  const isPast = remindAtDate.getTime() <= Date.now();
-                  const statusLabel = reminder.isDismissed
-                    ? isFrench ? "Acquitte" : "Dismissed"
-                    : reminder.isFired || isPast
-                    ? isFrench ? "Declenche" : "Fired"
-                    : isFrench ? "En attente" : "Pending";
-                  const statusColor = reminder.isDismissed
-                    ? "text-emerald-600"
-                    : reminder.isFired || isPast
-                    ? "text-amber-600"
-                    : "text-muted";
 
                   return (
                     <li
@@ -9588,18 +9831,35 @@ export function AppShell() {
                         {reminder.assignees ? (
                           <p className="truncate text-xs text-muted">{reminder.assignees}</p>
                         ) : null}
-                        <p className="text-xs text-muted">
-                          {timeStr} &middot; <span className={statusColor}>{statusLabel}</span>
+                        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <span>{timeStr}</span>
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[reminder.status]}`}
+                          >
+                            {formatReminderStatus(reminder.status, activeLocale)}
+                          </span>
+                          {remindAtDate.getTime() < Date.now() ? (
+                            <span>{isFrench ? "Echeance depassee" : "Past due"}</span>
+                          ) : null}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        {!reminder.isDismissed && (reminder.isFired || isPast) ? (
+                        {!isReminderResolvedStatus(reminder.status) ? (
                           <button
                             type="button"
                             className="rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-soft"
-                            onClick={() => { void handleDismissReminder(reminder.id); }}
+                            onClick={() => { void handleCompleteReminder(reminder.id); }}
                           >
-                            {isFrench ? "Fermer" : "Dismiss"}
+                            {isFrench ? "Traiter" : "Complete"}
+                          </button>
+                        ) : null}
+                        {!isReminderResolvedStatus(reminder.status) ? (
+                          <button
+                            type="button"
+                            className="rounded-md px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-surface-soft hover:text-foreground"
+                            onClick={() => { void handleCancelReminder(reminder.id); }}
+                          >
+                            {isFrench ? "Annuler" : "Cancel"}
                           </button>
                         ) : null}
                         <button
@@ -9608,13 +9868,6 @@ export function AppShell() {
                           onClick={() => openEditReminderDialog(reminder)}
                         >
                           {isFrench ? "Modifier" : "Edit"}
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50"
-                          onClick={() => { void handleDeleteReminder(reminder.id); }}
-                        >
-                          <TrashIcon />
                         </button>
                       </div>
                     </li>
@@ -11879,16 +12132,16 @@ export function AppShell() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  {isFrench ? "Alertes d'echeance" : "Due alerts"}
+                  {isFrench ? "Alertes" : "Alerts"}
                 </p>
                 <p className="text-[11px] text-muted">
-                  {taskAlertsSummary
+                  {alertsSummary.count > 0
                     ? isFrench
-                      ? `${taskAlertsSummary.dueTodayCount} aujourd'hui · ${taskAlertsSummary.dueTomorrowCount} demain`
-                      : `${taskAlertsSummary.dueTodayCount} today · ${taskAlertsSummary.dueTomorrowCount} tomorrow`
+                      ? `${alertsSummary.overdueCount} en retard · ${alertsSummary.todayCount} aujourd'hui · ${alertsSummary.tomorrowCount} demain`
+                      : `${alertsSummary.overdueCount} overdue · ${alertsSummary.todayCount} today · ${alertsSummary.tomorrowCount} tomorrow`
                     : isFrench
-                    ? "Suivi des echeances proches"
-                    : "Tracking upcoming due dates"}
+                    ? "Rappels et echeances non resolus"
+                    : "Unresolved reminders and due dates"}
                 </p>
               </div>
             </div>
@@ -11896,7 +12149,7 @@ export function AppShell() {
               type="button"
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
               onClick={() => setIsTaskAlertsPanelOpen(false)}
-              aria-label={isFrench ? "Fermer les alertes d'echeance" : "Close due alerts"}
+              aria-label={isFrench ? "Fermer les alertes" : "Close alerts"}
             >
               <CloseIcon />
             </button>
@@ -11915,56 +12168,129 @@ export function AppShell() {
               </p>
             ) : null}
 
-            {!isTaskAlertsLoading && !taskAlertsErrorMessage && taskAlertsSummary?.tasks.length ? (
-              taskAlertsSummary.tasks.map((task) => (
-                <button
-                  key={task.id}
-                  type="button"
-                  className="w-full rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3 text-left transition-colors hover:border-accent/30 hover:bg-surface-soft"
-                  onClick={() => {
-                    setIsTaskAlertsPanelOpen(false);
+            {!isTaskAlertsLoading && !taskAlertsErrorMessage && alertPanelItems.length ? (
+              alertPanelItems.map((item) =>
+                item.sourceType === "task" ? (
+                  <button
+                    key={item.task.id}
+                    type="button"
+                    className="w-full rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3 text-left transition-colors hover:border-accent/30 hover:bg-surface-soft"
+                    onClick={() => {
+                      setIsTaskAlertsPanelOpen(false);
 
-                    if (task.targetDate === selectedDate) {
-                      openEditTaskDialog(task);
-                      return;
-                    }
+                      if (item.task.targetDate === selectedDate) {
+                        openEditTaskDialog(item.task);
+                        return;
+                      }
 
-                    handleDateChange(task.targetDate);
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{task.title}</p>
-                      <p className="mt-1 text-xs text-muted">
-                        {task.dueDate
-                          ? `${formatTaskAlertDueLabel(task.dueDate, taskAlertsAnchorDate, activeLocale)} · ${formatDateOnlyForLocale(
-                              task.dueDate,
-                              activeLocale
-                            )}`
-                          : isFrench
-                          ? "Aucune date d'echeance"
-                          : "No due date"}
-                      </p>
-                      <p className="mt-1 text-[11px] text-muted">
-                        {isFrench ? "Planifiee" : "Scheduled"} {formatDateOnlyForLocale(task.targetDate, activeLocale)}
-                        {task.project ? ` · ${task.project}` : ""}
-                      </p>
+                      handleDateChange(item.task.targetDate);
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertSourceChipClassByType.task}`}
+                          >
+                            {formatAlertSourceLabel("task", activeLocale)}
+                          </span>
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertUrgencyChipClassByUrgency[item.urgency]}`}
+                          >
+                            {formatAlertUrgencyLabel(item.urgency, activeLocale)}
+                          </span>
+                        </div>
+                        <p className="mt-2 truncate text-sm font-semibold text-foreground">{item.task.title}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {item.task.dueDate
+                            ? `${formatDateOnlyForLocale(item.task.dueDate, activeLocale)}`
+                            : isFrench
+                            ? "Aucune date d'echeance"
+                            : "No due date"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted">
+                          {isFrench ? "Planifiee" : "Scheduled"} {formatDateOnlyForLocale(item.task.targetDate, activeLocale)}
+                          {item.task.project ? ` · ${item.task.project}` : ""}
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[item.task.priority]}`}
+                      >
+                        {formatPriority(item.task.priority, activeLocale)}
+                      </span>
                     </div>
-                    <span
-                      className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[task.priority]}`}
-                    >
-                      {formatPriority(task.priority, activeLocale)}
-                    </span>
-                  </div>
-                </button>
-              ))
+                  </button>
+                ) : (
+                  <article
+                    key={item.reminder.id}
+                    className="rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                          setIsTaskAlertsPanelOpen(false);
+                          openEditReminderDialog(item.reminder);
+                        }}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertSourceChipClassByType.reminder}`}
+                          >
+                            {formatAlertSourceLabel("reminder", activeLocale)}
+                          </span>
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertUrgencyChipClassByUrgency[item.urgency]}`}
+                          >
+                            {formatAlertUrgencyLabel(item.urgency, activeLocale)}
+                          </span>
+                        </div>
+                        <p className="mt-2 truncate text-sm font-semibold text-foreground">{item.reminder.title}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {`${formatTaskAlertDueLabel(
+                            formatDateInputForTimeZone(new Date(item.reminder.remindAt), activeTimeZone),
+                            taskAlertsAnchorDate,
+                            activeLocale
+                          )} · ${formatDateTime(item.reminder.remindAt, activeLocale, activeTimeZone)}`}
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted">
+                          {[item.reminder.project, item.reminder.assignees].filter(Boolean).join(" · ") ||
+                            (isFrench ? "Rappel actif" : "Active reminder")}
+                        </p>
+                      </button>
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[item.reminder.status]}`}
+                      >
+                        {formatReminderStatus(item.reminder.status, activeLocale)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
+                        onClick={() => { void handleCompleteReminder(item.reminder.id); }}
+                      >
+                        {isFrench ? "Traiter" : "Complete"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-surface hover:text-foreground"
+                        onClick={() => { void handleCancelReminder(item.reminder.id); }}
+                      >
+                        {isFrench ? "Annuler" : "Cancel"}
+                      </button>
+                    </div>
+                  </article>
+                )
+              )
             ) : null}
 
-            {!isTaskAlertsLoading && !taskAlertsErrorMessage && (taskAlertsSummary?.tasks.length ?? 0) === 0 ? (
+            {!isTaskAlertsLoading && !taskAlertsErrorMessage && alertPanelItems.length === 0 ? (
               <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 {isFrench
-                  ? "Aucune echeance aujourd'hui ou demain."
-                  : "No due dates today or tomorrow."}
+                  ? "Aucune alerte active en retard, aujourd'hui ou demain."
+                  : "No active alerts overdue, today, or tomorrow."}
               </p>
             ) : null}
           </div>
@@ -12162,15 +12488,31 @@ export function AppShell() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">{reminder.title}</p>
-                  <p className="text-xs text-muted">{timeStr}</p>
+                  <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <span>{timeStr}</span>
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[reminder.status]}`}
+                    >
+                      {formatReminderStatus(reminder.status, activeLocale)}
+                    </span>
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
-                  onClick={() => { void handleDismissReminder(reminder.id); }}
-                >
-                  {isFrench ? "Fermer" : "Dismiss"}
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
+                    onClick={() => { void handleCompleteReminder(reminder.id); }}
+                  >
+                    {isFrench ? "Traiter" : "Complete"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-surface-soft hover:text-foreground"
+                    onClick={() => { void handleCancelReminder(reminder.id); }}
+                  >
+                    {isFrench ? "Annuler" : "Cancel"}
+                  </button>
+                </div>
               </div>
             );
           })}

@@ -65,10 +65,13 @@ function serializeReminder(reminder: {
   project: string | null;
   assignees: string | null;
   remindAt: Date;
+  status: string;
   isFired: boolean;
   firedAt: Date | null;
   isDismissed: boolean;
   dismissedAt: Date | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -79,10 +82,13 @@ function serializeReminder(reminder: {
     project: reminder.project,
     assignees: reminder.assignees,
     remindAt: reminder.remindAt.toISOString(),
+    status: reminder.status,
     isFired: reminder.isFired,
     firedAt: reminder.firedAt?.toISOString() ?? null,
     isDismissed: reminder.isDismissed,
     dismissedAt: reminder.dismissedAt?.toISOString() ?? null,
+    completedAt: reminder.completedAt?.toISOString() ?? null,
+    cancelledAt: reminder.cancelledAt?.toISOString() ?? null,
     createdAt: reminder.createdAt.toISOString(),
     updatedAt: reminder.updatedAt.toISOString(),
   };
@@ -151,7 +157,9 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
     const query = request.query as { date?: string };
 
     try {
-      let filters: { dateFrom?: Date; dateTo?: Date } | undefined;
+      let filters:
+        | { dateFrom?: Date; dateTo?: Date; activeBefore?: Date; statuses?: Array<"pending" | "fired" | "completed" | "cancelled"> }
+        | undefined;
       if (query.date) {
         const parseResult = dateQuerySchema.safeParse(query.date);
         if (!parseResult.success) {
@@ -164,7 +172,7 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
         }
         const dateTo = new Date(dateFrom);
         dateTo.setUTCDate(dateTo.getUTCDate() + 1);
-        filters = { dateFrom, dateTo };
+        filters = { activeBefore: dateTo, statuses: ["pending", "fired"] };
       }
 
       const reminders = await reminderStore.listByUser(authUserId, filters);
@@ -322,6 +330,54 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
     }
   });
 
+  // POST /api/reminders/:id/complete
+  app.post("/api/reminders/:id/complete", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const { id } = request.params as { id: string };
+
+    try {
+      const completed = await reminderStore.complete(id, authUserId);
+      if (!completed) {
+        return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
+      }
+      return reply.send({ data: serializeReminder(completed) });
+    } catch (error) {
+      if (isStorageNotInitializedPrismaError(error)) {
+        return sendStorageNotInitializedError(reply, "Reminder");
+      }
+      request.log.error(error, "Failed to complete reminder");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to complete reminder");
+    }
+  });
+
+  // POST /api/reminders/:id/cancel
+  app.post("/api/reminders/:id/cancel", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const { id } = request.params as { id: string };
+
+    try {
+      const cancelled = await reminderStore.cancel(id, authUserId);
+      if (!cancelled) {
+        return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
+      }
+      return reply.send({ data: serializeReminder(cancelled) });
+    } catch (error) {
+      if (isStorageNotInitializedPrismaError(error)) {
+        return sendStorageNotInitializedError(reply, "Reminder");
+      }
+      request.log.error(error, "Failed to cancel reminder");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to cancel reminder");
+    }
+  });
+
   // POST /api/reminders/:id/dismiss
   app.post("/api/reminders/:id/dismiss", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
@@ -332,11 +388,11 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
     const { id } = request.params as { id: string };
 
     try {
-      const dismissed = await reminderStore.dismiss(id, authUserId);
-      if (!dismissed) {
+      const completed = await reminderStore.complete(id, authUserId);
+      if (!completed) {
         return sendError(reply, 404, "NOT_FOUND", "Reminder not found");
       }
-      return reply.send({ data: serializeReminder(dismissed) });
+      return reply.send({ data: serializeReminder(completed) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
         return sendStorageNotInitializedError(reply, "Reminder");

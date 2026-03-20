@@ -63,6 +63,11 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-jotly_prod}"
 FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-$(read_env_value FRONTEND_HOST_PORT "$ENV_FILE")}"
 FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-3100}"
 
+show_compose_logs() {
+  echo "Recent Docker Compose logs:"
+  "${COMPOSE_CMD[@]}" --env-file "$ENV_FILE" -f docker-compose.prod.yml -p "$COMPOSE_PROJECT_NAME" logs --tail=120 backend frontend postgres || true
+}
+
 echo "Deploying branch '$BRANCH' from GitHub..."
 git fetch --all --prune
 
@@ -89,6 +94,7 @@ if command -v curl >/dev/null 2>&1; then
 
     if [[ "$attempt" -eq 30 ]]; then
       echo "Warning: health check did not pass yet: http://127.0.0.1:${FRONTEND_HOST_PORT}/backend-api/health"
+      show_compose_logs
       exit 1
     fi
 

@@ -297,12 +297,25 @@ test("POST /api/tasks creates a task with defaults", async (t) => {
   assert.equal(data.cancelledAt, null);
 });
 
-test("GET /api/tasks/alerts returns actionable tasks due today and tomorrow", async (t) => {
+test("GET /api/tasks/alerts returns actionable tasks due today, tomorrow, and overdue", async (t) => {
   const app = createAppForTest();
   t.after(async () => {
     await app.close();
   });
   const token = await registerAndGetToken(app);
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Overdue",
+      targetDate: "2026-03-05",
+      dueDate: "2026-03-07",
+      status: "todo",
+      priority: "high",
+    },
+  });
 
   await app.inject({
     method: "POST",
@@ -369,12 +382,12 @@ test("GET /api/tasks/alerts returns actionable tasks due today and tomorrow", as
     tasks: Array<{ title: string; dueDate: string }>;
   };
 
-  assert.equal(data.count, 2);
+  assert.equal(data.count, 3);
   assert.equal(data.dueTodayCount, 1);
   assert.equal(data.dueTomorrowCount, 1);
   assert.deepEqual(
     data.tasks.map((task) => task.title),
-    ["Due today", "Due tomorrow"]
+    ["Overdue", "Due today", "Due tomorrow"]
   );
 });
 

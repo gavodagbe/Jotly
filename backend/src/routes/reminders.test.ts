@@ -40,8 +40,12 @@ class InMemoryReminderStore implements ReminderStore {
     const results: Reminder[] = [];
     for (const r of this.reminders.values()) {
       if (r.userId !== userId) continue;
-      if (filters?.dateFrom && r.remindAt < filters.dateFrom) continue;
-      if (filters?.dateTo && r.remindAt >= filters.dateTo) continue;
+      if (filters?.activeBefore && r.remindAt >= filters.activeBefore) continue;
+      if (!filters?.activeBefore) {
+        if (filters?.dateFrom && r.remindAt < filters.dateFrom) continue;
+        if (filters?.dateTo && r.remindAt >= filters.dateTo) continue;
+      }
+      if (filters?.statuses?.length && !filters.statuses.includes(r.status)) continue;
       results.push(r);
     }
     return results.sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
@@ -51,7 +55,7 @@ class InMemoryReminderStore implements ReminderStore {
     const now = new Date();
     const results: Reminder[] = [];
     for (const r of this.reminders.values()) {
-      if (r.userId === userId && r.remindAt <= now && !r.isFired) {
+      if (r.userId === userId && r.remindAt <= now && r.status === "pending") {
         results.push(r);
       }
     }
@@ -74,10 +78,13 @@ class InMemoryReminderStore implements ReminderStore {
       project: input.project ?? null,
       assignees: input.assignees ?? null,
       remindAt: input.remindAt,
+      status: "pending",
       isFired: false,
       firedAt: null,
       isDismissed: false,
       dismissedAt: null,
+      completedAt: null,
+      cancelledAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -95,6 +102,9 @@ class InMemoryReminderStore implements ReminderStore {
       ...(input.project !== undefined ? { project: input.project } : {}),
       ...(input.assignees !== undefined ? { assignees: input.assignees } : {}),
       ...(input.remindAt !== undefined ? { remindAt: input.remindAt } : {}),
+      ...(input.remindAt !== undefined && existing.status === "fired" && input.remindAt.getTime() > Date.now()
+        ? { status: "pending" as const, isFired: false, firedAt: null }
+        : {}),
       updatedAt: new Date(),
     };
     this.reminders.set(id, updated);
@@ -111,15 +121,43 @@ class InMemoryReminderStore implements ReminderStore {
   async markFired(id: string, userId: string): Promise<Reminder | null> {
     const existing = this.reminders.get(id);
     if (!existing || existing.userId !== userId) return null;
-    const updated: Reminder = { ...existing, isFired: true, firedAt: new Date(), updatedAt: new Date() };
+    const updated: Reminder = {
+      ...existing,
+      status: "fired",
+      isFired: true,
+      firedAt: new Date(),
+      updatedAt: new Date(),
+    };
     this.reminders.set(id, updated);
     return updated;
   }
 
-  async dismiss(id: string, userId: string): Promise<Reminder | null> {
+  async complete(id: string, userId: string): Promise<Reminder | null> {
     const existing = this.reminders.get(id);
     if (!existing || existing.userId !== userId) return null;
-    const updated: Reminder = { ...existing, isDismissed: true, dismissedAt: new Date(), updatedAt: new Date() };
+    const updated: Reminder = {
+      ...existing,
+      status: "completed",
+      isDismissed: true,
+      dismissedAt: new Date(),
+      completedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.reminders.set(id, updated);
+    return updated;
+  }
+
+  async cancel(id: string, userId: string): Promise<Reminder | null> {
+    const existing = this.reminders.get(id);
+    if (!existing || existing.userId !== userId) return null;
+    const updated: Reminder = {
+      ...existing,
+      status: "cancelled",
+      isDismissed: true,
+      dismissedAt: new Date(),
+      cancelledAt: new Date(),
+      updatedAt: new Date(),
+    };
     this.reminders.set(id, updated);
     return updated;
   }
@@ -250,6 +288,7 @@ test("POST /api/reminders creates a reminder", async (t) => {
   const data = body.data as Record<string, unknown>;
   assert.equal(data.title, "Test reminder");
   assert.equal(data.description, "Some notes");
+  assert.equal(data.status, "pending");
   assert.equal(data.isFired, false);
   assert.equal(data.isDismissed, false);
 });
@@ -270,30 +309,79 @@ test("POST /api/reminders validates required fields", async (t) => {
   assert.equal(response.statusCode, 400);
 });
 
-test("GET /api/reminders lists reminders", async (t) => {
+test("GET /api/reminders?date keeps active overdue reminders visible until completion or cancellation", async (t) => {
   const app = createAppForTest();
   t.after(async () => { await app.close(); });
 
   const token = await registerAndGetToken(app);
-  const remindAt = new Date(Date.now() + 60000).toISOString();
+  await app.inject({
+    method: "POST",
+    url: "/api/reminders",
+    headers: authHeaders(token),
+    payload: { title: "Overdue active", remindAt: "2026-03-07T08:30:00.000Z" },
+  });
+
+  const dueTodayResponse = await app.inject({
+    method: "POST",
+    url: "/api/reminders",
+    headers: authHeaders(token),
+    payload: { title: "Due today", remindAt: "2026-03-08T10:00:00.000Z" },
+  });
+  const dueTodayId = ((parsePayload(dueTodayResponse.payload).data as Record<string, unknown>).id) as string;
+
+  const toCompleteResponse = await app.inject({
+    method: "POST",
+    url: "/api/reminders",
+    headers: authHeaders(token),
+    payload: { title: "Completed old", remindAt: "2026-03-07T07:00:00.000Z" },
+  });
+  const toCompleteId = ((parsePayload(toCompleteResponse.payload).data as Record<string, unknown>).id) as string;
+
+  await app.inject({
+    method: "POST",
+    url: `/api/reminders/${toCompleteId}/complete`,
+    headers: authHeaders(token),
+  });
+
+  const toCancelResponse = await app.inject({
+    method: "POST",
+    url: "/api/reminders",
+    headers: authHeaders(token),
+    payload: { title: "Cancelled old", remindAt: "2026-03-07T06:30:00.000Z" },
+  });
+  const toCancelId = ((parsePayload(toCancelResponse.payload).data as Record<string, unknown>).id) as string;
+
+  await app.inject({
+    method: "POST",
+    url: `/api/reminders/${toCancelId}/cancel`,
+    headers: authHeaders(token),
+  });
+
+  await app.inject({
+    method: "POST",
+    url: `/api/reminders/${dueTodayId}/complete`,
+    headers: authHeaders(token),
+  });
 
   await app.inject({
     method: "POST",
     url: "/api/reminders",
     headers: authHeaders(token),
-    payload: { title: "Reminder 1", remindAt },
+    payload: { title: "Future", remindAt: "2026-03-09T09:00:00.000Z" },
   });
 
   const response = await app.inject({
     method: "GET",
-    url: "/api/reminders",
+    url: "/api/reminders?date=2026-03-08",
     headers: authHeaders(token),
   });
 
   assert.equal(response.statusCode, 200);
   const body = parsePayload(response.payload);
-  const data = body.data as unknown[];
+  const data = body.data as Array<Record<string, unknown>>;
   assert.equal(data.length, 1);
+  assert.equal(data[0].title, "Overdue active");
+  assert.equal(data[0].status, "pending");
 });
 
 test("GET /api/reminders/:id returns a specific reminder", async (t) => {
@@ -401,7 +489,7 @@ test("DELETE /api/reminders/:id removes a reminder", async (t) => {
   assert.equal(getResponse.statusCode, 404);
 });
 
-test("POST /api/reminders/:id/dismiss marks reminder as dismissed", async (t) => {
+test("POST /api/reminders/:id/complete marks reminder as completed", async (t) => {
   const app = createAppForTest();
   t.after(async () => { await app.close(); });
 
@@ -417,17 +505,48 @@ test("POST /api/reminders/:id/dismiss marks reminder as dismissed", async (t) =>
 
   const created = (parsePayload(createResponse.payload).data as { id: string });
 
-  const dismissResponse = await app.inject({
+  const completeResponse = await app.inject({
     method: "POST",
-    url: `/api/reminders/${created.id}/dismiss`,
+    url: `/api/reminders/${created.id}/complete`,
     headers: authHeaders(token),
   });
 
-  assert.equal(dismissResponse.statusCode, 200);
-  const body = parsePayload(dismissResponse.payload);
+  assert.equal(completeResponse.statusCode, 200);
+  const body = parsePayload(completeResponse.payload);
   const data = body.data as Record<string, unknown>;
+  assert.equal(data.status, "completed");
   assert.equal(data.isDismissed, true);
-  assert.notEqual(data.dismissedAt, null);
+  assert.notEqual(data.completedAt, null);
+});
+
+test("POST /api/reminders/:id/cancel marks reminder as cancelled", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => { await app.close(); });
+
+  const token = await registerAndGetToken(app);
+  const remindAt = new Date(Date.now() + 60000).toISOString();
+
+  const createResponse = await app.inject({
+    method: "POST",
+    url: "/api/reminders",
+    headers: authHeaders(token),
+    payload: { title: "To cancel", remindAt },
+  });
+
+  const created = (parsePayload(createResponse.payload).data as { id: string });
+
+  const cancelResponse = await app.inject({
+    method: "POST",
+    url: `/api/reminders/${created.id}/cancel`,
+    headers: authHeaders(token),
+  });
+
+  assert.equal(cancelResponse.statusCode, 200);
+  const body = parsePayload(cancelResponse.payload);
+  const data = body.data as Record<string, unknown>;
+  assert.equal(data.status, "cancelled");
+  assert.equal(data.isDismissed, true);
+  assert.notEqual(data.cancelledAt, null);
 });
 
 test("GET /api/reminders/pending returns and fires pending reminders", async (t) => {
@@ -465,6 +584,7 @@ test("GET /api/reminders/pending returns and fires pending reminders", async (t)
   const data = body.data as Array<Record<string, unknown>>;
   assert.equal(data.length, 1);
   assert.equal(data[0].title, "Past reminder");
+  assert.equal(data[0].status, "fired");
   assert.equal(data[0].isFired, true);
 
   // Second call should return empty (already fired)
