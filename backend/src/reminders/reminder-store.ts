@@ -1,4 +1,4 @@
-import { Reminder, PrismaClient } from "@prisma/client";
+import { Reminder, ReminderStatus, PrismaClient } from "@prisma/client";
 
 export type ReminderCreateInput = {
   userId: string;
@@ -20,6 +20,8 @@ export type ReminderUpdateInput = {
 export type ReminderListFilters = {
   dateFrom?: Date;
   dateTo?: Date;
+  activeBefore?: Date;
+  statuses?: ReminderStatus[];
 };
 
 export type ReminderStore = {
@@ -30,7 +32,8 @@ export type ReminderStore = {
   update(id: string, input: ReminderUpdateInput, userId: string): Promise<Reminder | null>;
   remove(id: string, userId: string): Promise<Reminder | null>;
   markFired(id: string, userId: string): Promise<Reminder | null>;
-  dismiss(id: string, userId: string): Promise<Reminder | null>;
+  complete(id: string, userId: string): Promise<Reminder | null>;
+  cancel(id: string, userId: string): Promise<Reminder | null>;
   close?: () => Promise<void>;
 };
 
@@ -39,11 +42,17 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
     async listByUser(userId, filters) {
       const where: Record<string, unknown> = { userId };
 
-      if (filters?.dateFrom || filters?.dateTo) {
+      if (filters?.activeBefore) {
+        where.remindAt = { lt: filters.activeBefore };
+      } else if (filters?.dateFrom || filters?.dateTo) {
         const remindAtFilter: Record<string, Date> = {};
         if (filters.dateFrom) remindAtFilter.gte = filters.dateFrom;
         if (filters.dateTo) remindAtFilter.lt = filters.dateTo;
         where.remindAt = remindAtFilter;
+      }
+
+      if (filters?.statuses?.length) {
+        where.status = { in: filters.statuses };
       }
 
       return prisma.reminder.findMany({
@@ -57,7 +66,7 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
         where: {
           userId,
           remindAt: { lte: new Date() },
-          isFired: false,
+          status: "pending",
         },
         orderBy: { remindAt: "asc" },
       });
@@ -78,6 +87,7 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
           project: input.project ?? null,
           assignees: input.assignees ?? null,
           remindAt: input.remindAt,
+          status: "pending",
         },
       });
     },
@@ -94,6 +104,9 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
           ...(input.project !== undefined ? { project: input.project } : {}),
           ...(input.assignees !== undefined ? { assignees: input.assignees } : {}),
           ...(input.remindAt !== undefined ? { remindAt: input.remindAt } : {}),
+          ...(input.remindAt !== undefined && existing.status === "fired" && input.remindAt.getTime() > Date.now()
+            ? { status: "pending" satisfies ReminderStatus, isFired: false, firedAt: null }
+            : {}),
         },
       });
     },
@@ -111,17 +124,37 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
 
       return prisma.reminder.update({
         where: { id },
-        data: { isFired: true, firedAt: new Date() },
+        data: { status: "fired", isFired: true, firedAt: new Date() },
       });
     },
 
-    async dismiss(id, userId) {
+    async complete(id, userId) {
       const existing = await prisma.reminder.findFirst({ where: { id, userId } });
       if (!existing) return null;
 
       return prisma.reminder.update({
         where: { id },
-        data: { isDismissed: true, dismissedAt: new Date() },
+        data: {
+          status: "completed",
+          isDismissed: true,
+          dismissedAt: new Date(),
+          completedAt: new Date(),
+        },
+      });
+    },
+
+    async cancel(id, userId) {
+      const existing = await prisma.reminder.findFirst({ where: { id, userId } });
+      if (!existing) return null;
+
+      return prisma.reminder.update({
+        where: { id },
+        data: {
+          status: "cancelled",
+          isDismissed: true,
+          dismissedAt: new Date(),
+          cancelledAt: new Date(),
+        },
       });
     },
 

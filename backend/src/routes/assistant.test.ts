@@ -330,7 +330,7 @@ class InMemoryAssistantContextStore implements AssistantContextStore {
     if (!snapshot) return [];
     let reminders = [...snapshot.reminders];
     if (options.activeOnly) {
-      reminders = reminders.filter((r) => !r.isDismissed);
+      reminders = reminders.filter((r) => r.status === "pending" || r.status === "fired");
     }
     return reminders
       .sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime())
@@ -699,10 +699,13 @@ test("POST /api/assistant/reply includes assistant context from the wider user w
         project: "Exec",
         assignees: "Godwin",
         remindAt: new Date("2026-03-09T08:30:00.000Z"),
+        status: "pending",
         isFired: false,
         firedAt: null,
         isDismissed: false,
         dismissedAt: null,
+        completedAt: null,
+        cancelledAt: null,
         createdAt: new Date("2026-03-08T17:00:00.000Z"),
         updatedAt: new Date("2026-03-08T17:00:00.000Z"),
       } satisfies Reminder,
