@@ -31,6 +31,17 @@ export type GoogleCalendarSyncService = {
   syncEventsForUser(userId: string): Promise<{ syncedCount: number; lastSyncedAt: Date }>;
 };
 
+type GoogleApiErrorPayload = {
+  error?: {
+    code?: unknown;
+    message?: unknown;
+    errors?: Array<{
+      reason?: unknown;
+      message?: unknown;
+    }> | null;
+  } | null;
+};
+
 function parseGoogleDateTime(dt: calendar_v3.Schema$EventDateTime | undefined | null): {
   time: Date;
   isAllDay: boolean;
@@ -68,8 +79,145 @@ function isSyncTokenExpiredError(error: unknown): boolean {
     candidate.status === 410 ||
     candidate.response?.status === 410 ||
     candidate.code === 410 ||
-    candidate.code === "410"
+    candidate.code === "410" ||
+    getGoogleApiStatus(error) === 410 ||
+    hasGoogleApiReason(error, "fullSyncRequired", "updatedMinTooLongAgo", "deleted") ||
+    (getGoogleApiMessage(error)?.toLowerCase().includes("full sync is required") ?? false) ||
+    (getGoogleApiMessage(error)?.toLowerCase().includes("sync token is no longer valid") ?? false)
   );
+}
+
+function getGoogleApiErrorPayload(error: unknown): GoogleApiErrorPayload | null {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+
+  const gaxiosError = error instanceof GaxiosError ? error : null;
+  const candidate = error as {
+    response?: { data?: unknown } | null;
+    data?: unknown;
+  };
+
+  const payloadCandidates = [
+    gaxiosError?.response?.data,
+    candidate.response?.data,
+    candidate.data,
+  ];
+
+  for (const payload of payloadCandidates) {
+    if (typeof payload === "object" && payload !== null) {
+      return payload as GoogleApiErrorPayload;
+    }
+  }
+
+  return null;
+}
+
+function getGoogleApiStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+
+  const gaxiosError = error instanceof GaxiosError ? error : null;
+  const candidate = error as {
+    status?: unknown;
+    code?: unknown;
+    response?: { status?: unknown } | null;
+  };
+
+  const statusCandidates = [
+    gaxiosError?.status,
+    gaxiosError?.response?.status,
+    candidate.status,
+    candidate.response?.status,
+    candidate.code,
+    getGoogleApiErrorPayload(error)?.error?.code,
+  ];
+
+  for (const value of statusCandidates) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getGoogleApiReasons(error: unknown): string[] {
+  const reasons = getGoogleApiErrorPayload(error)?.error?.errors ?? [];
+  return reasons
+    .map((entry) => (typeof entry?.reason === "string" ? entry.reason.trim() : ""))
+    .filter((reason) => reason !== "");
+}
+
+function hasGoogleApiReason(error: unknown, ...expectedReasons: string[]): boolean {
+  if (expectedReasons.length === 0) {
+    return false;
+  }
+
+  const normalizedExpected = new Set(expectedReasons.map((reason) => reason.toLowerCase()));
+  return getGoogleApiReasons(error).some((reason) => normalizedExpected.has(reason.toLowerCase()));
+}
+
+function getGoogleApiMessage(error: unknown): string | null {
+  const payloadMessage = getGoogleApiErrorPayload(error)?.error?.message;
+  if (typeof payloadMessage === "string" && payloadMessage.trim() !== "") {
+    return payloadMessage;
+  }
+
+  if (error instanceof Error && error.message.trim() !== "") {
+    return error.message;
+  }
+
+  return null;
+}
+
+function normalizeGoogleCalendarSyncError(error: unknown): Error {
+  if (error instanceof Error) {
+    if (error.message === "GOOGLE_CALENDAR_RECONNECT_REQUIRED") {
+      return error;
+    }
+    if (error.message === "GOOGLE_CALENDAR_INVALID_SELECTION") {
+      return error;
+    }
+    if (error.message === "GOOGLE_CALENDAR_ACCESS_CHANGED") {
+      return error;
+    }
+  }
+
+  const status = getGoogleApiStatus(error);
+  const message = getGoogleApiMessage(error)?.toLowerCase() ?? "";
+  if (
+    status === 401 ||
+    hasGoogleApiReason(error, "authError", "invalidCredentials", "insufficientPermissions") ||
+    message.includes("invalid credentials")
+  ) {
+    return new Error("GOOGLE_CALENDAR_RECONNECT_REQUIRED");
+  }
+  if (
+    status === 404 ||
+    hasGoogleApiReason(error, "notFound") ||
+    message === "not found"
+  ) {
+    return new Error("GOOGLE_CALENDAR_INVALID_SELECTION");
+  }
+  if (
+    status === 403 &&
+    (hasGoogleApiReason(error, "forbidden") ||
+      message.includes("permission") ||
+      message.includes("forbidden") ||
+      message.includes("access"))
+  ) {
+    return new Error("GOOGLE_CALENDAR_ACCESS_CHANGED");
+  }
+
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function addUtcDays(date: Date, offsetDays: number): Date {
@@ -214,7 +362,7 @@ export function createGoogleCalendarSyncService(
           syncToken = null;
           continue;
         }
-        throw error;
+        throw normalizeGoogleCalendarSyncError(error);
       }
     }
 
