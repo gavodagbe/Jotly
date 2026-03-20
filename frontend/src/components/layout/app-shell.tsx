@@ -65,9 +65,21 @@ type CalendarEventLinkedTask = {
   project: string | null;
 };
 
-type CalendarEventNote = {
+type LinkedCalendarEvent = {
   id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  htmlLink: string | null;
+};
+
+type CalendarEventLinkedNote = {
+  id: string;
+  title: string | null;
   body: string;
+  color: string | null;
+  targetDate: string | null;
+  calendarEventId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -94,7 +106,7 @@ type CalendarEventSummary = {
   endDate: string | null;
   location: string | null;
   htmlLink: string | null;
-  note: CalendarEventNote | null;
+  note: CalendarEventLinkedNote | null;
   linkedTasks: CalendarEventLinkedTask[];
 };
 
@@ -211,6 +223,8 @@ type Note = {
   body: string;
   color: string | null;
   targetDate: string | null;
+  calendarEventId: string | null;
+  linkedCalendarEvent: LinkedCalendarEvent | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -240,7 +254,21 @@ type NoteFormValues = {
   body: string;
   color: string;
   targetDate: string;
+  calendarEventId: string;
 };
+
+function toCalendarEventLinkedNote(note: Note): CalendarEventLinkedNote {
+  return {
+    id: note.id,
+    title: note.title,
+    body: note.body,
+    color: note.color,
+    targetDate: note.targetDate,
+    calendarEventId: note.calendarEventId,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+  };
+}
 
 type Reminder = {
   id: string;
@@ -545,7 +573,7 @@ type GlobalSearchState = {
   to: string;
 };
 
-type ApiErrorPayload = { error?: { message?: string } } | null;
+type ApiErrorPayload = { error?: { code?: string; message?: string } } | null;
 type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders" | "notes";
 type DashboardLayoutConfig = {
   order: DashboardBlockId[];
@@ -555,11 +583,18 @@ type DashboardLayoutConfig = {
 class ApiRequestError extends Error {
   constructor(
     readonly statusCode: number,
-    message: string
+    message: string,
+    readonly apiCode: string | null = null
   ) {
     super(message);
     this.name = "ApiRequestError";
   }
+}
+
+function getGoogleCalendarUnavailableMessage(isFrench: boolean): string {
+  return isFrench
+    ? "Google Calendar n'est pas configure sur ce serveur. Renseignez les variables GOOGLE_* puis redemarrez le backend."
+    : "Google Calendar is not configured on this server. Set the GOOGLE_* environment variables and restart the backend.";
 }
 
 const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
@@ -1750,6 +1785,13 @@ function normalizeTaskFilterText(value: string): string {
     .toLowerCase();
 }
 
+function getRichTextPreviewText(value: string): string {
+  return decodeCommonHtmlEntities(value)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function getTaskSearchableText(task: Task, locale: UserLocale): string {
   return normalizeTaskFilterText(
     [
@@ -2442,11 +2484,15 @@ async function resetPasswordWithToken(
   });
 
   const payload = (await response.json().catch(() => null)) as
-    | { data?: { user: AuthUser; token: string }; error?: { message?: string } }
+    | { data?: { user: AuthUser; token: string }; error?: { code?: string; message?: string } }
     | null;
 
   if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to reset password"));
+    throw new ApiRequestError(
+      response.status,
+      getApiErrorMessage(response.status, payload, "Unable to reset password"),
+      payload?.error?.code ?? null
+    );
   }
 
   if (!payload?.data) {
@@ -2467,13 +2513,14 @@ async function loadCurrentUser(token: string): Promise<AuthUser> {
   });
 
   const payload = (await response.json().catch(() => null)) as
-    | { data?: { user?: AuthUser }; error?: { message?: string } }
+    | { data?: { user?: AuthUser }; error?: { code?: string; message?: string } }
     | null;
 
   if (!response.ok) {
     throw new ApiRequestError(
       response.status,
-      getApiErrorMessage(response.status, payload, "Unable to validate session")
+      getApiErrorMessage(response.status, payload, "Unable to validate session"),
+      payload?.error?.code ?? null
     );
   }
 
@@ -2608,7 +2655,7 @@ async function saveCalendarEventNote(
   eventId: string,
   body: string,
   token: string
-): Promise<CalendarEventNote> {
+): Promise<CalendarEventLinkedNote> {
   const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note`, {
     method: "PUT",
     headers: createAuthHeaders(token, true),
@@ -2616,7 +2663,7 @@ async function saveCalendarEventNote(
   });
 
   const payload = (await response.json().catch(() => null)) as
-    | { data?: CalendarEventNote; error?: { message?: string } }
+    | { data?: CalendarEventLinkedNote; error?: { message?: string } }
     | null;
 
   if (!response.ok) {
@@ -3018,7 +3065,13 @@ async function loadNotes(token: string, signal?: AbortSignal): Promise<Note[]> {
 }
 
 async function createNoteApi(
-  input: { title?: string | null; body: string; color?: string | null; targetDate?: string | null },
+  input: {
+    title?: string | null;
+    body: string;
+    color?: string | null;
+    targetDate?: string | null;
+    calendarEventId?: string | null;
+  },
   token: string
 ): Promise<Note> {
   const response = await fetch("/backend-api/notes", {
@@ -3041,7 +3094,13 @@ async function createNoteApi(
 
 async function updateNoteApi(
   id: string,
-  input: { title?: string | null; body?: string; color?: string | null; targetDate?: string | null },
+  input: {
+    title?: string | null;
+    body?: string;
+    color?: string | null;
+    targetDate?: string | null;
+    calendarEventId?: string | null;
+  },
   token: string
 ): Promise<Note> {
   const response = await fetch(`/backend-api/notes/${encodeURIComponent(id)}`, {
@@ -4717,6 +4776,7 @@ export function AppShell() {
   const [googleCalendarConnections, setGoogleCalendarConnections] = useState<
     Array<{ id: string; email: string; color: string; calendarId: string; lastSyncedAt: string | null }>
   >([]);
+  const [isGoogleCalendarAvailable, setIsGoogleCalendarAvailable] = useState(true);
   const [isGoogleCalendarLoading, setIsGoogleCalendarLoading] = useState(false);
   const [isGoogleCalendarSyncing, setIsGoogleCalendarSyncing] = useState(false);
   const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(null);
@@ -4781,7 +4841,13 @@ export function AppShell() {
   const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [noteDialogMode, setNoteDialogMode] = useState<"create" | "edit" | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [noteFormValues, setNoteFormValues] = useState<NoteFormValues>({ title: "", body: "", color: "", targetDate: "" });
+  const [noteFormValues, setNoteFormValues] = useState<NoteFormValues>({
+    title: "",
+    body: "",
+    color: "",
+    targetDate: "",
+    calendarEventId: "",
+  });
   const [noteErrorMessage, setNoteErrorMessage] = useState<string | null>(null);
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -4943,6 +5009,67 @@ export function AppShell() {
     );
   }, [calendarEvents, calendarEventSearchQuery]);
 
+  const editingNote = useMemo(() => {
+    if (!editingNoteId) {
+      return null;
+    }
+
+    return notes.find((note) => note.id === editingNoteId) ?? null;
+  }, [editingNoteId, notes]);
+
+  const linkedCalendarEventIdsInUse = useMemo(() => {
+    return new Set(
+      notes
+        .filter((note) => note.id !== editingNoteId && note.calendarEventId)
+        .map((note) => note.calendarEventId as string)
+    );
+  }, [editingNoteId, notes]);
+
+  const noteCalendarEventOptions = useMemo(() => {
+    const options = new Map<
+      string,
+      {
+        id: string;
+        title: string;
+        startTime: string;
+        endTime: string;
+        isAllDay: boolean;
+        startDate: string | null;
+        endDate: string | null;
+        htmlLink: string | null;
+      }
+    >();
+
+    for (const event of calendarEvents) {
+      options.set(event.id, {
+        id: event.id,
+        title: event.title,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        isAllDay: event.isAllDay,
+        startDate: event.startDate,
+        endDate: event.endDate,
+        htmlLink: event.htmlLink,
+      });
+    }
+
+    if (
+      editingNote?.linkedCalendarEvent &&
+      !options.has(editingNote.linkedCalendarEvent.id)
+    ) {
+      options.set(editingNote.linkedCalendarEvent.id, {
+        ...editingNote.linkedCalendarEvent,
+        isAllDay: false,
+        startDate: editingNote.linkedCalendarEvent.startTime.substring(0, 10),
+        endDate: null,
+      });
+    }
+
+    return [...options.values()].sort(
+      (left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime()
+    );
+  }, [calendarEvents, editingNote]);
+
   const editingTask = useMemo(() => {
     if (!editingTaskId) {
       return null;
@@ -4952,6 +5079,7 @@ export function AppShell() {
   }, [editingTaskId, tasks]);
 
   const isTaskDialogOpen = taskDialogMode !== null;
+  const isNoteDialogOpen = noteDialogMode !== null;
   const isMutationPending = isSubmittingTask || isDeletingTask || isCarryingOverYesterday;
   const activeLocale = getPreferredLocale(authUser?.preferredLocale ?? guestLocale);
   const isFrench = activeLocale === "fr";
@@ -5035,6 +5163,7 @@ export function AppShell() {
   );
 
   const taskDialogHeightClass = taskDialogMode === "edit" ? "max-h-[76vh]" : "max-h-[82vh]";
+  const noteDialogHeightClass = noteDialogMode === "edit" ? "max-h-[82vh]" : "max-h-[76vh]";
 
   const saveProjectOptions = useCallback((values: string[]) => {
     const nextOptions = getUniqueSortedProjectNames(values);
@@ -5066,6 +5195,7 @@ export function AppShell() {
     setProfileSuccessMessage(null);
     setIsProfileSaving(false);
     setGoogleCalendarConnections([]);
+    setIsGoogleCalendarAvailable(true);
     setIsGoogleCalendarLoading(false);
     setIsGoogleCalendarSyncing(false);
     setGoogleCalendarError(null);
@@ -5193,21 +5323,31 @@ export function AppShell() {
         });
       } else if (authMode === "forgot_password") {
         const result = await requestPasswordReset(authFormValues.email);
-        setAuthFormValues((current) => ({
-          ...current,
-          password: "",
-          resetToken: result.resetToken ?? "",
-        }));
-        setAuthMode("reset_password");
-        setAuthInfoMessage(
-          result.resetToken
-            ? isFrench
+        const resetToken = result.resetToken;
+        if (resetToken) {
+          setAuthFormValues((current) => ({
+            ...current,
+            password: "",
+            resetToken,
+          }));
+          setAuthMode("reset_password");
+          setAuthInfoMessage(
+            isFrench
               ? "Un jeton de reinitialisation a ete genere. Choisissez maintenant un nouveau mot de passe."
               : "A reset token was generated. You can now choose a new password."
-            : isFrench
-            ? "Si un compte existe, un jeton de reinitialisation a ete emis."
-            : "If an account exists, a reset token has been issued."
-        );
+          );
+        } else {
+          setAuthFormValues((current) => ({
+            ...current,
+            password: "",
+            resetToken: "",
+          }));
+          setAuthInfoMessage(
+            isFrench
+              ? "Aucun jeton n'a ete genere. Verifiez l'email saisi ou creez un compte si vous n'en avez pas encore."
+              : "No reset token was generated. Check the email address or create an account if you do not have one yet."
+          );
+        }
       } else {
         const result = await resetPasswordWithToken(
           authFormValues.resetToken,
@@ -5223,6 +5363,26 @@ export function AppShell() {
         });
       }
     } catch (error) {
+      if (
+        authMode === "reset_password" &&
+        error instanceof ApiRequestError &&
+        error.statusCode === 401 &&
+        error.apiCode === "INVALID_RESET_TOKEN"
+      ) {
+        setAuthMode("login");
+        setAuthFormValues((current) => ({
+          ...current,
+          password: "",
+          resetToken: "",
+        }));
+        setAuthErrorMessage(
+          isFrench
+            ? "Ce jeton de reinitialisation n'est plus valide. Connectez-vous avec votre mot de passe actuel ou demandez un nouveau jeton."
+            : "This reset token is no longer valid. Sign in with your current password or request a new reset token."
+        );
+        return;
+      }
+
       setAuthErrorMessage(
         error instanceof Error
           ? error.message
@@ -5257,7 +5417,14 @@ export function AppShell() {
       const response = await fetch("/backend-api/google-calendar/status", {
         headers: { Authorization: `Bearer ${authToken}` },
       });
+      if (response.status === 404) {
+        setIsGoogleCalendarAvailable(false);
+        setGoogleCalendarConnections([]);
+        setGoogleCalendarError(getGoogleCalendarUnavailableMessage(isFrench));
+        return;
+      }
       if (response.ok) {
+        setIsGoogleCalendarAvailable(true);
         const payload = await response.json();
         setGoogleCalendarConnections(payload.data.connections ?? []);
       }
@@ -5270,11 +5437,20 @@ export function AppShell() {
 
   async function handleConnectGoogleCalendar() {
     if (!authToken) return;
+    if (!isGoogleCalendarAvailable) {
+      setGoogleCalendarError(getGoogleCalendarUnavailableMessage(isFrench));
+      return;
+    }
     setGoogleCalendarError(null);
     try {
       const response = await fetch("/backend-api/google-calendar/auth-url", {
         headers: { Authorization: `Bearer ${authToken}` },
       });
+      if (response.status === 404) {
+        setIsGoogleCalendarAvailable(false);
+        setGoogleCalendarError(getGoogleCalendarUnavailableMessage(isFrench));
+        return;
+      }
       if (!response.ok) {
         setGoogleCalendarError(
           isFrench
@@ -6330,14 +6506,27 @@ export function AppShell() {
     }
   }
 
-  function openCreateNoteDialog() {
-    setDashboardBlockCollapsed((currentState) =>
-      currentState.notes ? { ...currentState, notes: false } : currentState
-    );
+  function openCreateNoteDialog(options?: {
+    calendarEventId?: string | null;
+    targetDate?: string | null;
+    title?: string | null;
+  }) {
     setNoteDialogMode("create");
     setEditingNoteId(null);
-    setNoteFormValues({ title: "", body: "", color: "", targetDate: "" });
+    setNoteFormValues({
+      title: options?.title ?? "",
+      body: "",
+      color: "",
+      targetDate: options?.targetDate ?? "",
+      calendarEventId: options?.calendarEventId ?? "",
+    });
     setNoteErrorMessage(null);
+    setNoteAttachmentErrorMessage(null);
+    setNoteAttachmentNameDraft("");
+    setNoteAttachmentFileDraft(null);
+    if (noteAttachmentFileInputRef.current) {
+      noteAttachmentFileInputRef.current.value = "";
+    }
   }
 
   function openEditNoteDialog(note: Note) {
@@ -6348,8 +6537,16 @@ export function AppShell() {
       body: note.body,
       color: note.color ?? "",
       targetDate: note.targetDate ?? "",
+      calendarEventId: note.calendarEventId ?? "",
     });
     setNoteErrorMessage(null);
+    setNoteAttachmentErrorMessage(null);
+    setNoteAttachmentNameDraft("");
+    setNoteAttachmentFileDraft(null);
+    if (noteAttachmentFileInputRef.current) {
+      noteAttachmentFileInputRef.current.value = "";
+    }
+
     // Load attachments for this note if not already loaded
     if (authToken && !noteAttachments[note.id]) {
       void loadNoteAttachments(note.id, authToken).then((attachments) => {
@@ -6364,6 +6561,45 @@ export function AppShell() {
     setNoteDialogMode(null);
     setEditingNoteId(null);
     setNoteErrorMessage(null);
+    setNoteAttachmentErrorMessage(null);
+    setNoteAttachmentNameDraft("");
+    setNoteAttachmentFileDraft(null);
+    if (noteAttachmentFileInputRef.current) {
+      noteAttachmentFileInputRef.current.value = "";
+    }
+  }
+
+  function syncCalendarEventsForNoteChange(
+    nextNote: Note | null,
+    previousCalendarEventId?: string | null
+  ) {
+    setCalendarEvents((currentEvents) =>
+      currentEvents.map((event) => {
+        if (previousCalendarEventId && event.id === previousCalendarEventId) {
+          if (!nextNote || nextNote.calendarEventId !== previousCalendarEventId) {
+            return { ...event, note: null };
+          }
+        }
+
+        if (nextNote?.calendarEventId && event.id === nextNote.calendarEventId) {
+          return { ...event, note: toCalendarEventLinkedNote(nextNote) };
+        }
+
+        return event;
+      })
+    );
+  }
+
+  function openCreateNoteDialogForCalendarEvent(event: CalendarEventSummary) {
+    const targetDate =
+      event.startDate ??
+      event.startTime.substring(0, 10);
+
+    openCreateNoteDialog({
+      calendarEventId: event.id,
+      targetDate,
+      title: event.title,
+    });
   }
 
   async function handleSubmitNote() {
@@ -6381,15 +6617,19 @@ export function AppShell() {
       body: noteFormValues.body,
       color: noteFormValues.color.trim() || null,
       targetDate: noteFormValues.targetDate.trim() || null,
+      calendarEventId: noteFormValues.calendarEventId.trim() || null,
     };
 
     try {
       if (noteDialogMode === "edit" && editingNoteId) {
+        const previousNote = notes.find((note) => note.id === editingNoteId) ?? null;
         const updated = await updateNoteApi(editingNoteId, payload, authToken);
         setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        syncCalendarEventsForNoteChange(updated, previousNote?.calendarEventId ?? null);
       } else {
         const created = await createNoteApi(payload, authToken);
         setNotes((prev) => [created, ...prev]);
+        syncCalendarEventsForNoteChange(created);
         openEditNoteDialog(created);
         return;
       }
@@ -6410,8 +6650,10 @@ export function AppShell() {
   async function handleDeleteNote(id: string) {
     if (!authToken) return;
     try {
+      const noteToDelete = notes.find((note) => note.id === id) ?? null;
       await deleteNoteApi(id, authToken);
       setNotes((prev) => prev.filter((n) => n.id !== id));
+      syncCalendarEventsForNoteChange(null, noteToDelete?.calendarEventId ?? null);
       if (expandedNoteId === id) setExpandedNoteId(null);
     } catch {
       // silent
@@ -7835,6 +8077,29 @@ export function AppShell() {
       : isFrench
       ? "Enregistrer les modifications"
       : "Save changes";
+  const noteDialogTitle = noteDialogMode === "create"
+    ? isFrench
+      ? "Nouvelle note"
+      : "New note"
+    : isFrench
+      ? "Modifier la note"
+      : "Edit note";
+  const noteDialogSubmitLabel =
+    noteDialogMode === "create"
+      ? isSubmittingNote
+        ? isFrench
+          ? "Creation..."
+          : "Creating..."
+        : isFrench
+          ? "Creer la note"
+          : "Create note"
+      : isSubmittingNote
+        ? isFrench
+          ? "Enregistrement..."
+          : "Saving..."
+        : isFrench
+          ? "Enregistrer les modifications"
+          : "Save changes";
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
   const isAffirmationCompleted = dayAffirmation?.isCompleted ?? false;
@@ -8863,7 +9128,7 @@ export function AppShell() {
                   <div className="mt-2 rounded-lg border border-line bg-surface-soft overflow-hidden divide-y divide-line">
                     {filteredCalendarEvents.map((event) => {
                       const isExpanded = expandedCalendarEventId === event.id;
-                      const hasNote = !!(event.note || (calendarEventNoteDrafts[event.id] ?? "").trim());
+                      const hasNote = Boolean(event.note);
                       const hasLinkedTasks = event.linkedTasks.length > 0;
 
                       return (
@@ -8978,138 +9243,57 @@ export function AppShell() {
                                 </div>
                               ) : null}
 
-                              {/* Internal Note — Rich Text Editor */}
+                              {/* Internal Note */}
                               <div className="space-y-2">
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
                                   {isFrench ? "Note interne" : "Internal Note"}
                                 </p>
-                                <RichTextEditor
-                                  locale={activeLocale}
-                                  value={calendarEventNoteDrafts[event.id] ?? ""}
-                                  disabled={pendingCalendarEventNoteIds.includes(event.id)}
-                                  onChange={(nextValue) =>
-                                    setCalendarEventNoteDrafts((current) => ({
-                                      ...current,
-                                      [event.id]: nextValue,
-                                    }))
-                                  }
-                                />
-                                <div className="flex flex-wrap gap-2">
+                                {event.note ? (
+                                  <>
+                                    <p className="rounded-xl border border-line bg-white/70 px-3 py-2 text-sm text-foreground">
+                                      {event.note.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || (isFrench ? "Note enregistree." : "Saved note.")}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        className={controlButtonClass}
+                                        onClick={() =>
+                                          openEditNoteDialog(
+                                            notes.find((note) => note.id === event.note!.id) ?? {
+                                              id: event.note!.id,
+                                              title: event.note!.title,
+                                              body: event.note!.body,
+                                              color: event.note!.color,
+                                              targetDate: event.note!.targetDate,
+                                              calendarEventId: event.note!.calendarEventId,
+                                              createdAt: event.note!.createdAt,
+                                              updatedAt: event.note!.updatedAt,
+                                              linkedCalendarEvent: {
+                                                id: event.id,
+                                                title: event.title,
+                                                startTime: event.startTime,
+                                                endTime: event.endTime,
+                                                htmlLink: event.htmlLink,
+                                              },
+                                            }
+                                          )
+                                        }
+                                      >
+                                        <SaveIcon />
+                                        {isFrench ? "Ouvrir la note" : "Open note"}
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
                                   <button
                                     type="button"
                                     className={controlButtonClass}
-                                    onClick={() => handleSaveCalendarEventNote(event.id)}
-                                    disabled={pendingCalendarEventNoteIds.includes(event.id)}
+                                    onClick={() => openCreateNoteDialogForCalendarEvent(event)}
                                   >
-                                    <SaveIcon />
-                                    {pendingCalendarEventNoteIds.includes(event.id)
-                                      ? isFrench
-                                        ? "Enregistrement..."
-                                        : "Saving..."
-                                      : isFrench
-                                      ? "Enregistrer la note"
-                                      : "Save Note"}
+                                    <PlusIcon />
+                                    {isFrench ? "Creer une note pour cet evenement" : "Create note for this event"}
                                   </button>
-                                  {hasNote ? (
-                                    <button
-                                      type="button"
-                                      className={dangerButtonClass}
-                                      onClick={() => handleDeleteCalendarEventNote(event.id)}
-                                      disabled={pendingCalendarEventNoteIds.includes(event.id)}
-                                    >
-                                      <TrashIcon />
-                                      {isFrench ? "Supprimer la note" : "Delete Note"}
-                                    </button>
-                                  ) : null}
-                                </div>
-
-                                {/* Note attachments — only when note is saved */}
-                                {hasNote ? (
-                                  <div className="mt-3 border-t border-line pt-3">
-                                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                                      {isFrench ? "Documents de la note" : "Note Documents"} ({(calendarEventNoteAttachments[event.id] ?? []).length})
-                                    </p>
-                                    {calendarEventNoteAttachments[event.id] === undefined ? (
-                                      <button
-                                        type="button"
-                                        className="mb-2 text-xs text-accent underline-offset-2 hover:underline"
-                                        onClick={() => { void handleLoadCalendarEventNoteAttachments(event.id); }}
-                                      >
-                                        {isFrench ? "Charger les documents" : "Load documents"}
-                                      </button>
-                                    ) : (calendarEventNoteAttachments[event.id] ?? []).length > 0 ? (
-                                      <ul className="mb-3 flex flex-col gap-1.5">
-                                        {(calendarEventNoteAttachments[event.id] ?? []).map((attachment) => (
-                                          <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
-                                            <div className="min-w-0 flex-1">
-                                              <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                                              <a
-                                                href={attachment.url}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                                                download={isDataUrl(attachment.url) ? attachment.name : undefined}
-                                              >
-                                                {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
-                                              </a>
-                                              {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
-                                                <p className="mt-0.5 text-[11px] text-muted">
-                                                  {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((v): v is string => Boolean(v)).join(" · ")}
-                                                </p>
-                                              ) : null}
-                                            </div>
-                                            <button
-                                              type="button"
-                                              className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
-                                              disabled={pendingCalendarEventNoteAttachmentIds.includes(attachment.id)}
-                                              onClick={() => { void handleDeleteCalendarEventNoteAttachment(event.id, attachment.id); }}
-                                            >
-                                              {pendingCalendarEventNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
-                                            </button>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    ) : (
-                                      <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                                        {isFrench ? "Aucun document pour le moment." : "No documents yet."}
-                                      </p>
-                                    )}
-                                    {calendarEventNoteAttachmentErrorMessage ? (
-                                      <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{calendarEventNoteAttachmentErrorMessage}</p>
-                                    ) : null}
-                                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
-                                      <label className="block text-xs font-medium text-muted">
-                                        {isFrench ? "Nom" : "Name"}
-                                        <input
-                                          type="text"
-                                          value={calendarEventNoteAttachmentNameDraft}
-                                          onChange={(e) => setCalendarEventNoteAttachmentNameDraft(e.target.value)}
-                                          className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                          placeholder={isFrench ? "Nom du fichier" : "File name"}
-                                          disabled={isCreatingCalendarEventNoteAttachment}
-                                        />
-                                      </label>
-                                      <label className="block text-xs font-medium text-muted">
-                                        {isFrench ? "Fichier" : "File"}
-                                        <input
-                                          ref={calendarEventNoteAttachmentFileInputRef}
-                                          type="file"
-                                          onChange={(e) => setCalendarEventNoteAttachmentFileDraft(e.target.files?.[0] ?? null)}
-                                          className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                          disabled={isCreatingCalendarEventNoteAttachment}
-                                        />
-                                      </label>
-                                      <button
-                                        type="button"
-                                        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
-                                        disabled={isCreatingCalendarEventNoteAttachment}
-                                        onClick={() => { void handleCreateCalendarEventNoteAttachment(event.id); }}
-                                      >
-                                        {isCreatingCalendarEventNoteAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : null}
+                                )}
                               </div>
                             </div>
                           ) : null}
@@ -9441,14 +9625,14 @@ export function AppShell() {
               {isFrench ? "Notes" : "Notes"}
             </h2>
             <p className="text-sm text-muted">
-              {isFrench ? "Vos notes libres." : "Your standalone notes."}
+              {isFrench ? "Vos notes libres et liees aux evenements." : "Your standalone and event-linked notes."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               className={primaryButtonClass}
-              onClick={openCreateNoteDialog}
+              onClick={() => openCreateNoteDialog()}
               disabled={isLoadingNotes}
             >
               <PlusIcon />
@@ -9487,158 +9671,6 @@ export function AppShell() {
           </p>
         ) : (
           <>
-            {/* Create / Edit note dialog */}
-            {noteDialogMode !== null ? (
-              <div className="mt-4 rounded-xl border border-line bg-white/80 p-4">
-                <p className="mb-3 text-sm font-semibold text-foreground">
-                  {noteDialogMode === "create"
-                    ? isFrench ? "Nouvelle note" : "New note"
-                    : isFrench ? "Modifier la note" : "Edit note"}
-                </p>
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">
-                      {isFrench ? "Titre (facultatif)" : "Title (optional)"}
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
-                      placeholder={isFrench ? "Titre..." : "Title..."}
-                      value={noteFormValues.title}
-                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, title: e.target.value }))}
-                      maxLength={300}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">
-                      {isFrench ? "Contenu" : "Body"}
-                    </label>
-                    <RichTextEditor
-                      locale={activeLocale}
-                      value={noteFormValues.body}
-                      disabled={isSubmittingNote}
-                      onChange={(nextValue) => setNoteFormValues((prev) => ({ ...prev, body: nextValue }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">
-                      {isFrench ? "Date cible (facultatif)" : "Target date (optional)"}
-                    </label>
-                    <input
-                      type="date"
-                      className="rounded-lg border border-line bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-                      value={noteFormValues.targetDate}
-                      onChange={(e) => setNoteFormValues((prev) => ({ ...prev, targetDate: e.target.value }))}
-                    />
-                  </div>
-                  {noteErrorMessage ? (
-                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      {noteErrorMessage}
-                    </p>
-                  ) : null}
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
-                      disabled={isSubmittingNote}
-                      onClick={() => { void handleSubmitNote(); }}
-                    >
-                      {isSubmittingNote
-                        ? isFrench ? "Enregistrement..." : "Saving..."
-                        : isFrench ? "Enregistrer" : "Save"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-line px-4 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                      onClick={closeNoteDialog}
-                    >
-                      {isFrench ? "Annuler" : "Cancel"}
-                    </button>
-                  </div>
-
-                  {/* Attachment section — only available when editing an existing note */}
-                  {noteDialogMode === "edit" && editingNoteId ? (
-                    <div className="border-t border-line pt-3">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                        {isFrench ? "Documents" : "Documents"} ({(noteAttachments[editingNoteId] ?? []).length})
-                      </p>
-                      {(noteAttachments[editingNoteId] ?? []).length > 0 ? (
-                        <ul className="mb-3 flex flex-col gap-1.5">
-                          {(noteAttachments[editingNoteId] ?? []).map((attachment) => (
-                            <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                                <a
-                                  href={attachment.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                                  download={isDataUrl(attachment.url) ? attachment.name : undefined}
-                                >
-                                  {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
-                                </a>
-                                {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
-                                  <p className="mt-0.5 text-[11px] text-muted">
-                                    {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((v): v is string => Boolean(v)).join(" · ")}
-                                  </p>
-                                ) : null}
-                              </div>
-                              <button
-                                type="button"
-                                className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
-                                disabled={pendingNoteAttachmentIds.includes(attachment.id)}
-                                onClick={() => { void handleDeleteNoteAttachment(editingNoteId, attachment.id); }}
-                              >
-                                {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                          {isFrench ? "Aucun document pour le moment." : "No documents yet."}
-                        </p>
-                      )}
-                      {noteAttachmentErrorMessage ? (
-                        <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{noteAttachmentErrorMessage}</p>
-                      ) : null}
-                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
-                        <label className="block text-xs font-medium text-muted">
-                          {isFrench ? "Nom" : "Name"}
-                          <input
-                            type="text"
-                            value={noteAttachmentNameDraft}
-                            onChange={(e) => setNoteAttachmentNameDraft(e.target.value)}
-                            className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                            placeholder={isFrench ? "Nom du fichier" : "File name"}
-                            disabled={isCreatingNoteAttachment}
-                          />
-                        </label>
-                        <label className="block text-xs font-medium text-muted">
-                          {isFrench ? "Fichier" : "File"}
-                          <input
-                            ref={noteAttachmentFileInputRef}
-                            type="file"
-                            onChange={(e) => setNoteAttachmentFileDraft(e.target.files?.[0] ?? null)}
-                            className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                            disabled={isCreatingNoteAttachment}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
-                          disabled={isCreatingNoteAttachment}
-                          onClick={() => { void handleCreateNoteAttachment(editingNoteId); }}
-                        >
-                          {isCreatingNoteAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
             {isLoadingNotes ? (
               <p className="mt-4 text-sm text-muted">
                 {isFrench ? "Chargement..." : "Loading..."}
@@ -9648,155 +9680,254 @@ export function AppShell() {
                 {isFrench ? "Aucune note. Créez votre première note." : "No notes yet. Create your first note."}
               </p>
             ) : (
-              <ul className="mt-4 flex flex-col gap-2">
+              <ul className="mt-4 grid gap-3 md:grid-cols-2">
                 {notes.map((note) => {
                   const isExpanded = expandedNoteId === note.id;
                   const attachmentsForNote = noteAttachments[note.id] ?? [];
+                  const hasLoadedAttachments = Object.prototype.hasOwnProperty.call(noteAttachments, note.id);
+                  const previewText = getRichTextPreviewText(note.body);
+                  const noteTitle =
+                    note.title?.trim() ||
+                    (isFrench ? "Note sans titre" : "Untitled note");
+                  const noteAccentClass = note.linkedCalendarEvent
+                    ? "from-sky-500 via-cyan-400 to-indigo-400"
+                    : note.targetDate
+                      ? "from-amber-400 via-orange-300 to-rose-300"
+                      : "from-slate-300 via-slate-200 to-transparent";
+                  const attachmentLabel = hasLoadedAttachments
+                    ? isFrench
+                      ? `${attachmentsForNote.length} document${attachmentsForNote.length > 1 ? "s" : ""}`
+                      : `${attachmentsForNote.length} document${attachmentsForNote.length === 1 ? "" : "s"}`
+                    : isFrench
+                      ? "Documents"
+                      : "Documents";
 
                   return (
                     <li
                       key={note.id}
-                      className="rounded-lg border border-line bg-white/60"
+                      className={`group relative overflow-hidden rounded-2xl border border-line bg-white/90 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                        isExpanded ? "md:col-span-2" : ""
+                      }`}
                     >
-                      {/* Note header row */}
-                      <div className="flex items-start justify-between gap-3 px-3 py-2">
-                        <div className="min-w-0 flex-1">
-                          {note.title ? (
-                            <p className="truncate text-sm font-medium text-foreground">{note.title}</p>
-                          ) : null}
-                          <p className="mt-0.5 text-sm text-foreground whitespace-pre-wrap break-words line-clamp-3">
-                            {note.body}
-                          </p>
-                          {note.targetDate ? (
-                            <p className="mt-1 text-xs text-muted">{note.targetDate}</p>
-                          ) : null}
+                      <div className={`h-1.5 w-full bg-gradient-to-r ${noteAccentClass}`} />
+
+                      <div className="p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {note.linkedCalendarEvent ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                                  <CalendarIcon />
+                                  <span className="truncate max-w-[220px]">
+                                    {note.linkedCalendarEvent.title}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {note.targetDate ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                  <CalendarIcon />
+                                  {formatDateOnlyForLocale(note.targetDate, activeLocale)}
+                                </span>
+                              ) : null}
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                <span className="font-semibold">{attachmentLabel}</span>
+                              </span>
+                            </div>
+
+                            <div className="mt-3">
+                              <p className="truncate text-base font-semibold text-foreground transition-colors group-hover:text-accent">
+                                {noteTitle}
+                              </p>
+                              <p className="mt-1 text-xs text-muted">
+                                {isFrench ? "Mis a jour" : "Updated"}{" "}
+                                {formatDateTime(note.updatedAt, activeLocale, activeTimeZone)}
+                              </p>
+                            </div>
+
+                            <div className="mt-3 rounded-2xl border border-line/80 bg-gradient-to-br from-surface-soft/90 to-white px-4 py-3">
+                              <p className="text-sm leading-6 text-foreground/85 line-clamp-4">
+                                {previewText || (isFrench ? "Note vide." : "Empty note.")}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
+                              onClick={() => { void handleExpandNote(note.id); }}
+                              title={isExpanded
+                                ? (isFrench ? "Replier la note" : "Collapse note")
+                                : (isFrench ? "Afficher les details" : "Show details")}
+                              aria-label={isExpanded
+                                ? (isFrench ? "Replier la note" : "Collapse note")
+                                : (isFrench ? "Afficher les details" : "Show details")}
+                            >
+                              <CollapseChevronIcon isCollapsed={!isExpanded} />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
+                              onClick={() => openEditNoteDialog(note)}
+                              title={isFrench ? "Modifier la note" : "Edit note"}
+                              aria-label={isFrench ? "Modifier la note" : "Edit note"}
+                            >
+                              <PencilIcon />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-red-100 bg-red-50/80 px-0 text-rose-500 hover:border-red-200 hover:bg-rose-50 hover:text-rose-600`}
+                              onClick={() => { void handleDeleteNote(note.id); }}
+                              title={isFrench ? "Supprimer la note" : "Delete note"}
+                              aria-label={isFrench ? "Supprimer la note" : "Delete note"}
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-1">
+
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/80 pt-3">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                            {note.linkedCalendarEvent ? (
+                              <span>
+                                {isFrench ? "Lie a un evenement" : "Linked to an event"}
+                              </span>
+                            ) : (
+                              <span>
+                                {isFrench ? "Note libre" : "Standalone note"}
+                              </span>
+                            )}
+                          </div>
                           <button
                             type="button"
-                            className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                            className={`${controlButtonClass} px-3 py-1.5 text-xs`}
                             onClick={() => { void handleExpandNote(note.id); }}
-                            title={isExpanded
-                              ? (isFrench ? "Masquer les documents" : "Hide documents")
-                              : (isFrench ? "Documents" : "Documents")}
                           >
-                            📎{noteAttachments[note.id] ? ` ${attachmentsForNote.length}` : ""}
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                            onClick={() => openEditNoteDialog(note)}
-                          >
-                            {isFrench ? "Modifier" : "Edit"}
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50"
-                            onClick={() => { void handleDeleteNote(note.id); }}
-                          >
-                            <TrashIcon />
+                            {isExpanded
+                              ? isFrench ? "Masquer les details" : "Hide details"
+                              : isFrench ? "Voir les details" : "View details"}
                           </button>
                         </div>
                       </div>
 
-                      {/* Attachments panel */}
                       {isExpanded ? (
-                        <div className="border-t border-line px-3 pb-3 pt-2">
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                            {isFrench ? "Documents" : "Documents"} ({attachmentsForNote.length})
-                          </p>
+                        <div className="border-t border-line bg-surface-soft/55 px-4 py-4 sm:px-5">
+                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
+                            <section>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                {isFrench ? "Contenu complet" : "Full content"}
+                              </p>
+                              <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
+                                <RichTextContent
+                                  value={note.body}
+                                  className="rich-text-render text-sm leading-6 text-foreground"
+                                />
+                              </div>
+                            </section>
 
-                          {/* Attachment list */}
-                          {attachmentsForNote.length > 0 ? (
-                            <ul className="mb-3 flex flex-col gap-1.5">
-                              {attachmentsForNote.map((attachment) => (
-                                <li
-                                  key={attachment.id}
-                                  className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                                    <a
-                                      href={attachment.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                                      download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                            <section className="rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                  {isFrench ? "Documents" : "Documents"}
+                                </p>
+                                <span className="rounded-full bg-surface-soft px-2 py-1 text-[11px] font-semibold text-muted">
+                                  {attachmentsForNote.length}
+                                </span>
+                              </div>
+
+                              {attachmentsForNote.length > 0 ? (
+                                <ul className="mt-3 flex flex-col gap-1.5">
+                                  {attachmentsForNote.map((attachment) => (
+                                    <li
+                                      key={attachment.id}
+                                      className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft/60 px-3 py-2"
                                     >
-                                      {isDataUrl(attachment.url)
-                                        ? isFrench ? "Ouvrir le fichier" : "Open file"
-                                        : attachment.url}
-                                    </a>
-                                    {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
-                                      <p className="mt-0.5 text-[11px] text-muted">
-                                        {[
-                                          attachment.contentType ?? null,
-                                          typeof attachment.sizeBytes === "number"
-                                            ? formatFileSize(attachment.sizeBytes)
-                                            : null,
-                                        ]
-                                          .filter((v): v is string => Boolean(v))
-                                          .join(" · ")}
-                                      </p>
-                                    ) : null}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
-                                    disabled={pendingNoteAttachmentIds.includes(attachment.id)}
-                                    onClick={() => { void handleDeleteNoteAttachment(note.id, attachment.id); }}
-                                    aria-label={isFrench ? "Supprimer" : "Delete"}
-                                  >
-                                    {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                              {isFrench ? "Aucun document pour le moment." : "No documents yet."}
-                            </p>
-                          )}
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                        <a
+                                          href={attachment.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                          download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                        >
+                                          {isDataUrl(attachment.url)
+                                            ? isFrench ? "Ouvrir le fichier" : "Open file"
+                                            : attachment.url}
+                                        </a>
+                                        {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                          <p className="mt-0.5 text-[11px] text-muted">
+                                            {[
+                                              attachment.contentType ?? null,
+                                              typeof attachment.sizeBytes === "number"
+                                                ? formatFileSize(attachment.sizeBytes)
+                                                : null,
+                                            ]
+                                              .filter((value): value is string => Boolean(value))
+                                              .join(" · ")}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className={`${iconButtonClass} h-8 w-8 rounded-lg px-0 text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50`}
+                                        disabled={pendingNoteAttachmentIds.includes(attachment.id)}
+                                        onClick={() => { void handleDeleteNoteAttachment(note.id, attachment.id); }}
+                                        aria-label={isFrench ? "Supprimer" : "Delete"}
+                                      >
+                                        {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-3 rounded-xl border border-dashed border-line bg-surface-soft/40 px-3 py-3 text-sm text-muted">
+                                  {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                                </p>
+                              )}
 
-                          {/* Upload form */}
-                          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
-                            <label className="block text-xs font-medium text-muted">
-                              {isFrench ? "Nom" : "Name"}
-                              <input
-                                type="text"
-                                value={noteAttachmentNameDraft}
-                                onChange={(e) => setNoteAttachmentNameDraft(e.target.value)}
-                                className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                placeholder={isFrench ? "Nom du fichier" : "File name"}
-                                disabled={isCreatingNoteAttachment}
-                              />
-                            </label>
-                            <label className="block text-xs font-medium text-muted">
-                              {isFrench ? "Fichier" : "File"}
-                              <input
-                                ref={noteAttachmentFileInputRef}
-                                type="file"
-                                onChange={(e) => setNoteAttachmentFileDraft(e.target.files?.[0] ?? null)}
-                                className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                disabled={isCreatingNoteAttachment}
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
-                              disabled={isCreatingNoteAttachment}
-                              onClick={() => { void handleCreateNoteAttachment(note.id); }}
-                            >
-                              {isCreatingNoteAttachment
-                                ? isFrench ? "Envoi..." : "Uploading..."
-                                : isFrench ? "Ajouter" : "Add"}
-                            </button>
+                              <div className="mt-3 grid gap-2">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                                  {isFrench ? "Nom du fichier" : "File name"}
+                                  <input
+                                    type="text"
+                                    value={noteAttachmentNameDraft}
+                                    onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
+                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                    placeholder={isFrench ? "Nom du fichier" : "File name"}
+                                    disabled={isCreatingNoteAttachment}
+                                  />
+                                </label>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                                  {isFrench ? "Fichier" : "File"}
+                                  <input
+                                    ref={noteAttachmentFileInputRef}
+                                    type="file"
+                                    onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
+                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                    disabled={isCreatingNoteAttachment}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className={`${controlButtonClass} justify-center rounded-xl border-line bg-surface-soft/70`}
+                                  disabled={isCreatingNoteAttachment}
+                                  onClick={() => { void handleCreateNoteAttachment(note.id); }}
+                                >
+                                  <PlusIcon />
+                                  {isCreatingNoteAttachment
+                                    ? isFrench ? "Envoi..." : "Uploading..."
+                                    : isFrench ? "Ajouter un document" : "Add document"}
+                                </button>
+                              </div>
+
+                              {noteAttachmentErrorMessage ? (
+                                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                  {noteAttachmentErrorMessage}
+                                </p>
+                              ) : null}
+                            </section>
                           </div>
-                          {noteAttachmentErrorMessage ? (
-                            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                              {noteAttachmentErrorMessage}
-                            </p>
-                          ) : null}
                         </div>
                       ) : null}
                     </li>
@@ -10304,6 +10435,263 @@ export function AppShell() {
           </>
         )}
       </section>
+
+      {isNoteDialogOpen ? (
+        <div
+          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeNoteDialog();
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={noteDialogTitle}
+            className={`animate-scale-in flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${noteDialogHeightClass}`}
+          >
+            <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">{noteDialogTitle}</h2>
+                <p className="mt-1 text-sm text-muted">
+                  {isFrench
+                    ? "Capturez une note libre ou reliez-la a un evenement calendrier."
+                    : "Capture a standalone note or link it to a calendar event."}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={controlIconButtonClass}
+                onClick={closeNoteDialog}
+                disabled={isSubmittingNote}
+                aria-label={isFrench ? "Fermer la fenetre de note" : "Close note dialog"}
+                title={isFrench ? "Fermer la fenetre de note" : "Close note dialog"}
+              >
+                <CloseIcon />
+              </button>
+            </header>
+
+            <form
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSubmitNote();
+              }}
+            >
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Titre (facultatif)" : "Title (optional)"}
+                <input
+                  type="text"
+                  className={textFieldClass}
+                  placeholder={isFrench ? "Titre..." : "Title..."}
+                  value={noteFormValues.title}
+                  onChange={(event) => setNoteFormValues((prev) => ({ ...prev, title: event.target.value }))}
+                  maxLength={300}
+                  disabled={isSubmittingNote}
+                />
+              </label>
+
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Contenu" : "Body"}
+                <RichTextEditor
+                  locale={activeLocale}
+                  value={noteFormValues.body}
+                  disabled={isSubmittingNote}
+                  onChange={(nextValue) => setNoteFormValues((prev) => ({ ...prev, body: nextValue }))}
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm font-semibold text-foreground">
+                  {isFrench ? "Date cible (facultatif)" : "Target date (optional)"}
+                  <input
+                    type="date"
+                    className={textFieldClass}
+                    value={noteFormValues.targetDate}
+                    onChange={(event) => setNoteFormValues((prev) => ({ ...prev, targetDate: event.target.value }))}
+                    disabled={isSubmittingNote}
+                  />
+                </label>
+
+                <label className="block text-sm font-semibold text-foreground">
+                  {isFrench ? "Evenement lie (facultatif)" : "Linked event (optional)"}
+                  <select
+                    className={textFieldClass}
+                    value={noteFormValues.calendarEventId}
+                    onChange={(event) => {
+                      const nextCalendarEventId = event.target.value;
+                      const selectedEvent = noteCalendarEventOptions.find(
+                        (eventOption) => eventOption.id === nextCalendarEventId
+                      );
+                      setNoteFormValues((prev) => ({
+                        ...prev,
+                        calendarEventId: nextCalendarEventId,
+                        targetDate:
+                          !prev.targetDate && selectedEvent
+                            ? selectedEvent.startTime.substring(0, 10)
+                            : prev.targetDate,
+                      }));
+                    }}
+                    disabled={isSubmittingNote}
+                  >
+                    <option value="">
+                      {isFrench ? "Aucun evenement" : "No event"}
+                    </option>
+                    {noteCalendarEventOptions.map((eventOption) => {
+                      const isDisabled =
+                        linkedCalendarEventIdsInUse.has(eventOption.id) &&
+                        eventOption.id !== editingNote?.calendarEventId;
+
+                      return (
+                        <option
+                          key={eventOption.id}
+                          value={eventOption.id}
+                          disabled={isDisabled}
+                        >
+                          {`${formatCalendarEventTimeLabel(
+                            {
+                              id: eventOption.id,
+                              connectionId: "",
+                              title: eventOption.title,
+                              description: null,
+                              startTime: eventOption.startTime,
+                              endTime: eventOption.endTime,
+                              isAllDay: eventOption.isAllDay,
+                              startDate: eventOption.startDate,
+                              endDate: eventOption.endDate,
+                              location: null,
+                              htmlLink: eventOption.htmlLink,
+                              note: null,
+                              linkedTasks: [],
+                            },
+                            activeLocale,
+                            activeTimeZone
+                          )} - ${eventOption.title}${isDisabled ? isFrench ? " (deja lie)" : " (already linked)" : ""}`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              </div>
+
+              {noteErrorMessage ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {noteErrorMessage}
+                </p>
+              ) : null}
+
+              {noteDialogMode === "edit" && editingNoteId ? (
+                <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
+                  <header>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {isFrench ? "Documents" : "Documents"} ({(noteAttachments[editingNoteId] ?? []).length})
+                    </h3>
+                    <p className="text-xs text-muted">
+                      {isFrench ? "Ajoutez ou retirez des fichiers lies a cette note." : "Add or remove files linked to this note."}
+                    </p>
+                  </header>
+
+                  {(noteAttachments[editingNoteId] ?? []).length > 0 ? (
+                    <ul className="mt-3 flex flex-col gap-1.5">
+                      {(noteAttachments[editingNoteId] ?? []).map((attachment) => (
+                        <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                            <a
+                              href={attachment.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                              download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                            >
+                              {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
+                            </a>
+                            {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                              <p className="mt-0.5 text-[11px] text-muted">
+                                {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((value): value is string => Boolean(value)).join(" · ")}
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                            disabled={pendingNoteAttachmentIds.includes(attachment.id)}
+                            onClick={() => { void handleDeleteNoteAttachment(editingNoteId, attachment.id); }}
+                          >
+                            {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
+                      {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                    </p>
+                  )}
+
+                  {noteAttachmentErrorMessage ? (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      {noteAttachmentErrorMessage}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Nom" : "Name"}
+                      <input
+                        type="text"
+                        value={noteAttachmentNameDraft}
+                        onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
+                        className={textFieldClass}
+                        placeholder={isFrench ? "Nom du fichier" : "File name"}
+                        disabled={isCreatingNoteAttachment}
+                      />
+                    </label>
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Fichier" : "File"}
+                      <input
+                        ref={noteAttachmentFileInputRef}
+                        type="file"
+                        onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
+                        className={textFieldClass}
+                        disabled={isCreatingNoteAttachment}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      disabled={isCreatingNoteAttachment}
+                      onClick={() => { void handleCreateNoteAttachment(editingNoteId); }}
+                    >
+                      <PlusIcon />
+                      {isCreatingNoteAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
+              <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+                <button
+                  type="button"
+                  className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                  onClick={closeNoteDialog}
+                >
+                  {isFrench ? "Annuler" : "Cancel"}
+                </button>
+                <button
+                  type="submit"
+                  className={primaryButtonClass}
+                  disabled={isSubmittingNote}
+                >
+                  <SaveIcon />
+                  {noteDialogSubmitLabel}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       {isTaskDialogOpen ? (
         <div
@@ -11266,7 +11654,11 @@ export function AppShell() {
                 <h4 className="text-sm font-semibold text-foreground">
                   Google Calendar
                 </h4>
-                {isGoogleCalendarLoading ? (
+                {!isGoogleCalendarAvailable ? (
+                  <p className="mt-2 text-sm text-muted">
+                    {getGoogleCalendarUnavailableMessage(isFrench)}
+                  </p>
+                ) : isGoogleCalendarLoading ? (
                   <p className="mt-2 text-sm text-muted">
                     {isFrench ? "Chargement..." : "Loading..."}
                   </p>

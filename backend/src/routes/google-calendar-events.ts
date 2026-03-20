@@ -1,11 +1,11 @@
 import { FastifyPluginAsync } from "fastify";
-import { CalendarEventNote, CalendarEventNoteAttachment, Task } from "@prisma/client";
+import { NoteAttachment, Task } from "@prisma/client";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
 import { CalendarEventStore } from "../google-calendar/calendar-event-store";
-import { CalendarEventNoteStore } from "../google-calendar/calendar-event-note-store";
-import { CalendarEventNoteAttachmentStore } from "../google-calendar/calendar-event-note-attachment-store";
 import { GoogleCalendarSyncService } from "../google-calendar/google-calendar-sync-service";
+import { NoteAttachmentStore } from "../notes/note-attachment-store";
+import { NoteStore, StoredNote } from "../notes/note-store";
 import { parseDateOnly, formatDateOnly, TaskStore } from "../tasks/task-store";
 import {
   getBearerToken,
@@ -17,8 +17,8 @@ const MAX_CALENDAR_NOTE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 type GoogleCalendarEventsRoutesOptions = {
   authService: AuthService;
   calendarEventStore: CalendarEventStore;
-  calendarEventNoteStore?: CalendarEventNoteStore;
-  calendarEventNoteAttachmentStore?: CalendarEventNoteAttachmentStore;
+  noteStore: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
   taskStore: TaskStore;
   googleCalendarSyncService: GoogleCalendarSyncService;
 };
@@ -69,14 +69,18 @@ function serializeLinkedTask(task: Task) {
   };
 }
 
-function serializeCalendarEventNote(note: CalendarEventNote | null) {
+function serializeCalendarEventNote(note: StoredNote | null) {
   if (!note) {
     return null;
   }
 
   return {
     id: note.id,
+    title: note.title,
     body: note.body,
+    color: note.color,
+    targetDate: note.targetDate ? formatDateOnly(note.targetDate) : null,
+    calendarEventId: note.calendarEventId,
     createdAt: note.createdAt.toISOString(),
     updatedAt: note.updatedAt.toISOString(),
   };
@@ -84,28 +88,28 @@ function serializeCalendarEventNote(note: CalendarEventNote | null) {
 
 function serializeCalendarEvent(
   event: {
-  id: string;
-  connectionId: string;
-  googleEventId: string;
-  title: string;
-  description: string | null;
-  location: string | null;
-  startTime: Date;
-  endTime: Date;
-  isAllDay: boolean;
-  startDate: Date | null;
-  endDate: Date | null;
-  status: string;
-  htmlLink: string | null;
-  attendees: string | null;
-  organizer: string | null;
-  recurringEventId: string | null;
-  syncedAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
-},
+    id: string;
+    connectionId: string;
+    googleEventId: string;
+    title: string;
+    description: string | null;
+    location: string | null;
+    startTime: Date;
+    endTime: Date;
+    isAllDay: boolean;
+    startDate: Date | null;
+    endDate: Date | null;
+    status: string;
+    htmlLink: string | null;
+    attendees: string | null;
+    organizer: string | null;
+    recurringEventId: string | null;
+    syncedAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+  },
   options?: {
-    note?: CalendarEventNote | null;
+    note?: StoredNote | null;
     linkedTasks?: Task[];
   }
 ) {
@@ -134,6 +138,26 @@ function serializeCalendarEvent(
   };
 }
 
+function serializeCalendarEventNoteAttachment(attachment: NoteAttachment) {
+  return {
+    id: attachment.id,
+    calendarEventNoteId: attachment.noteId,
+    name: attachment.name,
+    url: attachment.url,
+    contentType: attachment.contentType,
+    sizeBytes: attachment.sizeBytes,
+    createdAt: attachment.createdAt.toISOString(),
+  };
+}
+
+function getCalendarEventTargetDate(event: { startDate: Date | null; startTime: Date }): Date | null {
+  if (event.startDate) {
+    return event.startDate;
+  }
+
+  return parseDateOnly(event.startTime.toISOString().substring(0, 10));
+}
+
 const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesOptions> = async (
   app,
   options
@@ -141,8 +165,8 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
   const {
     authService,
     calendarEventStore,
-    calendarEventNoteStore,
-    calendarEventNoteAttachmentStore,
+    noteStore,
+    noteAttachmentStore,
     taskStore,
     googleCalendarSyncService,
   } = options;
@@ -153,11 +177,15 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
   ) {
     const eventIds = events.map((event) => event.id);
     const [notes, tasks] = await Promise.all([
-      calendarEventNoteStore?.listByCalendarEventIds(eventIds, userId) ?? Promise.resolve([]),
+      noteStore.listByCalendarEventIds(eventIds, userId),
       taskStore.listByUser(userId),
     ]);
 
-    const noteByEventId = new Map(notes.map((note) => [note.calendarEventId, note]));
+    const noteByEventId = new Map(
+      notes
+        .filter((note) => typeof note.calendarEventId === "string")
+        .map((note) => [note.calendarEventId as string, note])
+    );
     const linkedTasksByEventId = new Map<string, Task[]>();
 
     for (const task of tasks) {
@@ -193,7 +221,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       authContext.user.preferredTimeZone ?? null;
   });
 
-  // POST /api/google-calendar/sync — trigger sync
   app.post("/api/google-calendar/sync", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
     if (!authUserId) {
@@ -221,7 +248,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     }
   });
 
-  // GET /api/google-calendar/events?date=YYYY-MM-DD or ?start=...&end=...
   app.get("/api/google-calendar/events", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
     if (!authUserId) {
@@ -230,7 +256,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
 
     const query = request.query as Record<string, string>;
 
-    // Try single date query first
     if (query.date) {
       const dateResult = dateQuerySchema.safeParse(query);
       if (!dateResult.success) {
@@ -249,7 +274,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       }
     }
 
-    // Try date range query
     if (query.start && query.end) {
       const rangeResult = dateRangeQuerySchema.safeParse(query);
       if (!rangeResult.success) {
@@ -265,7 +289,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
         return sendError(reply, 400, "VALIDATION_ERROR", "end date must be after start date");
       }
 
-      // Max 90-day range
       const daysDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
       if (daysDiff > 90) {
         return sendError(reply, 400, "VALIDATION_ERROR", "Date range must not exceed 90 days");
@@ -288,7 +311,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     return sendError(reply, 400, "VALIDATION_ERROR", "Either date or start+end query parameters are required");
   });
 
-  // GET /api/google-calendar/events/:id
   app.get("/api/google-calendar/events/:id", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
     if (!authUserId) {
@@ -306,7 +328,7 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
         return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
       }
       const [note, tasks] = await Promise.all([
-        calendarEventNoteStore?.getByCalendarEventId(event.id, authUserId) ?? Promise.resolve(null),
+        noteStore.getByCalendarEventId(event.id, authUserId),
         taskStore.listByUser(authUserId),
       ]);
       return reply.send({
@@ -343,11 +365,28 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
         return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
       }
 
-      if (!calendarEventNoteStore) {
-        return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
+      const existingNote = await noteStore.getByCalendarEventId(event.id, authUserId);
+      const note = existingNote
+        ? await noteStore.update(
+            existingNote.id,
+            {
+              body: bodyResult.data.body,
+            },
+            authUserId
+          )
+        : await noteStore.create({
+            userId: authUserId,
+            title: null,
+            body: bodyResult.data.body,
+            color: null,
+            targetDate: getCalendarEventTargetDate(event),
+            calendarEventId: event.id,
+          });
+
+      if (!note) {
+        return sendError(reply, 500, "INTERNAL_ERROR", "Unable to save calendar event note");
       }
 
-      const note = await calendarEventNoteStore.upsert(event.id, authUserId, bodyResult.data.body);
       return reply.send({ data: serializeCalendarEventNote(note) });
     } catch (error) {
       request.log.error(error, "Failed to save calendar event note");
@@ -372,11 +411,12 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
         return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
       }
 
-      if (!calendarEventNoteStore) {
-        return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
+      const note = await noteStore.getByCalendarEventId(event.id, authUserId);
+      if (!note) {
+        return reply.send({ data: { deleted: true } });
       }
 
-      await calendarEventNoteStore.deleteByCalendarEventId(event.id, authUserId);
+      await noteStore.remove(note.id, authUserId);
       return reply.send({ data: { deleted: true } });
     } catch (error) {
       request.log.error(error, "Failed to delete calendar event note");
@@ -384,7 +424,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     }
   });
 
-  // GET /api/google-calendar/events/:id/note/attachments
   app.get("/api/google-calendar/events/:id/note/attachments", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
     if (!authUserId) {
@@ -396,7 +435,7 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       return sendError(reply, 400, "VALIDATION_ERROR", "Calendar event id is required");
     }
 
-    if (!calendarEventNoteStore || !calendarEventNoteAttachmentStore) {
+    if (!noteAttachmentStore) {
       return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
     }
 
@@ -406,12 +445,12 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
         return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
       }
 
-      const note = await calendarEventNoteStore.getByCalendarEventId(event.id, authUserId);
+      const note = await noteStore.getByCalendarEventId(event.id, authUserId);
       if (!note) {
         return reply.send({ data: [] });
       }
 
-      const attachments = await calendarEventNoteAttachmentStore.listByNoteId(note.id, authUserId);
+      const attachments = await noteAttachmentStore.listByNoteId(note.id, authUserId);
       return reply.send({ data: attachments.map(serializeCalendarEventNoteAttachment) });
     } catch (error) {
       request.log.error(error, "Failed to load calendar event note attachments");
@@ -431,7 +470,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     attachmentId: z.string().trim().min(1, "Attachment id is required"),
   });
 
-  // POST /api/google-calendar/events/:id/note/attachments
   app.post("/api/google-calendar/events/:id/note/attachments", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
     if (!authUserId) {
@@ -448,7 +486,7 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       return sendError(reply, 400, "VALIDATION_ERROR", bodyResult.error.issues[0]?.message ?? "Invalid attachment data");
     }
 
-    if (!calendarEventNoteStore || !calendarEventNoteAttachmentStore) {
+    if (!noteAttachmentStore) {
       return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
     }
 
@@ -463,18 +501,18 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
         return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
       }
 
-      const note = await calendarEventNoteStore.getByCalendarEventId(event.id, authUserId);
+      const note = await noteStore.getByCalendarEventId(event.id, authUserId);
       if (!note) {
         return sendError(reply, 400, "VALIDATION_ERROR", "Save the note before adding attachments");
       }
 
-      const attachment = await calendarEventNoteAttachmentStore.create({
-        calendarEventNoteId: note.id,
+      const attachment = await noteAttachmentStore.create({
+        noteId: note.id,
         userId: authUserId,
         name: bodyResult.data.name,
         url: bodyResult.data.url,
         contentType: bodyResult.data.contentType ?? null,
-        sizeBytes: sizeBytes,
+        sizeBytes,
       });
 
       return reply.code(201).send({ data: serializeCalendarEventNoteAttachment(attachment) });
@@ -484,7 +522,6 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     }
   });
 
-  // DELETE /api/google-calendar/events/:id/note/attachments/:attachmentId
   app.delete("/api/google-calendar/events/:id/note/attachments/:attachmentId", async (request, reply) => {
     const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
     if (!authUserId) {
@@ -496,12 +533,12 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
       return sendError(reply, 400, "VALIDATION_ERROR", "Calendar event id and attachment id are required");
     }
 
-    if (!calendarEventNoteAttachmentStore) {
+    if (!noteAttachmentStore) {
       return sendError(reply, 500, "INTERNAL_ERROR", "Calendar event note storage is unavailable");
     }
 
     try {
-      const removed = await calendarEventNoteAttachmentStore.remove(paramsResult.data.attachmentId, authUserId);
+      const removed = await noteAttachmentStore.remove(paramsResult.data.attachmentId, authUserId);
       if (!removed) {
         return sendError(reply, 404, "NOT_FOUND", "Attachment not found");
       }
@@ -512,17 +549,5 @@ const googleCalendarEventsRoutes: FastifyPluginAsync<GoogleCalendarEventsRoutesO
     }
   });
 };
-
-function serializeCalendarEventNoteAttachment(attachment: CalendarEventNoteAttachment) {
-  return {
-    id: attachment.id,
-    calendarEventNoteId: attachment.calendarEventNoteId,
-    name: attachment.name,
-    url: attachment.url,
-    contentType: attachment.contentType,
-    sizeBytes: attachment.sizeBytes,
-    createdAt: attachment.createdAt.toISOString(),
-  };
-}
 
 export default googleCalendarEventsRoutes;

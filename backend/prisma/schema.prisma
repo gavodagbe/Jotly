@@ -270,6 +270,7 @@ model CalendarEvent {
   user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   connection       GoogleCalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   notes            CalendarEventNote[]
+  linkedNote       Note?              @relation("CalendarEventLinkedNote")
   linkedTasks      Task[]
 
   @@unique([connectionId, googleEventId])
@@ -345,6 +346,7 @@ model ReminderAttachment {
 model Note {
   id          String           @id @default(cuid())
   userId      String
+  calendarEventId String?
   title       String?
   body        String
   color       String?
@@ -352,11 +354,14 @@ model Note {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarEvent CalendarEvent? @relation("CalendarEventLinkedNote", fields: [calendarEventId], references: [id], onDelete: SetNull)
   attachments NoteAttachment[]
 
   @@index([userId])
+  @@unique([calendarEventId])
   @@index([userId, targetDate])
   @@index([userId, createdAt])
+  @@index([userId, calendarEventId])
 }
 
 model NoteAttachment {

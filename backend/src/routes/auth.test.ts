@@ -495,7 +495,7 @@ test("POST /api/auth/reset-password rejects an invalid token", async (t) => {
   assert.equal(response.statusCode, 401);
   const body = parsePayload(response.payload);
   assert.deepEqual(body.error, {
-    code: "UNAUTHORIZED",
+    code: "INVALID_RESET_TOKEN",
     message: "Invalid or expired reset token"
   });
 });

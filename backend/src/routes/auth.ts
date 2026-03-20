@@ -225,7 +225,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, options) =>
       });
     } catch (error) {
       if (isAuthError(error) && error.code === "INVALID_RESET_TOKEN") {
-        return sendError(reply, 401, "UNAUTHORIZED", "Invalid or expired reset token");
+        return sendError(reply, 401, "INVALID_RESET_TOKEN", "Invalid or expired reset token");
       }
 
       request.log.error(error, "Failed to reset password");
