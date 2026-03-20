@@ -31,7 +31,7 @@ Historical JOT-10 out-of-scope (ticket-level):
 - adding full schema for future modules
 - broad refactors unrelated to documentation clarity
 
-## Current implementation status (as of 2026-03-19)
+## Current implementation status (as of 2026-03-20)
 Completed:
 - JOT-1 to JOT-10 baseline deliverables
 - authentication/session flow (`register`, `login`, `me`, `logout`)
@@ -56,13 +56,13 @@ Completed:
 - selected-date Google Calendar event preview in the dashboard
 - calendar event notes and calendar event note attachments
 - profile modal controls for Google Calendar connection and manual sync
-- task due dates and due alerts
+- task due dates and unified alerts for unresolved reminders plus due-date tasks
 - gaming track phase 1 (backend summary API + frontend score card with `D/W/M/Y` period selector)
 - gaming track phase 2 (weekly missions + personal bests in summary API and dashboard)
 - gaming track phase 3 (levels/badges, streak protection, and historical trend views)
 - gaming track phase 4 (weekly challenge, personal leaderboard, recap, and nudges)
 - gaming track phase 5 (persistent engagement actions: challenge claim, streak protection usage, and nudge dismiss)
-- reminders module (API + frontend modal — create, update, delete, dismiss, pending poll, attachments)
+- reminders module (API + frontend modal — create, update, delete, complete/cancel, legacy dismiss compatibility, pending poll, attachments)
 - standalone notes module (API + frontend dashboard block — create, update, delete, attachments)
 - global search (backend `GET /api/search` with full-text via `AssistantSearchDocument` + frontend Cmd/Ctrl+K modal)
 - `AssistantSearchDocument` unified search table with PostgreSQL full-text (`tsvector`) indexing across all text-bearing domains
@@ -85,22 +85,40 @@ Latest daily workflow conventions:
   - `GET /api/day-bilan?date=YYYY-MM-DD`
   - `PUT /api/day-bilan`
 
+Latest alerts conventions:
+- `GET /api/tasks/alerts?date=YYYY-MM-DD` returns actionable due-date tasks that are overdue, due today, or due tomorrow
+- dashboard `Alerts` panel combines `/api/tasks/alerts` results with active reminders loaded through `GET /api/reminders?date=YYYY-MM-DD`
+- unresolved items stay visible until the task becomes `done`/`cancelled` or the reminder becomes `completed`/`cancelled`
+- alert summary and ordering prioritize `overdue`, then `today`, then `tomorrow`
+- reminder entries in the alert panel expose direct `complete` / `cancel` actions
+
 Latest reminders conventions:
 - endpoints:
-  - `GET /api/reminders` — list all (optional `?date=YYYY-MM-DD` filter, 24h window)
-  - `GET /api/reminders/pending` — unfired reminders (auto-marks as fired)
+  - `GET /api/reminders` — list all; with `?date=YYYY-MM-DD`, list active reminders (`pending`, `fired`) scheduled before the end of the selected day
+  - `GET /api/reminders/pending` — due reminders still in `pending` status (auto-marks as `fired`)
   - `GET /api/reminders/:id`
   - `POST /api/reminders` — create
   - `PUT /api/reminders/:id` — update (partial)
   - `DELETE /api/reminders/:id`
-  - `POST /api/reminders/:id/dismiss`
+  - `POST /api/reminders/:id/complete`
+  - `POST /api/reminders/:id/cancel`
+  - `POST /api/reminders/:id/dismiss` — legacy alias for `complete`
   - `GET /api/reminders/:id/attachments`
   - `POST /api/reminders/:id/attachments`
   - `DELETE /api/reminders/:id/attachments/:attachmentId`
 - fields: `title`, `description`, `project`, `assignees`, `remindAt` (ISO-8601)
-- lifecycle flags: `isFired` (auto), `isDismissed` (manual)
+- status lifecycle: `pending`, `fired`, `completed`, `cancelled`
+- compatibility flags/timestamps: `isFired`, `firedAt`, `isDismissed`, `dismissedAt`, `completedAt`, `cancelledAt`
+- moving a `fired` reminder to a future `remindAt` resets it to `pending`
 - reminder attachments follow the current `data:` URL + metadata storage posture with a 5 MB per-file limit
 - all reminders scoped to authenticated user
+
+Latest runtime conventions:
+- local development should be started with `./scripts/start.sh` and stopped with `./scripts/stop.sh`
+- `scripts/start.sh` waits for backend/frontend readiness and prints recent compose logs on startup failure
+- production deployment should be driven with `./scripts/deploy.sh <branch>`
+- `scripts/deploy.sh` waits for the production health endpoint and prints recent compose logs on failure
+- backend containers run `npx prisma migrate deploy` on startup in dev and prod, so no manual migration step is required
 
 Latest notes conventions:
 - endpoints:

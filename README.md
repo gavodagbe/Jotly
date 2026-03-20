@@ -6,7 +6,7 @@ This repository currently contains the MVP foundation:
 - `frontend/` Next.js app shell
 - `backend/` Fastify API foundation
 - Docker Compose local stack with PostgreSQL
-- Authenticated task board with comments, attachments, recurrence, AI assistant, day affirmations, carry-over, day bilan, Google Calendar event sync, reminders, and global full-text search
+- Authenticated task board with comments, attachments, recurrence, AI assistant, day affirmations, carry-over, day bilan, Google Calendar event sync, reminders, a unified alerts panel, and global full-text search
 
 ## Authentication
 
@@ -32,6 +32,7 @@ Authenticated endpoints for the daily workflow layer:
 - `PUT /api/day-bilan`
 - `GET /api/profile`
 - `PATCH /api/profile`
+- `GET /api/tasks/alerts?date=YYYY-MM-DD`
 
 Request body examples:
 - `PUT /api/day-affirmation`
@@ -50,16 +51,27 @@ Profile preferences:
 - assistant requests can include `locale`; backend defaults to authenticated user profile locale
 - frontend UI language follows `preferredLocale` after login (with browser-language fallback before login)
 
+## Alerts
+
+Authenticated alert APIs and UI conventions:
+- `GET /api/tasks/alerts?date=YYYY-MM-DD` — list actionable due-date tasks that are overdue, due today, or due tomorrow
+- dashboard `Alerts` panel combines due-date tasks from `/api/tasks/alerts` with active reminders loaded via `GET /api/reminders?date=YYYY-MM-DD`
+- task alerts stay visible until the task becomes `done` or `cancelled`
+- reminder alerts stay visible until the reminder becomes `completed` or `cancelled`
+- alert summary and ordering prioritize `overdue`, then `today`, then `tomorrow`
+
 ## Reminders
 
 Authenticated endpoints for reminder management:
-- `GET /api/reminders` — list all reminders (optional `?date=YYYY-MM-DD` filter)
-- `GET /api/reminders/pending` — list pending unfired/undismissed reminders (auto-marks as fired)
+- `GET /api/reminders` — list all reminders; with `?date=YYYY-MM-DD`, list active reminders (`pending` or `fired`) scheduled before the end of the selected day
+- `GET /api/reminders/pending` — list due reminders still in `pending` status (auto-marks them as `fired`)
 - `GET /api/reminders/:id` — get single reminder
 - `POST /api/reminders` — create reminder
 - `PUT /api/reminders/:id` — update reminder
 - `DELETE /api/reminders/:id` — delete reminder
-- `POST /api/reminders/:id/dismiss` — mark reminder as dismissed
+- `POST /api/reminders/:id/complete` — mark reminder as completed
+- `POST /api/reminders/:id/cancel` — mark reminder as cancelled
+- `POST /api/reminders/:id/dismiss` — legacy alias for `complete`
 
 Request body for create/update:
 ```json
@@ -73,9 +85,16 @@ Request body for create/update:
 ```
 
 Reminder fields:
-- `isFired` — set automatically when reminder appears in `/pending` response
-- `isDismissed` — set manually via `/dismiss`
-- `date` filter on list endpoint matches a 24-hour window starting at midnight UTC
+- `status` — `pending`, `fired`, `completed`, `cancelled`
+- `isFired` — compatibility flag set automatically when reminder appears in `/pending` response
+- `isDismissed` — compatibility flag set when reminder is completed or cancelled
+- `firedAt`, `dismissedAt`, `completedAt`, `cancelledAt` — lifecycle timestamps
+- `date` filter on list endpoint returns only active reminders with `remindAt < end of selected day`
+
+Reminder behavior:
+- `/pending` promotes returned reminders from `pending` to `fired`
+- updating a `fired` reminder to a future `remindAt` resets it to `pending`
+- `completed` and `cancelled` reminders remain in storage history but disappear from active reminder/alert views
 
 ## Global Search
 
@@ -179,8 +198,19 @@ cp .env.example .env
 2. Start all services:
 
 ```bash
-docker compose up --build
+./scripts/start.sh
 ```
+
+3. Stop all services:
+
+```bash
+./scripts/stop.sh
+```
+
+Supported local runtime conventions:
+- `scripts/start.sh` wraps Docker Compose build/start, waits for backend and frontend readiness, and prints recent compose logs automatically on startup failure
+- backend startup applies Prisma migrations with `npx prisma migrate deploy`, so no manual migration step is required in dev
+- `scripts/stop.sh` is the supported shutdown path for the local stack
 
 Services:
 - Frontend: `http://localhost:3000`
@@ -285,7 +315,9 @@ This script:
 - fetches/pulls latest code from branch
 - builds production images
 - starts containers with compose project `jotly_prod` (default)
+- relies on backend startup to apply Prisma migrations automatically
 - verifies health endpoint on `http://127.0.0.1:3100/backend-api/health`
+- prints recent compose logs automatically if the health check never becomes ready
 
 ### 3. Configure Nginx on VM
 
