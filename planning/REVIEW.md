@@ -17,6 +17,7 @@ Implemented in the current codebase:
 - backend reminders API — create, update, delete, dismiss, pending poll, and reminder attachments (`backend/src/routes/reminders.ts`)
 - backend standalone notes API with note attachments (`backend/src/routes/notes.ts`)
 - backend global search API with PostgreSQL full-text search (`backend/src/routes/search.ts`)
+- global search phase 2: pgvector migration, hybrid full-text + vector `searchDirect`, `note`/`noteAttachment` in assistant retriever overview domain
 - backend Google Calendar OAuth routes (`backend/src/routes/google-calendar-oauth.ts`)
 - backend Google Calendar sync/read routes, event notes, and event-note attachments (`backend/src/routes/google-calendar-events.ts`)
 - backend Google Calendar token encryption + OAuth exchange service (`backend/src/google-calendar/google-calendar-oauth-service.ts`)
@@ -53,7 +54,6 @@ Implemented in the current codebase:
 - route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile/gaming-track/reminders/search plus Google Calendar OAuth/events
 
 Not implemented yet:
-- assistant pipeline Phase 2 (semantic vector search via pgvector on top of the existing search index)
 - reporting
 - gaming track phase 6+ (deeper collaborative loops)
 - calendar write-back to Google

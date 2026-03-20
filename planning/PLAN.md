@@ -66,6 +66,7 @@ Completed:
 - standalone notes module (API + frontend dashboard block — create, update, delete, attachments)
 - global search (backend `GET /api/search` with full-text via `AssistantSearchDocument` + frontend Cmd/Ctrl+K modal)
 - `AssistantSearchDocument` unified search table with PostgreSQL full-text (`tsvector`) indexing across all text-bearing domains
+- global search phase 2: pgvector `embedding vector(1536)` column added to `AssistantSearchDocument`; hybrid full-text + vector `searchDirect`; `note` and `noteAttachment` wired into assistant retriever overview domain
 
 Latest attachment handling conventions:
 - frontend uploads local files from the task details modal
@@ -193,7 +194,6 @@ Gaming Track status:
   - deeper social loops and collaborative mechanics
 
 Still not implemented:
-- assistant pipeline Phase 2 (semantic vector search via pgvector on top of the existing search index)
 - reporting
 - gaming track phase 6+ collaborative/social engagement layer
 - calendar write-back to Google

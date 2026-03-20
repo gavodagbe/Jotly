@@ -248,21 +248,21 @@ test("GET /api/search — returns matching documents", async () => {
   );
 });
 
-test("GET /api/search — syncs the workspace index before searching", async () => {
-  const taskStore = new MutableTaskStore();
-  const { app } = makeApp({
-    taskStore,
-    assistantSearchSyncService: null,
-  });
+test("GET /api/search — returns results from pre-indexed documents", async () => {
+  const { app, searchDocumentStore } = makeApp();
   const { token, user } = await registerAndLogin(app);
 
-  taskStore.setTasks([
-    makeTask({
-      id: "task-sync-1",
+  await searchDocumentStore.replaceUserDocuments(user.id, [
+    {
       userId: user.id,
+      sourceType: "task",
+      sourceId: "task-sync-1",
       title: "Focus block",
-      description: "Deep focus session for the morning",
-    }),
+      bodyText: "Deep focus session for the morning",
+      metadataJson: null,
+      contentHash: "hash-sync-1",
+      sourceUpdatedAt: new Date(),
+    },
   ]);
 
   const response = await app.inject({
@@ -498,4 +498,80 @@ test("GET /api/search — rejects invalid from date", async () => {
     headers: { authorization: `Bearer ${token}` },
   });
   assert.equal(response.statusCode, 400);
+});
+
+test("searchDirect — returns vector-matched results when embedding is provided", async () => {
+  const store = createInMemoryAssistantSearchDocumentStore();
+  const userId = "user-vec-1";
+  const queryEmbedding = [1, 0, 0];
+
+  // Seed a document with an embedding that will NOT match full-text but WILL match via vector
+  await store.replaceUserDocuments(userId, [
+    {
+      userId,
+      sourceType: "note",
+      sourceId: "note-vector-1",
+      title: "Meeting prep",
+      bodyText: "Quarterly review agenda items",
+      metadataJson: null,
+      contentHash: "hash-vec",
+      sourceUpdatedAt: new Date(),
+      embedding: [1, 0, 0],
+    },
+  ]);
+
+  const result = await store.searchDirect(userId, "zz", { embedding: queryEmbedding });
+
+  assert.ok(result.totalCount > 0, "Should return vector-matched result");
+  assert.equal(result.results[0].matchedBy, "vector");
+  assert.equal(result.results[0].sourceId, "note-vector-1");
+});
+
+test("searchDirect — hybrid mode deduplicates and returns highest score per document", async () => {
+  const store = createInMemoryAssistantSearchDocumentStore();
+  const userId = "user-hybrid-1";
+  const queryEmbedding = [1, 0, 0];
+
+  await store.replaceUserDocuments(userId, [
+    {
+      userId,
+      sourceType: "task",
+      sourceId: "ft-only",
+      title: "Planning session",
+      bodyText: "Focus on quarterly planning work",
+      metadataJson: null,
+      contentHash: "hash-ft",
+      sourceUpdatedAt: new Date(),
+    },
+    {
+      userId,
+      sourceType: "note",
+      sourceId: "vec-only",
+      title: "Random note",
+      bodyText: "Completely unrelated content here",
+      metadataJson: null,
+      contentHash: "hash-vec",
+      sourceUpdatedAt: new Date(),
+      embedding: [1, 0, 0],
+    },
+    {
+      userId,
+      sourceType: "reminder",
+      sourceId: "both-match",
+      title: "Focus planning reminder",
+      bodyText: "Remember to focus on quarterly planning",
+      metadataJson: null,
+      contentHash: "hash-both",
+      sourceUpdatedAt: new Date(),
+      embedding: [1, 0, 0],
+    },
+  ]);
+
+  const result = await store.searchDirect(userId, "focus", { embedding: queryEmbedding });
+  const sourceIds = result.results.map((r) => r.sourceId);
+
+  assert.ok(sourceIds.includes("ft-only"), "Full-text-only match should be present");
+  assert.ok(sourceIds.includes("vec-only"), "Vector-only match should be present");
+  assert.ok(sourceIds.includes("both-match"), "Both-match document should appear once");
+  assert.equal(new Set(sourceIds).size, sourceIds.length, "No duplicate sourceIds");
 });

@@ -1,11 +1,13 @@
 import { formatDateOnly } from "../tasks/task-store";
 import { AssistantContextStore } from "./assistant-context-store";
 import { SearchIndexEntry, SearchIndexPlugin, normalizePlainText } from "./assistant-search-sync";
+import { AssistantSearchSourceType } from "./assistant-search-document-store";
 
 export function createAssistantContextSearchPlugin(
   contextStore: AssistantContextStore
 ): SearchIndexPlugin {
   return {
+    sourceTypes: ["affirmation", "bilan", "calendarEvent", "calendarNote", "reminder"] as AssistantSearchSourceType[],
     async fetchEntries(userId) {
       const entries: SearchIndexEntry[] = [];
       const snapshot = await contextStore.getByUserId(userId);

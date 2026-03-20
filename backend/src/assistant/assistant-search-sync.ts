@@ -8,6 +8,7 @@ import {
   AssistantSearchSourceType,
 } from "./assistant-search-document-store";
 import { AssistantEmbeddingClient } from "./assistant-embedding-client";
+import { chunkText, shouldChunk } from "./text-chunker";
 
 export type AssistantSearchSyncSummary = {
   documentCount: number;
@@ -15,7 +16,7 @@ export type AssistantSearchSyncSummary = {
 };
 
 export type AssistantSearchSyncService = {
-  syncUserWorkspace(userId: string): Promise<AssistantSearchSyncSummary>;
+  syncUserWorkspace(userId: string, options?: { onlySourceTypes?: AssistantSearchSourceType[] }): Promise<AssistantSearchSyncSummary>;
 };
 
 /**
@@ -44,6 +45,7 @@ export type SearchIndexEntry = {
  * Register the plugin in app.ts — the sync service handles everything else.
  */
 export type SearchIndexPlugin = {
+  sourceTypes: AssistantSearchSourceType[];
   fetchEntries(userId: string): Promise<SearchIndexEntry[]>;
 };
 
@@ -84,6 +86,22 @@ function stripRichTextToPlainText(value: string): string {
 
 function hashContent(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+const CHUNK_SEPARATOR = ":chunk:";
+
+function buildChunkSourceId(originalSourceId: string, chunkIndex: number): string {
+  return `${originalSourceId}${CHUNK_SEPARATOR}${chunkIndex}`;
+}
+
+function chunkSourceId(sourceId: string): { originalSourceId: string; chunkIndex: number | null } {
+  const sepIndex = sourceId.lastIndexOf(CHUNK_SEPARATOR);
+  if (sepIndex === -1) return { originalSourceId: sourceId, chunkIndex: null };
+  const index = parseInt(sourceId.slice(sepIndex + CHUNK_SEPARATOR.length), 10);
+  return {
+    originalSourceId: sourceId.slice(0, sepIndex),
+    chunkIndex: Number.isFinite(index) ? index : null,
+  };
 }
 
 function keyForDocument(
@@ -175,7 +193,14 @@ export function createAssistantSearchSyncService(
   } = options;
 
   return {
-    async syncUserWorkspace(userId) {
+    async syncUserWorkspace(userId, options) {
+      const activePlugins =
+        options?.onlySourceTypes && options.onlySourceTypes.length > 0
+          ? plugins.filter((plugin) =>
+              plugin.sourceTypes.some((st) => options.onlySourceTypes!.includes(st))
+            )
+          : plugins;
+
       const existingDocuments = await searchDocumentStore.listByUser(userId);
       const existingByKey = new Map(
         existingDocuments.map((document) => [
@@ -186,7 +211,7 @@ export function createAssistantSearchSyncService(
 
       const drafts: SearchDocumentDraft[] = [];
 
-      for (const plugin of plugins) {
+      for (const plugin of activePlugins) {
         const entries = await plugin.fetchEntries(userId);
 
         for (const entry of entries) {
@@ -209,24 +234,52 @@ export function createAssistantSearchSyncService(
                 : undefined;
 
             if (existing && existingSig === contentSig) {
-              // Reuse existing extraction result — no re-OCR needed
-              drafts.push(
-                draftDocument({
-                  userId,
-                  sourceType: entry.sourceType,
-                  sourceId: entry.sourceId,
-                  title: entry.title,
-                  bodyText: existing.bodyText,
-                  metadataJson: buildBaseMetadata(entry.sourceType, {
-                    ...entry.metadata,
-                    _contentSig: contentSig,
-                  }),
-                  sourceUpdatedAt: entry.updatedAt,
-                  extractionStatus: existing.extractionStatus,
-                  extractionWarning: existing.extractionWarning,
-                  reuseExisting: existing,
-                })
+              // Reuse existing extraction result — no re-OCR needed.
+              // Re-emit all existing chunks for this attachment.
+              const existingChunks = [...existingDocuments].filter(
+                (doc) =>
+                  doc.userId === userId &&
+                  doc.sourceType === entry.sourceType &&
+                  chunkSourceId(doc.sourceId).originalSourceId === entry.sourceId
               );
+
+              if (existingChunks.length > 0) {
+                for (const chunk of existingChunks) {
+                  drafts.push(
+                    draftDocument({
+                      userId,
+                      sourceType: entry.sourceType,
+                      sourceId: chunk.sourceId,
+                      title: chunk.title,
+                      bodyText: chunk.bodyText,
+                      metadataJson: toInputJsonObject(chunk.metadataJson),
+                      sourceUpdatedAt: entry.updatedAt,
+                      extractionStatus: chunk.extractionStatus,
+                      extractionWarning: chunk.extractionWarning,
+                      reuseExisting: chunk,
+                    })
+                  );
+                }
+              } else {
+                // No chunk records found — fall back to single document
+                drafts.push(
+                  draftDocument({
+                    userId,
+                    sourceType: entry.sourceType,
+                    sourceId: entry.sourceId,
+                    title: entry.title,
+                    bodyText: existing.bodyText,
+                    metadataJson: buildBaseMetadata(entry.sourceType, {
+                      ...entry.metadata,
+                      _contentSig: contentSig,
+                    }),
+                    sourceUpdatedAt: entry.updatedAt,
+                    extractionStatus: existing.extractionStatus,
+                    extractionWarning: existing.extractionWarning,
+                    reuseExisting: existing,
+                  })
+                );
+              }
             } else {
               // Extract fresh (new attachment or content changed)
               const extraction = await documentExtractor.extractFromAttachment({
@@ -235,24 +288,53 @@ export function createAssistantSearchSyncService(
                 contentType: entry.attachment.contentType,
               });
 
-              drafts.push(
-                draftDocument({
-                  userId,
-                  sourceType: entry.sourceType,
-                  sourceId: entry.sourceId,
-                  title: entry.title,
-                  bodyText: extraction.text,
-                  metadataJson: buildBaseMetadata(entry.sourceType, {
-                    ...entry.metadata,
-                    _contentSig: contentSig,
-                    parser: extraction.parser,
-                  }),
-                  sourceUpdatedAt: entry.updatedAt,
-                  extractionStatus: extraction.status,
-                  extractionWarning: extraction.warning,
-                  reuseExisting: existing,
-                })
-              );
+              const baseMetadata = buildBaseMetadata(entry.sourceType, {
+                ...entry.metadata,
+                _contentSig: contentSig,
+                parser: extraction.parser,
+              });
+
+              if (shouldChunk(extraction.text)) {
+                const chunks = chunkText(extraction.text);
+                const chunkCount = chunks.length;
+
+                for (const chunk of chunks) {
+                  drafts.push(
+                    draftDocument({
+                      userId,
+                      sourceType: entry.sourceType,
+                      sourceId: buildChunkSourceId(entry.sourceId, chunk.index),
+                      title: entry.title,
+                      bodyText: chunk.text,
+                      metadataJson: buildBaseMetadata(entry.sourceType, {
+                        ...entry.metadata,
+                        _contentSig: contentSig,
+                        parser: extraction.parser,
+                        originalSourceId: entry.sourceId,
+                        chunkIndex: chunk.index,
+                        chunkCount,
+                      }),
+                      sourceUpdatedAt: entry.updatedAt,
+                      extractionStatus: extraction.status,
+                      extractionWarning: extraction.warning,
+                    })
+                  );
+                }
+              } else {
+                drafts.push(
+                  draftDocument({
+                    userId,
+                    sourceType: entry.sourceType,
+                    sourceId: entry.sourceId,
+                    title: entry.title,
+                    bodyText: extraction.text,
+                    metadataJson: baseMetadata,
+                    sourceUpdatedAt: entry.updatedAt,
+                    extractionStatus: extraction.status,
+                    extractionWarning: extraction.warning,
+                  })
+                );
+              }
             }
           } else {
             // Plain-text document entry

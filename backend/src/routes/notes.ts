@@ -273,7 +273,7 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       });
       // Fire-and-forget sync (do not await)
       if (assistantSearchSyncService) {
-        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+        assistantSearchSyncService.syncUserWorkspace(authUserId, { onlySourceTypes: ["note", "noteAttachment"] }).catch(() => {});
       }
       return reply.code(201).send({ data: serializeNote(note) });
     } catch (error) {
@@ -345,7 +345,7 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       }
       // Fire-and-forget sync (do not await)
       if (assistantSearchSyncService) {
-        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+        assistantSearchSyncService.syncUserWorkspace(authUserId, { onlySourceTypes: ["note", "noteAttachment"] }).catch(() => {});
       }
       return reply.send({ data: serializeNote(updated) });
     } catch (error) {
@@ -416,7 +416,7 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
 
       // Fire-and-forget sync (do not await)
       if (assistantSearchSyncService) {
-        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+        assistantSearchSyncService.syncUserWorkspace(authUserId, { onlySourceTypes: ["note", "noteAttachment"] }).catch(() => {});
       }
       return reply.code(201).send({ data: serializeAttachment(attachment) });
     } catch (error) {
@@ -444,7 +444,7 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
 
       // Fire-and-forget sync (do not await)
       if (assistantSearchSyncService) {
-        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+        assistantSearchSyncService.syncUserWorkspace(authUserId, { onlySourceTypes: ["note", "noteAttachment"] }).catch(() => {});
       }
       return reply.send({ data: serializeAttachment(removed) });
     } catch (error) {
@@ -470,7 +470,7 @@ const noteRoutes: FastifyPluginAsync<NoteRoutesOptions> = async (app, options) =
       }
       // Fire-and-forget sync (do not await)
       if (assistantSearchSyncService) {
-        assistantSearchSyncService.syncUserWorkspace(authUserId).catch(() => {});
+        assistantSearchSyncService.syncUserWorkspace(authUserId, { onlySourceTypes: ["note", "noteAttachment"] }).catch(() => {});
       }
       return reply.send({ data: serializeNote(removed) });
     } catch (error) {
