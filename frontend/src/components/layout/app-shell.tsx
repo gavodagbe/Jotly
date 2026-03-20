@@ -5429,8 +5429,10 @@ export function AppShell() {
         await fetchGoogleCalendarStatus();
         await fetchCalendarEvents(selectedDate, true);
       } else {
+        const payload = await response.json().catch(() => null);
         setGoogleCalendarError(
-          isFrench ? "La synchronisation a echoue." : "Sync failed."
+          payload?.error?.message ??
+            (isFrench ? "La synchronisation a echoue." : "Sync failed.")
         );
       }
     } catch {
@@ -6329,6 +6331,9 @@ export function AppShell() {
   }
 
   function openCreateNoteDialog() {
+    setDashboardBlockCollapsed((currentState) =>
+      currentState.notes ? { ...currentState, notes: false } : currentState
+    );
     setNoteDialogMode("create");
     setEditingNoteId(null);
     setNoteFormValues({ title: "", body: "", color: "", targetDate: "" });
@@ -9442,10 +9447,12 @@ export function AppShell() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90"
+              className={primaryButtonClass}
               onClick={openCreateNoteDialog}
+              disabled={isLoadingNotes}
             >
-              {isFrench ? "+ Nouvelle note" : "+ New note"}
+              <PlusIcon />
+              {isFrench ? "Ajouter une note" : "Add note"}
             </button>
             <button
               type="button"

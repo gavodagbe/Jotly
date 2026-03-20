@@ -31,7 +31,7 @@ Historical JOT-10 out-of-scope (ticket-level):
 - adding full schema for future modules
 - broad refactors unrelated to documentation clarity
 
-## Current implementation status (as of 2026-03-17)
+## Current implementation status (as of 2026-03-19)
 Completed:
 - JOT-1 to JOT-10 baseline deliverables
 - authentication/session flow (`register`, `login`, `me`, `logout`)
@@ -41,7 +41,7 @@ Completed:
 - attachments module (API + tests)
 - recurrence module (API + tests)
 - frontend task details integrations for comments/attachments/recurrence
-- AI assistant module (backend route + frontend panel — full DB context, evolving to structured retrieval + RAG)
+- AI assistant module (backend route + frontend panel — structured retrieval with optional workspace text search augmentation)
 - day affirmation module (API + frontend panel)
 - yesterday carry-over action for non-completed tasks (API + frontend action)
 - day bilan module (API + frontend panel)
@@ -50,16 +50,20 @@ Completed:
 - assistant request locale now defaults from user profile preference
 - frontend internationalization for core UX (`en`/`fr`) using profile locale with browser fallback
 - Google Calendar OAuth connection flow (connect, callback, status, disconnect)
+- Google Calendar connection color and selected-calendar management
 - Google Calendar multi-account support per Jotly user
 - Google Calendar event sync and persisted read model in PostgreSQL
 - selected-date Google Calendar event preview in the dashboard
+- calendar event notes and calendar event note attachments
 - profile modal controls for Google Calendar connection and manual sync
+- task due dates and due alerts
 - gaming track phase 1 (backend summary API + frontend score card with `D/W/M/Y` period selector)
 - gaming track phase 2 (weekly missions + personal bests in summary API and dashboard)
 - gaming track phase 3 (levels/badges, streak protection, and historical trend views)
 - gaming track phase 4 (weekly challenge, personal leaderboard, recap, and nudges)
 - gaming track phase 5 (persistent engagement actions: challenge claim, streak protection usage, and nudge dismiss)
-- reminders module (API + frontend modal — create, update, delete, dismiss, pending poll)
+- reminders module (API + frontend modal — create, update, delete, dismiss, pending poll, attachments)
+- standalone notes module (API + frontend dashboard block — create, update, delete, attachments)
 - global search (backend `GET /api/search` with full-text via `AssistantSearchDocument` + frontend Cmd/Ctrl+K modal)
 - `AssistantSearchDocument` unified search table with PostgreSQL full-text (`tsvector`) indexing across all text-bearing domains
 
@@ -90,30 +94,57 @@ Latest reminders conventions:
   - `PUT /api/reminders/:id` — update (partial)
   - `DELETE /api/reminders/:id`
   - `POST /api/reminders/:id/dismiss`
+  - `GET /api/reminders/:id/attachments`
+  - `POST /api/reminders/:id/attachments`
+  - `DELETE /api/reminders/:id/attachments/:attachmentId`
 - fields: `title`, `description`, `project`, `assignees`, `remindAt` (ISO-8601)
 - lifecycle flags: `isFired` (auto), `isDismissed` (manual)
+- reminder attachments follow the current `data:` URL + metadata storage posture with a 5 MB per-file limit
 - all reminders scoped to authenticated user
+
+Latest notes conventions:
+- endpoints:
+  - `GET /api/notes` — list all (optional `?date=YYYY-MM-DD` filter)
+  - `GET /api/notes/:id`
+  - `POST /api/notes`
+  - `PATCH /api/notes/:id`
+  - `DELETE /api/notes/:id`
+  - `GET /api/notes/:id/attachments`
+  - `POST /api/notes/:id/attachments`
+  - `DELETE /api/notes/:id/attachments/:attachmentId`
+  - `PUT /api/google-calendar/events/:id/note`
+  - `DELETE /api/google-calendar/events/:id/note`
+  - `GET /api/google-calendar/events/:id/note/attachments`
+  - `POST /api/google-calendar/events/:id/note/attachments`
+  - `DELETE /api/google-calendar/events/:id/note/attachments/:attachmentId`
+- standalone note fields: `title` (optional), `body` (required), `color` (optional), `targetDate` (optional)
+- standalone note and calendar-event-note attachments follow the current `data:` URL + metadata storage posture with a 5 MB per-file limit
+- standalone note mutations trigger fire-and-forget search index refresh
 
 Latest global search conventions:
 - endpoint: `GET /api/search?q=...`
 - minimum query length: 2 characters
-- filterable by: `types` (comma-separated), `from`/`to` date range, `page`, `limit` (max 50)
-- source types indexed: `task`, `comment`, `affirmation`, `bilan`, `reminder`, `calendarEvent`, `calendarNote`, `attachment`
+- filterable by: `types` (comma-separated among `task`, `comment`, `affirmation`, `bilan`, `reminder`, `calendarEvent`, `calendarNote`, `attachment`), `from`/`to` date range, `page`, `limit` (max 50)
+- source types indexed in `AssistantSearchDocument`: `task`, `comment`, `affirmation`, `bilan`, `reminder`, `calendarEvent`, `calendarNote`, `attachment`, `note`, `noteAttachment`
+- current route behavior: queries the existing search index directly; it does not force an index refresh before each request
+- consequence: `note` and `noteAttachment` can exist in unfiltered results, but they are not currently accepted values in the public `types` whitelist
 - backend uses `AssistantSearchDocument` table with PostgreSQL `websearch_to_tsquery` full-text search
-- response includes: `snippet` (ts_headline excerpt), `score`, `matchedBy` (`fulltext` or `vector`), `totalCount`, `hasMore`
+- response includes: `snippet` (ts_headline excerpt), `score`, `matchedBy` (`fulltext`), `totalCount`, `hasMore`
 - frontend: Cmd/Ctrl+K shortcut opens global search modal; results navigate to source content
 
 Latest AI assistant conventions:
 - endpoint: `POST /api/assistant/reply`
 - workspace-first assistant: answers only questions about the authenticated user's Jotly workspace, not external knowledge
-- covered domains: tasks, comments, affirmations, bilans, reminders, calendar events, calendar notes, profile/preferences, gaming track
+- covered structured domains: tasks, comments, affirmations, bilans, reminders, calendar events, calendar notes, profile/preferences
+- broad workspace/document questions can be augmented with search-backed text matches from `AssistantSearchDocument` for the currently wired source types: task/comment/attachment, reminder, affirmation/bilan, and calendar event/note
 - locale defaults to the user's profile locale when omitted from the request
 - provider modes: `heuristic` (default) or `openai`
 - automatic fallback to heuristic when OpenAI is unavailable
-- current implementation: full DB context (all user data loaded per request — pre-pipeline)
-- evolution plan (2 phases):
-  - Phase 1: refactor into pipeline (analyzeQuery -> retrieveByDomain -> buildContext with ~4000 char budget -> generateAnswer). No new table, no LLM classifier. Domain-targeted SQL replaces full context dump.
-  - Phase 2: extend search retriever to use `AssistantSearchDocument` vector column with `pgvector` (`text-embedding-3-small`) for semantic queries. Document extraction pipeline: PDF parsing (`pdf-parse`) + image OCR (`Tesseract.js`), both local backend.
+- current implementation: structured domain retrieval (`analyzeQuery` -> `retrieveByDomain` -> `buildContext`) with a ~4000-char context budget, plus optional workspace text search matches when relevant
+- standalone notes and note attachments are indexed for global search, but they are not yet included in the assistant search retriever source-type mapping
+- no dedicated gaming-track assistant domain is wired yet
+- evolution plan:
+  - Phase 2: extend search retriever to use an optional `AssistantSearchDocument.embedding` column with pgvector (`text-embedding-3-small`) for semantic queries on top of the existing local attachment extraction/indexing pipeline.
 - see `planning/AGENT.md` AI assistant section for full implementation details
 
 Latest Google Calendar conventions:
@@ -124,13 +155,16 @@ Latest Google Calendar conventions:
   - `GOOGLE_CALENDAR_ENCRYPTION_KEY`
 - callback redirects use `FRONTEND_ORIGIN` instead of assuming `http://localhost:3000`
 - profile settings can connect, disconnect, and sync multiple Google accounts
+- per-connection display color can be updated
+- available calendars can be listed per connection and one calendar can be selected
+- switching calendars is blocked when linked tasks still depend on the current connection
 - tokens are encrypted at rest before being stored in `GoogleCalendarConnection`
 - OAuth `state` is a short-lived signed payload bound to the issuing authenticated session
 - sync endpoint aggregates all connected accounts for the authenticated user
 - first sync imports a rolling window of the previous 30 days and next 90 days
 - later syncs use Google sync tokens and fall back to a full sync when needed
 - dashboard reads synced events by selected date from local PostgreSQL data
-- dashboard supports internal event notes and linked-task previews
+- dashboard supports internal event notes, event note attachments, and linked-task previews
 - task forms can link/unlink a task to a synced calendar event
 - current Google-side slice is still read-only:
   - no calendar write-back
@@ -159,8 +193,7 @@ Gaming Track status:
   - deeper social loops and collaborative mechanics
 
 Still not implemented:
-- assistant pipeline Phase 1 (structured retrieval + context budget — full DB context still in use)
-- assistant pipeline Phase 2 (vector search via pgvector + document extraction from PDFs/images)
+- assistant pipeline Phase 2 (semantic vector search via pgvector on top of the existing search index)
 - reporting
 - gaming track phase 6+ collaborative/social engagement layer
 - calendar write-back to Google

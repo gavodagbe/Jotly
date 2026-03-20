@@ -25,8 +25,9 @@ This section reflects the current repository implementation.
 - Tailwind CSS
 - dnd-kit for Kanban drag and drop
 - Feature surface currently centered in `frontend/src/components/layout/app-shell.tsx`
-- Profile settings include Google Calendar connect/disconnect/sync controls
+- Profile settings include Google Calendar connect/disconnect/sync/color/calendar-selection controls
 - Daily dashboard can display synced Google Calendar events for the selected date
+- Dashboard includes due alerts, reminders, notes, gaming track, and global search
 
 ### Backend
 - Fastify
@@ -42,26 +43,33 @@ This section reflects the current repository implementation.
 - Day bilan endpoints in `backend/src/routes/day-bilan.ts`
 - Profile endpoints in `backend/src/routes/profile.ts`
 - AI assistant endpoint in `backend/src/routes/assistant.ts`
+- Notes endpoints in `backend/src/routes/notes.ts`
+- Reminder endpoints in `backend/src/routes/reminders.ts`
+- Gaming Track endpoints in `backend/src/routes/gaming-track.ts`
 - Google Calendar OAuth routes in `backend/src/routes/google-calendar-oauth.ts`
 - Google Calendar sync/read routes in `backend/src/routes/google-calendar-events.ts`
+- Search endpoint in `backend/src/routes/search.ts`
 - Google OAuth client factory in `backend/src/google-auth/`
 - Google Calendar services and stores in `backend/src/google-calendar/`
 
 ### Database
 - PostgreSQL
-- Prisma `Task` model with status, priority, date, lifecycle timestamps, carry-over linkage, and optional calendar-event linkage
+- Prisma `Task` model with status, priority, `dueDate`, lifecycle timestamps, carry-over linkage, recurrence-instance linkage, and optional calendar-event linkage
 - Prisma `DayAffirmation` and `DayBilan` models (one row per user per date)
+- Prisma gaming-track action models for challenge claims, streak protection usage, and nudge dismissals
 - Prisma `GoogleCalendarConnection` for encrypted OAuth token storage and per-account sync metadata
 - Prisma `CalendarEvent` for synced Google events
-- Prisma `CalendarEventNote` reserved for future event-note workflows
-- Prisma `Reminder` model (title, description, project, assignees, remindAt, isFired, isDismissed lifecycle flags)
+- Prisma `CalendarEventNote` and `CalendarEventNoteAttachment` for internal event-note workflows
+- Prisma `Reminder` and `ReminderAttachment` models for timed reminders and reminder files
+- Prisma `Note` and `NoteAttachment` models for standalone notes
 - Prisma `PasswordResetToken` model for password reset flow
-- Prisma `AssistantSearchDocument` model — unified full-text search table (`tsvector` via PostgreSQL full-text; `vector(1536)` column reserved for Phase 2 pgvector semantic search)
+- Prisma `AssistantSearchDocument` model — unified full-text search table (`tsvector` via PostgreSQL full-text); the store also supports an optional future `embedding` column for Phase 2 semantic search
 
 ### Testing
 - Node test runner tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan routes
 - Node test runner tests include profile route coverage
-- Node test runner tests include Google Calendar OAuth route coverage
+- Node test runner tests include Google Calendar OAuth and Google Calendar event route coverage
+- Node test runner tests include gaming-track route coverage
 - Node test runner tests include reminders route coverage
 - Node test runner tests include search route coverage
 
@@ -84,10 +92,13 @@ Current task fields:
 - `description`
 - `status`
 - `targetDate`
+- `dueDate` (optional)
 - `priority`
 - `project` (optional)
 - `plannedTime` (optional)
-- `calendarEventId` (optional, reserved for future calendar-linked tasks)
+- `recurrenceSourceTaskId` (optional)
+- `recurrenceOccurrenceDate` (optional)
+- `calendarEventId` (optional, for calendar-linked tasks)
 - `createdAt`
 - `updatedAt`
 - `completedAt` (optional)
@@ -109,6 +120,7 @@ Implemented endpoints:
 - `POST /api/auth/forgot-password`
 - `POST /api/auth/reset-password`
 - `GET /api/tasks?date=YYYY-MM-DD`
+- `GET /api/tasks/alerts?date=YYYY-MM-DD`
 - `POST /api/tasks`
 - `POST /api/tasks/carry-over-yesterday`
 - `GET /api/tasks/:id`
@@ -130,17 +142,31 @@ Implemented endpoints:
 - `PUT /api/day-bilan`
 - `GET /api/profile`
 - `PATCH /api/profile`
+- `GET /api/notes?date=YYYY-MM-DD`
+- `GET /api/notes/:id`
+- `POST /api/notes`
+- `PATCH /api/notes/:id`
+- `DELETE /api/notes/:id`
+- `GET /api/notes/:id/attachments`
+- `POST /api/notes/:id/attachments`
+- `DELETE /api/notes/:id/attachments/:attachmentId`
 - `POST /api/assistant/reply`
 - `GET /api/google-calendar/auth-url`
 - `GET /api/google-calendar/callback?code=...&state=...`
 - `GET /api/google-calendar/status`
 - `DELETE /api/google-calendar/connection/:connectionId`
+- `PATCH /api/google-calendar/connection/:connectionId/color`
+- `GET /api/google-calendar/connection/:connectionId/calendars`
+- `PATCH /api/google-calendar/connection/:connectionId/calendar`
 - `POST /api/google-calendar/sync`
 - `GET /api/google-calendar/events?date=YYYY-MM-DD`
 - `GET /api/google-calendar/events?start=YYYY-MM-DD&end=YYYY-MM-DD`
 - `GET /api/google-calendar/events/:id`
 - `PUT /api/google-calendar/events/:id/note`
 - `DELETE /api/google-calendar/events/:id/note`
+- `GET /api/google-calendar/events/:id/note/attachments`
+- `POST /api/google-calendar/events/:id/note/attachments`
+- `DELETE /api/google-calendar/events/:id/note/attachments/:attachmentId`
 - `GET /api/reminders`
 - `GET /api/reminders/pending`
 - `GET /api/reminders/:id`
@@ -148,6 +174,13 @@ Implemented endpoints:
 - `PUT /api/reminders/:id`
 - `DELETE /api/reminders/:id`
 - `POST /api/reminders/:id/dismiss`
+- `GET /api/reminders/:id/attachments`
+- `POST /api/reminders/:id/attachments`
+- `DELETE /api/reminders/:id/attachments/:attachmentId`
+- `GET /api/gaming-track/summary?date=YYYY-MM-DD&period=day|week|month|year`
+- `POST /api/gaming-track/challenge/claim`
+- `POST /api/gaming-track/streak-protection/use`
+- `POST /api/gaming-track/nudges/dismiss`
 - `GET /api/search?q=...`
 
 Rules:
@@ -177,14 +210,17 @@ Main UI currently includes:
 - date selector
 - previous / today / next navigation
 - 4-column Kanban board
+- due alerts panel
 - day affirmation panel
 - carry-over action for yesterday non-completed tasks
 - day bilan panel
-- AI assistant chatbot (FAB) with workspace-first pipeline (evolving from global context dump to structured retrieval + RAG)
+- AI assistant chatbot (FAB) with structured retrieval and optional workspace text search augmentation
 - profile settings dialog with persisted language/timezone preferences
-- profile settings dialog with Google Calendar account connection controls
+- profile settings dialog with Google Calendar account connection, color, and calendar-selection controls
 - selected-date Google Calendar event preview on the main dashboard
-- reminders panel with create/edit/dismiss flows and rich text description
+- reminders panel with create/edit/dismiss flows, rich text description, and attachments
+- notes panel with standalone note editing and note attachments
+- gaming track summary block with engagement actions
 - global search modal (Cmd/Ctrl+K) with type filtering, date range, pagination, and result navigation
 - create/edit task dialog
 - delete confirmation dialog
@@ -275,11 +311,36 @@ The modules below define intended boundaries without pre-building abstractions.
   - `PUT /api/reminders/:id`
   - `DELETE /api/reminders/:id`
   - `POST /api/reminders/:id/dismiss`
+  - `GET /api/reminders/:id/attachments`
+  - `POST /api/reminders/:id/attachments`
+  - `DELETE /api/reminders/:id/attachments/:attachmentId`
 - Current fields: `title`, `description`, `project`, `assignees`, `remindAt`, `isFired`, `firedAt`, `isDismissed`, `dismissedAt`.
 - Current behavior:
   - `/pending` auto-marks all returned reminders as fired on read
   - date filter on list endpoint matches a 24-hour UTC window
+  - reminder attachments use the current `data:` URL + metadata storage posture with a 5 MB per-file limit
   - all reminders scoped to authenticated user
+- Current status: implemented.
+
+### Notes
+- Relation to workspace history: standalone user-authored notes, separate from task comments and calendar event notes.
+- Current backend ownership:
+  - `backend/src/routes/notes.ts`
+  - `backend/src/notes/`
+- Current API surface:
+  - `GET /api/notes` (optional `?date=YYYY-MM-DD`)
+  - `GET /api/notes/:id`
+  - `POST /api/notes`
+  - `PATCH /api/notes/:id`
+  - `DELETE /api/notes/:id`
+  - `GET /api/notes/:id/attachments`
+  - `POST /api/notes/:id/attachments`
+  - `DELETE /api/notes/:id/attachments/:attachmentId`
+- Current behavior:
+  - note body is required; `title`, `color`, and `targetDate` are optional
+  - note attachments use the current `data:` URL + metadata storage posture with a 5 MB per-file limit
+  - note mutations trigger fire-and-forget search index refresh
+  - all notes are scoped to the authenticated user
 - Current status: implemented.
 
 ### Global Search
@@ -288,8 +349,9 @@ The modules below define intended boundaries without pre-building abstractions.
 - Current API surface:
   - `GET /api/search?q=...`
 - Query parameters: `q` (required, min 2 chars), `types`, `from`, `to`, `page`, `limit` (max 50).
-- Source types: `task`, `comment`, `affirmation`, `bilan`, `reminder`, `calendarEvent`, `calendarNote`, `attachment`.
-- Backend: queries `AssistantSearchDocument` using PostgreSQL `websearch_to_tsquery` with `ts_headline` snippets.
+- Public `types` filter currently accepts: `task`, `comment`, `affirmation`, `bilan`, `reminder`, `calendarEvent`, `calendarNote`, `attachment`.
+- Search index documents can also use `note` and `noteAttachment`, but the current public `types` whitelist does not expose those values.
+- Backend: queries `AssistantSearchDocument` using PostgreSQL `websearch_to_tsquery` with `ts_headline` snippets; the route does not force a workspace re-sync before each search request.
 - Response includes: `results[]` with `sourceType`, `sourceId`, `title`, `snippet`, `score`, `matchedBy`, `metadataJson`, plus `totalCount`, `page`, `limit`, `hasMore`.
 - Frontend: Cmd/Ctrl+K opens global search modal; results navigate to source content in the dashboard.
 - Current status: implemented (full-text only; vector search planned for assistant Phase 2).
@@ -304,18 +366,27 @@ The modules below define intended boundaries without pre-building abstractions.
   - `GET /api/google-calendar/callback?code=...&state=...`
   - `GET /api/google-calendar/status`
   - `DELETE /api/google-calendar/connection/:connectionId`
+  - `PATCH /api/google-calendar/connection/:connectionId/color`
+  - `GET /api/google-calendar/connection/:connectionId/calendars`
+  - `PATCH /api/google-calendar/connection/:connectionId/calendar`
   - `POST /api/google-calendar/sync`
   - `GET /api/google-calendar/events?date=YYYY-MM-DD`
   - `GET /api/google-calendar/events?start=YYYY-MM-DD&end=YYYY-MM-DD`
   - `GET /api/google-calendar/events/:id`
   - `PUT /api/google-calendar/events/:id/note`
   - `DELETE /api/google-calendar/events/:id/note`
+  - `GET /api/google-calendar/events/:id/note/attachments`
+  - `POST /api/google-calendar/events/:id/note/attachments`
+  - `DELETE /api/google-calendar/events/:id/note/attachments/:attachmentId`
 - Current behavior:
   - supports multiple Google accounts per Jotly user
   - encrypts access and refresh tokens at rest
+  - supports per-connection display color and selected calendar management
+  - blocks calendar switching when linked tasks still depend on the current connection
   - stores synced events in PostgreSQL for date-based querying
   - surfaces selected-date events in the main dashboard
   - users can attach internal Jotly-only notes to synced events
+  - users can attach files to calendar event notes
   - tasks can be created from and linked to synced events via `Task.calendarEventId`
 - Current limits:
   - no calendar write-back
@@ -328,132 +399,29 @@ The modules below define intended boundaries without pre-building abstractions.
 - Current API surface: `POST /api/assistant/reply`.
 - Scope boundary: "all context" means the current authenticated user's Jotly workspace only, not external web knowledge.
 - Locale behavior: request payload can include `locale`; backend defaults to user profile locale.
-- Covered domains: tasks, comments, affirmations, bilans, reminders, calendar events, calendar notes, profile/preferences, gaming track.
+- Covered structured domains: tasks, comments, affirmations, bilans, reminders, calendar events, calendar notes, profile/preferences.
 
-#### Current implementation (pre-pipeline)
-- `assistant-context-store.ts`: loads all user data in one shot (profile, affirmations, bilans, reminders, events, notes)
-- `assistant.ts` (route): loads all tasks + all comments, passes everything to `generateReply`
-- `assistant-service.ts`: builds a monolithic prompt with all context concatenated, or falls back to heuristic mode via regex-based intent classification
-- No context budget — prompt size grows linearly with account size
-- Heuristic fallback covers: small talk, tasks, reminders, calendar, reflections, profile, workspace overview
+#### Current implementation
+- `analyzeQuery` classifies the question into `tasks`, `reminders`, `calendar`, `reflections`, `profile`, or `overview`
+- `retrieveByDomain` performs targeted retrieval per domain instead of loading all workspace rows blindly
+- `buildContext` enforces a strict context budget (target: ~4000 chars) before model generation
+- `assistantSearchRetriever` can augment replies with workspace text matches from `AssistantSearchDocument` when the question calls for broad workspace or document-style retrieval
+- response includes `usedDomains`, `retrievalMode`, and `matchedRecordsCount`
+- heuristic fallback remains available when OpenAI or workspace text search is unavailable
+- search-backed matches currently cover the source types wired in `assistant-search-retriever.ts`: task/comment/attachment, reminder, affirmation/bilan, and calendar event/note records
+- standalone `note` and `noteAttachment` documents are indexed for global search, but the assistant search retriever does not query those source types yet
+- no dedicated gaming-track assistant domain or retriever is wired yet
 
-#### Assistant pipeline evolution — 2 phases
-
-**Phase 1 — Structured pipeline + context budget**
-
-Goal: replace the "dump everything" approach with targeted retrieval per domain and a strict context budget.
-
-Pipeline:
-```
-question -> analyzeQuery -> retrieveByDomain -> buildContext(budget) -> generateAnswer
-```
-
-Components:
-- `analyzeQuery`: heuristic intent classifier (extend existing regex patterns, no LLM call). Determines which domains to query: tasks, reminders, calendar, reflections, profile, gaming-track, or global overview.
-- `retrieveByDomain`: targeted SQL queries per identified domain instead of loading all data. Examples:
-  - tasks question -> load only actionable tasks sorted by priority/date, with comments for top N
-  - reminder question -> load only active reminders within relevant time window
-  - calendar question -> load only upcoming events within relevant window
-  - reflection question -> load only recent affirmations and bilans
-  - profile question -> load profile only
-  - global overview -> load summary counts + top items per domain
-- `buildContext(budget)`: assemble retrieved data into a prompt string with a strict character/token budget (target: ~4000 chars max for context block). Prioritize most relevant records, truncate or drop lower-priority items when budget is exceeded.
-- `generateAnswer`: call OpenAI with the bounded context, or fall back to heuristic mode.
-
-Response contract evolution:
-```json
-{
-  "data": {
-    "answer": "string",
-    "source": "openai | heuristic",
-    "warning": "string | null",
-    "generatedAt": "ISO timestamp",
-    "usedDomains": ["tasks", "reminders"],
-    "retrievalMode": "structured",
-    "matchedRecordsCount": 12
-  }
-}
-```
-
-Key constraints:
-- No new database table in Phase 1
-- No LLM call for intent classification
-- Context budget enforced before any LLM call
-- Isolation by userId maintained in all retrievers
-- Heuristic fallback preserved without OpenAI
-
-Files to modify:
-- `backend/src/assistant/assistant-service.ts` — refactor into pipeline functions
-- `backend/src/assistant/assistant-context-store.ts` — replace single `getByUserId` with domain-specific retrieval methods
-- `backend/src/routes/assistant.ts` — adapt route to use pipeline and return enriched response
-
-**Phase 2 — Unified search table with full-text + vector + document extraction**
-
-Goal: support free-text questions spanning multiple domains, including content extracted from uploaded documents (PDFs, images with text).
-
-Prerequisite: Phase 1 pipeline is in place and working.
-
-Document extraction pipeline (backend-only, no external service):
-```
-Document uploaded (PDF/image)
-    -> text extraction (pdf-parse for PDFs, Tesseract.js for image OCR)
-    -> store extracted text in AssistantSearchDocument
-    -> generate embedding via OpenAI text-embedding-3-small
-    -> index in AssistantSearchDocument
-```
-
-Extraction stack:
-- PDF parsing: `pdf-parse` or `pdfjs-dist` (local Node.js)
-- Image OCR: `Tesseract.js` (local Node.js, no external API)
-- Embeddings: OpenAI `text-embedding-3-small` (already in stack via assistant provider)
-
-New components:
-- `AssistantSearchDocument` Prisma model — unified search table:
-  - `id`, `userId`, `sourceType` (task, comment, affirmation, bilan, reminder, calendarEvent, calendarNote, attachment), `sourceId`, `title`, `bodyText`, `metadataJson`, `updatedAt`
-  - `searchVector` column using PostgreSQL `tsvector` for full-text indexing
-  - `embedding` column using `vector(1536)` via pgvector for semantic search
-- `AssistantSearchRetriever` — queries using `ts_query` (keyword match) or cosine similarity (semantic match) depending on question type
-- `AssistantDocumentExtractor` — extracts text from PDFs (`pdf-parse`) and images (`Tesseract.js`)
-- Sync hooks — maintain search document rows when source records are created/updated/deleted
-- Backfill script — populate from existing data on first migration
-
-Pipeline after Phase 2:
-```
-question -> analyzeQuery -> [retrieveByDomain + searchRetriever(fulltext|vector)] -> buildContext(budget) -> generateAnswer
-```
-
-Retriever selection logic:
-- Question matches a keyword pattern -> full-text search (`ts_query`)
-- Question is open-ended or conceptual -> vector search (cosine similarity on embedding)
-- Both can be combined: full-text results + vector results merged and deduplicated
-
-Files to add:
-- `backend/prisma/migrations/xxx_assistant_search_document.sql`
-- `backend/src/assistant/assistant-search-document-store.ts`
-- `backend/src/assistant/assistant-search-retriever.ts`
-- `backend/src/assistant/assistant-search-sync.ts`
-- `backend/src/assistant/assistant-document-extractor.ts`
-
-Files to modify:
-- `backend/prisma/schema.prisma` — add `AssistantSearchDocument` model + enable pgvector extension
-- `backend/src/assistant/assistant-service.ts` — integrate search retriever into pipeline
-- `backend/src/routes/assistant.ts` — `retrievalMode` can be `"structured"`, `"fulltext"`, `"vector"`, or `"structured+fulltext+vector"`
-- `backend/src/routes/attachments.ts` — trigger document extraction + indexing on attachment upload
-
-Key constraints:
-- pgvector extension must be enabled in PostgreSQL (`CREATE EXTENSION IF NOT EXISTS vector`)
-- Extraction happens asynchronously after upload — does not block the upload response
-- OCR quality with Tesseract.js is acceptable for typed text, less reliable for handwriting
-- Sync hooks must handle create, update, and delete of source records
-- Search always scoped by userId
-- Budget enforcement from Phase 1 applies to all search results
-- Embedding generation requires OpenAI API key (same as assistant provider)
+#### Remaining evolution
+- Phase 2: add optional pgvector-powered semantic retrieval when an `embedding` column is present on `AssistantSearchDocument`
+- Phase 2: build semantic retrieval on top of the existing local attachment extraction/indexing pipeline
+- preserve userId isolation, context-budget enforcement, and heuristic fallback across those additions
 
 #### Explicitly out of scope
 - External extraction services (all extraction is local backend)
 - External web knowledge or internet search
 - LLM-based intent classification (double API call cost not justified)
-- Gaming track data in search index (structured retrieval sufficient for numeric/scoring data)
+- Gaming-track search/index integration until a dedicated assistant retrieval strategy is designed
 - Handwriting recognition (Tesseract.js covers printed/typed text only)
 
 ### Profile and preferences
@@ -527,15 +495,21 @@ Existing entities:
 - `DayAffirmation`
 - `DayBilan`
 - `Reminder`
+- `ReminderAttachment`
+- `Note`
+- `NoteAttachment`
 - `GoogleCalendarConnection`
 - `CalendarEvent`
 - `CalendarEventNote`
-- `AssistantSearchDocument` (unified full-text search table with `tsvector`; `vector(1536)` column reserved for Phase 2 pgvector semantic search)
+- `CalendarEventNoteAttachment`
+- `GamingTrackChallengeClaim`
+- `GamingTrackStreakProtectionUsage`
+- `GamingTrackNudgeDismissal`
+- `AssistantSearchDocument` (unified full-text search table with `tsvector`; optional future semantic-search support can use an `embedding` column when added)
 - `PasswordResetToken`
 
 Planned extensions (Phase 2 — assistant pipeline):
 - Enable pgvector extension and populate `AssistantSearchDocument.embedding` column for semantic search
-- Add document extraction pipeline (PDF via `pdf-parse`, image OCR via `Tesseract.js`) feeding into `AssistantSearchDocument`
 
 Potential future entities:
 - `TaskActivityEvent` (optional, if reporting granularity requires event-level history)
@@ -544,6 +518,8 @@ Potential future entities:
 Current extension points to preserve:
 - task route module boundaries in `backend/src/routes/`
 - store/service boundaries in `backend/src/tasks/`, `backend/src/day-affirmation/`, `backend/src/day-bilan/`, `backend/src/assistant/`, and `backend/src/gaming-track/`
+- optional `Task.calendarEventId` for task/event linking
+- `CalendarEventNote` and `CalendarEventNoteAttachment` for internal event annotations without overloading task comments
 - `AssistantSearchDocument` as the canonical search index — all new text-bearing domains must write to it on create/update/delete
 - feature-first frontend folders under `frontend/src/features/`
 - explicit task API contract as the integration backbone
