@@ -346,7 +346,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.register(recurrenceRoutes, { taskStore, recurrenceStore, authService });
   }
   if (dayAffirmationStore) {
-    app.register(dayAffirmationRoutes, { dayAffirmationStore, authService });
+    app.register(dayAffirmationRoutes, {
+      dayAffirmationStore,
+      authService,
+      openAiApiKey: options.openAiApiKey,
+      openAiModel: options.openAiModel,
+      openAiBaseUrl: options.openAiBaseUrl ?? "https://api.openai.com/v1",
+      requestTimeoutMs: options.assistantRequestTimeoutMs,
+    });
   }
   if (dayBilanStore) {
     app.register(dayBilanRoutes, { dayBilanStore, authService });

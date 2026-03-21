@@ -3164,6 +3164,58 @@ async function upsertDayAffirmation(
   return payload.data;
 }
 
+async function extractAffirmationTextFromImage(
+  imageDataUrl: string,
+  token: string
+): Promise<{ text: string; status: string; warning: string | null }> {
+  const response = await fetch("/backend-api/day-affirmation/extract-text", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({ imageDataUrl }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { text: string; status: string; warning: string | null }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to extract text from image"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Invalid response from OCR endpoint");
+  }
+
+  return payload.data;
+}
+
+async function reformatAffirmationText(
+  text: string,
+  instruction: string | undefined,
+  locale: "en" | "fr",
+  token: string
+): Promise<string> {
+  const response = await fetch("/backend-api/day-affirmation/reformat", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({ text, instruction: instruction || undefined, locale }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { text: string }; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to reformat text"));
+  }
+
+  if (!payload?.data?.text) {
+    throw new Error("AI returned an empty response");
+  }
+
+  return payload.data.text;
+}
+
 async function loadReminders(
   date: string,
   token: string,
@@ -6121,6 +6173,14 @@ export function AppShell() {
   const [isDayAffirmationLoading, setIsDayAffirmationLoading] = useState(false);
   const [isDayAffirmationSaving, setIsDayAffirmationSaving] = useState(false);
   const [dayAffirmationErrorMessage, setDayAffirmationErrorMessage] = useState<string | null>(null);
+  const [isAffirmationOcrPanelOpen, setIsAffirmationOcrPanelOpen] = useState(false);
+  const [affirmationOcrImagePreview, setAffirmationOcrImagePreview] = useState<string | null>(null);
+  const [affirmationOcrExtractedText, setAffirmationOcrExtractedText] = useState("");
+  const [affirmationOcrReformattedText, setAffirmationOcrReformattedText] = useState("");
+  const [affirmationOcrCustomInstruction, setAffirmationOcrCustomInstruction] = useState("");
+  const [isAffirmationOcrExtracting, setIsAffirmationOcrExtracting] = useState(false);
+  const [isAffirmationOcrReformatting, setIsAffirmationOcrReformatting] = useState(false);
+  const [affirmationOcrError, setAffirmationOcrError] = useState<string | null>(null);
   const [dayBilan, setDayBilan] = useState<DayBilan | null>(null);
   const [dayBilanFormValues, setDayBilanFormValues] = useState<DayBilanFormValues>(
     getDefaultDayBilanFormValues
@@ -10627,6 +10687,29 @@ export function AppShell() {
                 <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isAffirmationCompleted ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             ) : null}
+            {!dashboardBlockCollapsed.affirmation ? (
+              <button
+                type="button"
+                className={`${dashboardIconButtonClass} ${isAffirmationOcrPanelOpen ? "bg-indigo-100 text-indigo-600" : ""}`}
+                onClick={() => {
+                  setIsAffirmationOcrPanelOpen((prev) => !prev);
+                  setAffirmationOcrError(null);
+                  if (isAffirmationOcrPanelOpen) {
+                    setAffirmationOcrImagePreview(null);
+                    setAffirmationOcrExtractedText("");
+                    setAffirmationOcrReformattedText("");
+                    setAffirmationOcrCustomInstruction("");
+                  }
+                }}
+                aria-label={isFrench ? "Photo vers affirmation" : "Photo to affirmation"}
+                title={isFrench ? "Photo vers affirmation" : "Photo to affirmation"}
+              >
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                  <path d="M2 7a2 2 0 012-2h1.5l1-2h7l1 2H16a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z" strokeLinejoin="round"/>
+                  <circle cx="10" cy="11" r="2.5"/>
+                </svg>
+              </button>
+            ) : null}
             <button
               type="button"
               className={dashboardIconButtonClass}
@@ -10664,6 +10747,310 @@ export function AppShell() {
           </p>
         ) : (
           <>
+            {isAffirmationOcrPanelOpen ? (
+              <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 space-y-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                  {isFrench ? "Photo → Texte → Affirmation" : "Photo → Text → Affirmation"}
+                </p>
+
+                {/* Step 1 — Image capture */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-foreground">
+                    {isFrench ? "1. Choisir une image" : "1. Choose an image"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <label className={`${controlButtonClass} cursor-pointer`}>
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                        <path d="M2 7a2 2 0 012-2h1.5l1-2h7l1 2H16a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V7z" strokeLinejoin="round"/>
+                        <circle cx="10" cy="11" r="2.5"/>
+                      </svg>
+                      {isFrench ? "Prendre une photo" : "Take a photo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="sr-only"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setAffirmationOcrError(null);
+                          setAffirmationOcrExtractedText("");
+                          setAffirmationOcrReformattedText("");
+                          const dataUrl = await readFileAsDataUrl(file);
+                          setAffirmationOcrImagePreview(dataUrl);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <label className={`${controlButtonClass} cursor-pointer`}>
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                        <path d="M4 4h12v12H4z" strokeLinejoin="round"/>
+                        <circle cx="7.5" cy="7.5" r="1.5"/>
+                        <path d="M4 14l4-4 3 3 2-2 3 3" strokeLinejoin="round"/>
+                      </svg>
+                      {isFrench ? "Choisir un fichier" : "Choose a file"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setAffirmationOcrError(null);
+                          setAffirmationOcrExtractedText("");
+                          setAffirmationOcrReformattedText("");
+                          const dataUrl = await readFileAsDataUrl(file);
+                          setAffirmationOcrImagePreview(dataUrl);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                  {affirmationOcrImagePreview ? (
+                    <div className="relative inline-block">
+                      <img
+                        src={affirmationOcrImagePreview}
+                        alt={isFrench ? "Aperçu" : "Preview"}
+                        className="max-h-40 rounded-lg border border-indigo-200 object-contain shadow-sm"
+                      />
+                      <button
+                        type="button"
+                        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-line text-muted hover:bg-rose-100 hover:text-rose-600"
+                        onClick={() => {
+                          setAffirmationOcrImagePreview(null);
+                          setAffirmationOcrExtractedText("");
+                          setAffirmationOcrReformattedText("");
+                          setAffirmationOcrError(null);
+                        }}
+                        aria-label={isFrench ? "Supprimer l'image" : "Remove image"}
+                      >
+                        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                          <path d="M2 2l8 8M10 2l-8 8" strokeLinecap="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Step 2 — OCR extract */}
+                {affirmationOcrImagePreview ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-foreground">
+                        {isFrench ? "2. Extraire le texte" : "2. Extract text"}
+                      </p>
+                      <button
+                        type="button"
+                        className={controlButtonClass}
+                        disabled={isAffirmationOcrExtracting}
+                        onClick={async () => {
+                          if (!authToken || !affirmationOcrImagePreview) return;
+                          setIsAffirmationOcrExtracting(true);
+                          setAffirmationOcrError(null);
+                          setAffirmationOcrReformattedText("");
+                          try {
+                            const result = await extractAffirmationTextFromImage(affirmationOcrImagePreview, authToken);
+                            if (result.status === "empty" || result.text.trim().length === 0) {
+                              setAffirmationOcrError(
+                                isFrench
+                                  ? "Aucun texte detecte dans l'image. Essayez avec une image plus nette."
+                                  : "No text detected in the image. Try a clearer image."
+                              );
+                            } else {
+                              setAffirmationOcrExtractedText(result.text);
+                              if (result.warning) setAffirmationOcrError(result.warning);
+                            }
+                          } catch (err) {
+                            setAffirmationOcrError(
+                              err instanceof Error ? err.message : (isFrench ? "Erreur OCR." : "OCR error.")
+                            );
+                          } finally {
+                            setIsAffirmationOcrExtracting(false);
+                          }
+                        }}
+                      >
+                        {isAffirmationOcrExtracting ? (
+                          <>
+                            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
+                            </svg>
+                            {isFrench ? "Extraction..." : "Extracting..."}
+                          </>
+                        ) : (
+                          <>
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                              <path d="M4 5h12M4 8h8M4 11h6M4 14h4" strokeLinecap="round"/>
+                            </svg>
+                            {isFrench ? "Extraire le texte" : "Extract text"}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {affirmationOcrExtractedText ? (
+                      <textarea
+                        className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-y min-h-[80px]"
+                        value={affirmationOcrExtractedText}
+                        onChange={(e) => {
+                          setAffirmationOcrExtractedText(e.target.value);
+                          setAffirmationOcrReformattedText("");
+                        }}
+                        placeholder={isFrench ? "Texte extrait (modifiable)..." : "Extracted text (editable)..."}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Step 3 — AI reformat */}
+                {affirmationOcrExtractedText ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-foreground">
+                      {isFrench ? "3. Reformater avec l'IA (optionnel)" : "3. AI reformat (optional)"}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(isFrench
+                        ? [
+                            "En faire une affirmation positive au présent",
+                            "Reformuler en une phrase percutante",
+                            "Traduire en français et reformater",
+                          ]
+                        : [
+                            "Turn into a positive present-tense affirmation",
+                            "Rewrite as one impactful sentence",
+                            "Translate to English and reformat",
+                          ]
+                      ).map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                            affirmationOcrCustomInstruction === preset
+                              ? "border-indigo-400 bg-indigo-100 text-indigo-700"
+                              : "border-line bg-surface text-muted hover:border-indigo-300 hover:text-indigo-600"
+                          }`}
+                          onClick={() =>
+                            setAffirmationOcrCustomInstruction((prev) => (prev === preset ? "" : preset))
+                          }
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      placeholder={
+                        isFrench
+                          ? "Ou saisissez une instruction personnalisee..."
+                          : "Or type a custom instruction..."
+                      }
+                      value={affirmationOcrCustomInstruction}
+                      onChange={(e) => setAffirmationOcrCustomInstruction(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      disabled={isAffirmationOcrReformatting}
+                      onClick={async () => {
+                        if (!authToken || !affirmationOcrExtractedText.trim()) return;
+                        setIsAffirmationOcrReformatting(true);
+                        setAffirmationOcrError(null);
+                        try {
+                          const result = await reformatAffirmationText(
+                            affirmationOcrExtractedText,
+                            affirmationOcrCustomInstruction.trim() || undefined,
+                            activeLocale,
+                            authToken
+                          );
+                          setAffirmationOcrReformattedText(result);
+                        } catch (err) {
+                          setAffirmationOcrError(
+                            err instanceof Error ? err.message : (isFrench ? "Erreur IA." : "AI error.")
+                          );
+                        } finally {
+                          setIsAffirmationOcrReformatting(false);
+                        }
+                      }}
+                    >
+                      {isAffirmationOcrReformatting ? (
+                        <>
+                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
+                          </svg>
+                          {isFrench ? "Traitement IA..." : "AI processing..."}
+                        </>
+                      ) : (
+                        <>
+                          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                            <path d="M10 2l1.5 4.5L16 8l-4.5 1.5L10 14l-1.5-4.5L4 8l4.5-1.5L10 2z" strokeLinejoin="round"/>
+                          </svg>
+                          {isFrench ? "Traiter avec l'IA" : "Process with AI"}
+                        </>
+                      )}
+                    </button>
+                    {affirmationOcrReformattedText ? (
+                      <div className="rounded-lg border border-indigo-200 bg-white p-3 text-sm text-foreground">
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-500">
+                          {isFrench ? "Résultat IA" : "AI result"}
+                        </p>
+                        <p className="whitespace-pre-wrap">{affirmationOcrReformattedText}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Error */}
+                {affirmationOcrError ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    {affirmationOcrError}
+                  </p>
+                ) : null}
+
+                {/* Step 4 — Insert */}
+                {(affirmationOcrExtractedText || affirmationOcrReformattedText) ? (
+                  <div className="flex flex-wrap gap-2 border-t border-indigo-100 pt-3">
+                    <button
+                      type="button"
+                      className={primaryButtonClass}
+                      onClick={() => {
+                        const textToInsert = affirmationOcrReformattedText || affirmationOcrExtractedText;
+                        updateDayAffirmationDraft(textToInsert);
+                        setDayAffirmationErrorMessage(null);
+                        setIsAffirmationOcrPanelOpen(false);
+                        setAffirmationOcrImagePreview(null);
+                        setAffirmationOcrExtractedText("");
+                        setAffirmationOcrReformattedText("");
+                        setAffirmationOcrCustomInstruction("");
+                        setAffirmationOcrError(null);
+                      }}
+                    >
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                        <path d="M4 10h12M10 4l6 6-6 6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      {isFrench ? "Insérer (remplacer)" : "Insert (replace)"}
+                    </button>
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      onClick={() => {
+                        const textToAppend = affirmationOcrReformattedText || affirmationOcrExtractedText;
+                        const current = dayAffirmationDraftRef.current.trim();
+                        updateDayAffirmationDraft(current ? `${current}\n\n${textToAppend}` : textToAppend);
+                        setDayAffirmationErrorMessage(null);
+                        setIsAffirmationOcrPanelOpen(false);
+                        setAffirmationOcrImagePreview(null);
+                        setAffirmationOcrExtractedText("");
+                        setAffirmationOcrReformattedText("");
+                        setAffirmationOcrCustomInstruction("");
+                        setAffirmationOcrError(null);
+                      }}
+                    >
+                      {isFrench ? "Ajouter a la fin" : "Append to end"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="mt-4 space-y-3">
               <div className="block text-sm font-semibold text-foreground">
                 <span>{isFrench ? "Phrase du jour" : "Today statement"}</span>
