@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
-export type ApiErrorCode = "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" | "SERVICE_UNAVAILABLE";
+export type ApiErrorCode = "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" | "SERVICE_UNAVAILABLE" | "OCR_UNAVAILABLE" | "AI_UNAVAILABLE" | "AI_ERROR";
 
 export function sendError(
   reply: {
