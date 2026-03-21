@@ -640,13 +640,13 @@ const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
 };
 const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "overview",
-  "gamingTrack",
+  "board",
   "dailyControls",
   "affirmation",
   "reminders",
-  "notes",
-  "board",
   "bilan",
+  "notes",
+  "gamingTrack",
 ];
 const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
   overview: false,
@@ -5206,6 +5206,10 @@ function AppNavbar({
             <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
               {isFrench ? "Ma journée" : "My Day"}
             </p>
+            <a href="#dailyControls" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>
+              {isFrench ? "Pilotage du jour" : "Day Controls"}
+            </a>
             <a href="#affirmation" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
               <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
               {isFrench ? "Affirmation" : "Affirmation"}
@@ -10235,6 +10239,360 @@ export function AppShell() {
         )}
       </section>
 
+      <section id="dailyControls"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("dailyControls")}`}
+        style={{ order: getDashboardBlockVisualOrder("dailyControls"), animationDelay: "0.1s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("dailyControls", event)}
+        onDrop={(event) => handleDashboardBlockDrop("dailyControls", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className={sectionHeaderClass}>
+            {isFrench ? "Pilotage du jour" : "Day Controls"}
+          </h2>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("dailyControls", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("dailyControls")}
+              title={getDashboardDragHandleLabel("dailyControls")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("dailyControls")}
+              aria-expanded={!dashboardBlockCollapsed.dailyControls}
+              aria-label={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
+              title={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.dailyControls} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.dailyControls ? (
+          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-1 rounded-lg bg-surface-soft p-1">
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
+                  onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
+                  disabled={isMutationPending}
+                  aria-label={isFrench ? "Jour precedent" : "Previous day"}
+                >
+                  <ArrowLeftIcon />
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-foreground"
+                  onClick={() => handleDateChange(toDateInputValue(new Date()))}
+                  disabled={isMutationPending}
+                >
+                  {isFrench ? "Aujourd'hui" : "Today"}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
+                  onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
+                  disabled={isMutationPending}
+                  aria-label={isFrench ? "Jour suivant" : "Next day"}
+                >
+                  <ArrowRightIcon />
+                </button>
+              </div>
+
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  if (event.target.value) {
+                    handleDateChange(event.target.value);
+                  }
+                }}
+                disabled={isMutationPending}
+                className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-foreground outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
+              />
+
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={controlButtonClass}
+                  onClick={handleCarryOverYesterday}
+                  disabled={isMutationPending || isLoading || isDayAffirmationSaving}
+                >
+                  <CopyIcon />
+                  {isCarryingOverYesterday
+                    ? isFrench
+                      ? "Copie..."
+                      : "Carrying..."
+                    : isFrench
+                    ? "Copier d'hier"
+                    : "Carry Over"}
+                </button>
+                <button
+                  type="button"
+                  className={primaryButtonClass}
+                  onClick={() => openCreateTaskDialog()}
+                  disabled={isMutationPending}
+                >
+                  <PlusIcon />
+                  {isFrench ? "Nouvelle tache" : "New Task"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3 rounded-lg bg-surface-soft px-4 py-2.5">
+              <p className="flex-1 text-sm text-muted">
+                {isLoading
+                  ? isFrench
+                    ? "Chargement des taches..."
+                    : "Loading tasks..."
+                  : isFrench
+                  ? `${tasks.length} tache${tasks.length === 1 ? "" : "s"} pour la date selectionnee`
+                  : `${tasks.length} task${tasks.length === 1 ? "" : "s"} for the selected date`}
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-24 rounded-full bg-line">
+                  <div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${completionRate}%` }} />
+                </div>
+                <span className="text-xs font-medium text-muted">{completionRate}%</span>
+              </div>
+            </div>
+
+            {googleCalendarConnections.length > 0 ? (
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {isFrench ? "Evenements du calendrier" : "Calendar Events"}
+                  </h3>
+                  <span className="text-xs text-muted">
+                    {isCalendarEventsLoading
+                      ? (isFrench ? "Chargement..." : "Loading...")
+                      : calendarEventSearchQuery.trim()
+                        ? `${filteredCalendarEvents.length}/${calendarEvents.length}`
+                        : `${calendarEvents.length} ${isFrench ? "evenement" : "event"}${calendarEvents.length === 1 ? "" : "s"}`}
+                  </span>
+                </div>
+                {calendarEvents.length > 1 ? (
+                  <div className="relative mt-2">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true">
+                      <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={calendarEventSearchQuery}
+                      onChange={(e) => setCalendarEventSearchQuery(e.target.value)}
+                      placeholder={isFrench ? "Rechercher un evenement..." : "Search events..."}
+                      className="w-full rounded-lg border border-line bg-surface px-3 py-2 pl-9 pr-8 text-sm text-foreground outline-none transition-all placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    />
+                    {calendarEventSearchQuery ? (
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                        onClick={() => setCalendarEventSearchQuery("")}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+                          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                        </svg>
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {filteredCalendarEvents.length > 0 ? (
+                  <div className="mt-2 rounded-lg border border-line bg-surface-soft overflow-hidden divide-y divide-line">
+                    {filteredCalendarEvents.map((event) => {
+                      const isExpanded = expandedCalendarEventId === event.id;
+                      const hasNote = Boolean(event.note);
+                      const hasLinkedTasks = event.linkedTasks.length > 0;
+
+                      return (
+                        <div key={event.id}>
+                          {/* Compact row — always visible */}
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface"
+                            onClick={() => setExpandedCalendarEventId(isExpanded ? null : event.id)}
+                          >
+                            <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: connectionColorMap.get(event.connectionId) ?? "#6366f1" }} />
+                            <span className="shrink-0 text-xs tabular-nums text-muted">
+                              {formatCalendarEventTimeLabel(event, activeLocale, activeTimeZone)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                              {event.title}
+                            </span>
+                            {hasNote ? (
+                              <span className="shrink-0 text-xs text-accent" title={isFrench ? "Note interne" : "Internal note"}>
+                                <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
+                                  <path d="M3.505 2.365A41.369 41.369 0 0 1 9 2c1.863 0 3.697.124 5.495.365 1.247.167 2.18 1.249 2.18 2.487V11.5a2.5 2.5 0 0 1-2.5 2.5h-1.862l-3.27 3.27a.75.75 0 0 1-1.293-.519V14h-.5A2.5 2.5 0 0 1 4.75 11.5V4.852c0-1.238.933-2.32 2.18-2.487h-3.425Z" />
+                                </svg>
+                              </span>
+                            ) : null}
+                            {hasLinkedTasks ? (
+                              <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                                {event.linkedTasks.length}
+                              </span>
+                            ) : null}
+                            <svg
+                              viewBox="0 0 20 20"
+                              aria-hidden="true"
+                              className={`h-4 w-4 shrink-0 text-muted transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                            >
+                              <path
+                                d="M5.75 7.75L10 12.25L14.25 7.75"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="1.75"
+                              />
+                            </svg>
+                          </button>
+
+                          {/* Expanded detail panel */}
+                          {isExpanded ? (
+                            <div className="border-t border-line bg-surface px-4 py-3 space-y-3">
+                              {/* Title + link + location + create task */}
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  {event.htmlLink ? (
+                                    <a
+                                      href={event.htmlLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm font-medium text-accent hover:underline"
+                                    >
+                                      {event.title} &#8599;
+                                    </a>
+                                  ) : null}
+                                  {event.location ? (
+                                    <p className="mt-0.5 text-xs text-muted truncate">
+                                      <svg viewBox="0 0 20 20" fill="currentColor" className="mr-1 inline h-3 w-3 align-[-1px]" aria-hidden="true">
+                                        <path fillRule="evenodd" d="m9.69 18.933.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 0 0 .281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 9A7 7 0 1 0 3 9c0 3.492 1.698 5.988 3.355 7.584a13.731 13.731 0 0 0 2.273 1.765 11.842 11.842 0 0 0 .976.544l.062.029.018.008.006.003ZM10 11.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Z" clipRule="evenodd" />
+                                      </svg>
+                                      {event.location}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  className={controlButtonClass}
+                                  onClick={() => handleCreateTaskFromCalendarEvent(event)}
+                                  disabled={pendingCalendarEventTaskIds.includes(event.id)}
+                                >
+                                  <PlusIcon />
+                                  {isFrench ? "Nouvelle tache" : "New Task"}
+                                </button>
+                              </div>
+
+                              {/* Description */}
+                              {event.description ? (
+                                <p className="text-xs text-muted whitespace-pre-wrap leading-relaxed">
+                                  {event.description}
+                                </p>
+                              ) : null}
+
+                              {/* Linked tasks */}
+                              {hasLinkedTasks ? (
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                    {isFrench ? "Taches liees" : "Linked Tasks"}
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">
+                                    {event.linkedTasks.map((linkedTask) => (
+                                      <button
+                                        key={linkedTask.id}
+                                        type="button"
+                                        className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-xs text-foreground hover:bg-surface"
+                                        onClick={() => {
+                                          const task = tasks.find((candidate) => candidate.id === linkedTask.id);
+                                          if (task) {
+                                            openEditTaskDialog(task);
+                                          }
+                                        }}
+                                      >
+                                        {linkedTask.title}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {/* Internal Note */}
+                              <div className="space-y-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                  {isFrench ? "Note interne" : "Internal Note"}
+                                </p>
+                                {event.note ? (
+                                  <>
+                                    <p className="rounded-xl border border-line bg-white/70 px-3 py-2 text-sm text-foreground">
+                                      {event.note.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || (isFrench ? "Note enregistree." : "Saved note.")}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        className={controlButtonClass}
+                                        onClick={() =>
+                                          openEditNoteDialog(
+                                            notes.find((note) => note.id === event.note!.id) ?? {
+                                              id: event.note!.id,
+                                              title: event.note!.title,
+                                              body: event.note!.body,
+                                              color: event.note!.color,
+                                              targetDate: event.note!.targetDate,
+                                              calendarEventId: event.note!.calendarEventId,
+                                              createdAt: event.note!.createdAt,
+                                              updatedAt: event.note!.updatedAt,
+                                              linkedCalendarEvent: {
+                                                id: event.id,
+                                                title: event.title,
+                                                startTime: event.startTime,
+                                                endTime: event.endTime,
+                                                htmlLink: event.htmlLink,
+                                              },
+                                            }
+                                          )
+                                        }
+                                      >
+                                        <SaveIcon />
+                                        {isFrench ? "Ouvrir la note" : "Open note"}
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={controlButtonClass}
+                                    onClick={() => openCreateNoteDialogForCalendarEvent(event)}
+                                  >
+                                    <PlusIcon />
+                                    {isFrench ? "Creer une note pour cet evenement" : "Create note for this event"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : !isCalendarEventsLoading ? (
+                  <p className="mt-2 text-xs text-muted">
+                    {isFrench ? "Aucun evenement pour cette date." : "No events for this date."}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
+
       <section
         id="affirmation"
         className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getDashboardDropClassName("affirmation")}`}
@@ -11577,360 +11935,6 @@ export function AppShell() {
             {gamingTrackErrorMessage}
           </p>
         ) : null}
-      </section>
-
-      <section
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("dailyControls")}`}
-        style={{ order: getDashboardBlockVisualOrder("dailyControls"), animationDelay: "0.1s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("dailyControls", event)}
-        onDrop={(event) => handleDashboardBlockDrop("dailyControls", event)}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={sectionHeaderClass}>
-            {isFrench ? "Pilotage du jour" : "Day Controls"}
-          </h2>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("dailyControls", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("dailyControls")}
-              title={getDashboardDragHandleLabel("dailyControls")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("dailyControls")}
-              aria-expanded={!dashboardBlockCollapsed.dailyControls}
-              aria-label={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
-              title={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.dailyControls} />
-            </button>
-          </div>
-        </div>
-
-        {dashboardBlockCollapsed.dailyControls ? (
-          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
-        ) : (
-          <>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-1 rounded-lg bg-surface-soft p-1">
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
-                  onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
-                  disabled={isMutationPending}
-                  aria-label={isFrench ? "Jour precedent" : "Previous day"}
-                >
-                  <ArrowLeftIcon />
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-foreground"
-                  onClick={() => handleDateChange(toDateInputValue(new Date()))}
-                  disabled={isMutationPending}
-                >
-                  {isFrench ? "Aujourd'hui" : "Today"}
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
-                  onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
-                  disabled={isMutationPending}
-                  aria-label={isFrench ? "Jour suivant" : "Next day"}
-                >
-                  <ArrowRightIcon />
-                </button>
-              </div>
-
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => {
-                  if (event.target.value) {
-                    handleDateChange(event.target.value);
-                  }
-                }}
-                disabled={isMutationPending}
-                className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-foreground outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
-              />
-
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className={controlButtonClass}
-                  onClick={handleCarryOverYesterday}
-                  disabled={isMutationPending || isLoading || isDayAffirmationSaving}
-                >
-                  <CopyIcon />
-                  {isCarryingOverYesterday
-                    ? isFrench
-                      ? "Copie..."
-                      : "Carrying..."
-                    : isFrench
-                    ? "Copier d'hier"
-                    : "Carry Over"}
-                </button>
-                <button
-                  type="button"
-                  className={primaryButtonClass}
-                  onClick={() => openCreateTaskDialog()}
-                  disabled={isMutationPending}
-                >
-                  <PlusIcon />
-                  {isFrench ? "Nouvelle tache" : "New Task"}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center gap-3 rounded-lg bg-surface-soft px-4 py-2.5">
-              <p className="flex-1 text-sm text-muted">
-                {isLoading
-                  ? isFrench
-                    ? "Chargement des taches..."
-                    : "Loading tasks..."
-                  : isFrench
-                  ? `${tasks.length} tache${tasks.length === 1 ? "" : "s"} pour la date selectionnee`
-                  : `${tasks.length} task${tasks.length === 1 ? "" : "s"} for the selected date`}
-              </p>
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-24 rounded-full bg-line">
-                  <div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${completionRate}%` }} />
-                </div>
-                <span className="text-xs font-medium text-muted">{completionRate}%</span>
-              </div>
-            </div>
-
-            {googleCalendarConnections.length > 0 ? (
-              <div className="mt-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {isFrench ? "Evenements du calendrier" : "Calendar Events"}
-                  </h3>
-                  <span className="text-xs text-muted">
-                    {isCalendarEventsLoading
-                      ? (isFrench ? "Chargement..." : "Loading...")
-                      : calendarEventSearchQuery.trim()
-                        ? `${filteredCalendarEvents.length}/${calendarEvents.length}`
-                        : `${calendarEvents.length} ${isFrench ? "evenement" : "event"}${calendarEvents.length === 1 ? "" : "s"}`}
-                  </span>
-                </div>
-                {calendarEvents.length > 1 ? (
-                  <div className="relative mt-2">
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true">
-                      <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
-                    </svg>
-                    <input
-                      type="text"
-                      value={calendarEventSearchQuery}
-                      onChange={(e) => setCalendarEventSearchQuery(e.target.value)}
-                      placeholder={isFrench ? "Rechercher un evenement..." : "Search events..."}
-                      className="w-full rounded-lg border border-line bg-surface px-3 py-2 pl-9 pr-8 text-sm text-foreground outline-none transition-all placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15"
-                    />
-                    {calendarEventSearchQuery ? (
-                      <button
-                        type="button"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
-                        onClick={() => setCalendarEventSearchQuery("")}
-                      >
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
-                          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-                        </svg>
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-                {filteredCalendarEvents.length > 0 ? (
-                  <div className="mt-2 rounded-lg border border-line bg-surface-soft overflow-hidden divide-y divide-line">
-                    {filteredCalendarEvents.map((event) => {
-                      const isExpanded = expandedCalendarEventId === event.id;
-                      const hasNote = Boolean(event.note);
-                      const hasLinkedTasks = event.linkedTasks.length > 0;
-
-                      return (
-                        <div key={event.id}>
-                          {/* Compact row — always visible */}
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface"
-                            onClick={() => setExpandedCalendarEventId(isExpanded ? null : event.id)}
-                          >
-                            <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: connectionColorMap.get(event.connectionId) ?? "#6366f1" }} />
-                            <span className="shrink-0 text-xs tabular-nums text-muted">
-                              {formatCalendarEventTimeLabel(event, activeLocale, activeTimeZone)}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                              {event.title}
-                            </span>
-                            {hasNote ? (
-                              <span className="shrink-0 text-xs text-accent" title={isFrench ? "Note interne" : "Internal note"}>
-                                <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
-                                  <path d="M3.505 2.365A41.369 41.369 0 0 1 9 2c1.863 0 3.697.124 5.495.365 1.247.167 2.18 1.249 2.18 2.487V11.5a2.5 2.5 0 0 1-2.5 2.5h-1.862l-3.27 3.27a.75.75 0 0 1-1.293-.519V14h-.5A2.5 2.5 0 0 1 4.75 11.5V4.852c0-1.238.933-2.32 2.18-2.487h-3.425Z" />
-                                </svg>
-                              </span>
-                            ) : null}
-                            {hasLinkedTasks ? (
-                              <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
-                                {event.linkedTasks.length}
-                              </span>
-                            ) : null}
-                            <svg
-                              viewBox="0 0 20 20"
-                              aria-hidden="true"
-                              className={`h-4 w-4 shrink-0 text-muted transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
-                            >
-                              <path
-                                d="M5.75 7.75L10 12.25L14.25 7.75"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="1.75"
-                              />
-                            </svg>
-                          </button>
-
-                          {/* Expanded detail panel */}
-                          {isExpanded ? (
-                            <div className="border-t border-line bg-surface px-4 py-3 space-y-3">
-                              {/* Title + link + location + create task */}
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  {event.htmlLink ? (
-                                    <a
-                                      href={event.htmlLink}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-sm font-medium text-accent hover:underline"
-                                    >
-                                      {event.title} &#8599;
-                                    </a>
-                                  ) : null}
-                                  {event.location ? (
-                                    <p className="mt-0.5 text-xs text-muted truncate">
-                                      <svg viewBox="0 0 20 20" fill="currentColor" className="mr-1 inline h-3 w-3 align-[-1px]" aria-hidden="true">
-                                        <path fillRule="evenodd" d="m9.69 18.933.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 0 0 .281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 9A7 7 0 1 0 3 9c0 3.492 1.698 5.988 3.355 7.584a13.731 13.731 0 0 0 2.273 1.765 11.842 11.842 0 0 0 .976.544l.062.029.018.008.006.003ZM10 11.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Z" clipRule="evenodd" />
-                                      </svg>
-                                      {event.location}
-                                    </p>
-                                  ) : null}
-                                </div>
-                                <button
-                                  type="button"
-                                  className={controlButtonClass}
-                                  onClick={() => handleCreateTaskFromCalendarEvent(event)}
-                                  disabled={pendingCalendarEventTaskIds.includes(event.id)}
-                                >
-                                  <PlusIcon />
-                                  {isFrench ? "Nouvelle tache" : "New Task"}
-                                </button>
-                              </div>
-
-                              {/* Description */}
-                              {event.description ? (
-                                <p className="text-xs text-muted whitespace-pre-wrap leading-relaxed">
-                                  {event.description}
-                                </p>
-                              ) : null}
-
-                              {/* Linked tasks */}
-                              {hasLinkedTasks ? (
-                                <div>
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                                    {isFrench ? "Taches liees" : "Linked Tasks"}
-                                  </p>
-                                  <div className="mt-1 flex flex-wrap gap-1.5">
-                                    {event.linkedTasks.map((linkedTask) => (
-                                      <button
-                                        key={linkedTask.id}
-                                        type="button"
-                                        className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-xs text-foreground hover:bg-surface"
-                                        onClick={() => {
-                                          const task = tasks.find((candidate) => candidate.id === linkedTask.id);
-                                          if (task) {
-                                            openEditTaskDialog(task);
-                                          }
-                                        }}
-                                      >
-                                        {linkedTask.title}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {/* Internal Note */}
-                              <div className="space-y-2">
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                                  {isFrench ? "Note interne" : "Internal Note"}
-                                </p>
-                                {event.note ? (
-                                  <>
-                                    <p className="rounded-xl border border-line bg-white/70 px-3 py-2 text-sm text-foreground">
-                                      {event.note.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || (isFrench ? "Note enregistree." : "Saved note.")}
-                                    </p>
-                                    <div className="flex flex-wrap gap-2">
-                                      <button
-                                        type="button"
-                                        className={controlButtonClass}
-                                        onClick={() =>
-                                          openEditNoteDialog(
-                                            notes.find((note) => note.id === event.note!.id) ?? {
-                                              id: event.note!.id,
-                                              title: event.note!.title,
-                                              body: event.note!.body,
-                                              color: event.note!.color,
-                                              targetDate: event.note!.targetDate,
-                                              calendarEventId: event.note!.calendarEventId,
-                                              createdAt: event.note!.createdAt,
-                                              updatedAt: event.note!.updatedAt,
-                                              linkedCalendarEvent: {
-                                                id: event.id,
-                                                title: event.title,
-                                                startTime: event.startTime,
-                                                endTime: event.endTime,
-                                                htmlLink: event.htmlLink,
-                                              },
-                                            }
-                                          )
-                                        }
-                                      >
-                                        <SaveIcon />
-                                        {isFrench ? "Ouvrir la note" : "Open note"}
-                                      </button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className={controlButtonClass}
-                                    onClick={() => openCreateNoteDialogForCalendarEvent(event)}
-                                  >
-                                    <PlusIcon />
-                                    {isFrench ? "Creer une note pour cet evenement" : "Create note for this event"}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : !isCalendarEventsLoading ? (
-                  <p className="mt-2 text-xs text-muted">
-                    {isFrench ? "Aucun evenement pour cette date." : "No events for this date."}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </>
-        )}
       </section>
 
       {isNoteDialogOpen ? (
