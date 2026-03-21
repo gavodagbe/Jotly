@@ -148,17 +148,17 @@ async function extractPdfText(buffer: Buffer): Promise<AssistantDocumentExtracti
   }
 }
 
-async function extractImageText(buffer: Buffer): Promise<AssistantDocumentExtraction> {
-  const moduleValue = (await loadOptionalModule("tesseract.js")) as
-    | {
-        recognize?: (
-          image: Buffer,
-          languages?: string
-        ) => Promise<{ data?: { text?: string } }>;
-      }
-    | null;
+type TesseractModule = {
+  recognize?: (image: Buffer, languages?: string) => Promise<{ data?: { text?: string } }>;
+  default?: { recognize?: (image: Buffer, languages?: string) => Promise<{ data?: { text?: string } }> };
+};
 
-  if (!moduleValue?.recognize) {
+async function extractImageText(buffer: Buffer): Promise<AssistantDocumentExtraction> {
+  const moduleValue = (await loadOptionalModule("tesseract.js")) as TesseractModule | null;
+
+  const recognize = moduleValue?.recognize ?? moduleValue?.default?.recognize;
+
+  if (!recognize) {
     return {
       text: "",
       status: "unsupported",
@@ -168,7 +168,7 @@ async function extractImageText(buffer: Buffer): Promise<AssistantDocumentExtrac
   }
 
   try {
-    const result = await moduleValue.recognize(buffer, "eng+fra");
+    const result = await recognize(buffer, "eng+fra");
     const text = normalizePlainText(result.data?.text ?? "");
 
     return {
