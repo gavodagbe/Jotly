@@ -5171,13 +5171,17 @@ function AppNavbar({
             </button>
           </div>
           <nav className="space-y-0.5">
-            <p className="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{isFrench ? "Navigation" : "Navigation"}</p>
+
+            {/* ── ESPACE DE TRAVAIL ── */}
+            <p className="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+              {isFrench ? "Espace de travail" : "Workspace"}
+            </p>
             <a href="#overview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
               {isFrench ? "Vue d'ensemble" : "Overview"}
             </a>
             <a href="#board" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
               {isFrench ? "Tableau Kanban" : "Kanban Board"}
             </a>
             <button
@@ -5190,24 +5194,41 @@ function AppNavbar({
               onClick={onOpenProjectPlanning}
               disabled={isBusy || !onOpenProjectPlanning}
             >
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7">
                 <rect x="2" y="4" width="16" height="2.5" rx="1"/>
                 <rect x="2" y="8.75" width="11" height="2.5" rx="1"/>
                 <rect x="2" y="13.5" width="14" height="2.5" rx="1"/>
               </svg>
               <span className="flex-1">{isFrench ? "Planification projet" : "Project Planning"}</span>
             </button>
+
+            {/* ── MA JOURNÉE ── */}
+            <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+              {isFrench ? "Ma journée" : "My Day"}
+            </p>
+            <a href="#affirmation" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
+              {isFrench ? "Affirmation" : "Affirmation"}
+            </a>
+            <a href="#reminders" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 4a5 5 0 00-5 5v3l-1 2h12l-1-2V9a5 5 0 00-5-5zM8.5 16a1.5 1.5 0 003 0" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {isFrench ? "Rappels" : "Reminders"}
+            </a>
+            <a href="#bilan" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
+              {isFrench ? "Bilan du jour" : "Day Bilan"}
+            </a>
             <button
               type="button"
               className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ${
                 isTaskAlertsPanelOpen
-                  ? "bg-accent-soft text-accent"
+                  ? "bg-rose-50 text-rose-600"
                   : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
               }`}
               onClick={onOpenTaskAlerts}
               disabled={isBusy || !onOpenTaskAlerts}
             >
-              <span className="relative inline-flex items-center justify-center text-muted">
+              <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted">
                 <BellIcon />
                 {taskAlertsCount > 0 ? (
                   <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
@@ -5217,25 +5238,23 @@ function AppNavbar({
               </span>
               <span className="flex-1">{taskAlertsLabel}</span>
             </button>
-            <a href="#affirmation" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
-              {isFrench ? "Affirmation" : "Affirmation"}
-            </a>
-            <a href="#reminders" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 4a5 5 0 00-5 5v3l-1 2h12l-1-2V9a5 5 0 00-5-5zM8.5 16a1.5 1.5 0 003 0" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              {isFrench ? "Rappels" : "Reminders"}
-            </a>
-            <a href="#bilan" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
-              {isFrench ? "Bilan du jour" : "Day Bilan"}
+
+            {/* ── MON ESPACE ── */}
+            <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+              {isFrench ? "Mon espace" : "My Space"}
+            </p>
+            <a href="#notes" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>
+              {isFrench ? "Notes" : "Notes"}
             </a>
             <a href="#gaming" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="M5 3h10l-1.5 7a3.5 3.5 0 01-7 0L5 3z" strokeLinejoin="round"/>
+                <path d="M10 13.5V16" strokeLinecap="round"/>
+                <path d="M7 16h6" strokeLinecap="round"/>
+                <path d="M3 3h2M15 3h2" strokeLinecap="round"/>
+              </svg>
               Gaming Track
-            </a>
-            <a href="#notes" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>
-              {isFrench ? "Notes" : "Notes"}
             </a>
           </nav>
         </div>
