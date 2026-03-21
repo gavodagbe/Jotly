@@ -9957,6 +9957,1092 @@ export function AppShell() {
       </header>
 
       <section
+        id="board"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("board")}`}
+        style={{ order: getDashboardBlockVisualOrder("board"), animationDelay: "0.2s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("board", event)}
+        onDrop={(event) => handleDashboardBlockDrop("board", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("board", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("board")}
+              title={getDashboardDragHandleLabel("board")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("board")}
+              aria-expanded={!dashboardBlockCollapsed.board}
+              aria-label={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
+              title={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.board} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.board ? (
+          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
+        ) : (
+          <>
+            <section className="mt-4 rounded-2xl border border-line bg-surface-soft/60 p-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.9fr))_auto]">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Recherche" : "Search"}
+                  <div className="relative mt-2">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 inline-flex items-center text-muted">
+                      <SearchIcon />
+                    </span>
+                    <input
+                      type="search"
+                      value={taskFilterValues.query}
+                      onChange={(event) => {
+                        setTaskFilterValues((currentValues) => ({
+                          ...currentValues,
+                          query: event.target.value,
+                        }));
+                      }}
+                      className={`${boardFilterFieldClass} mt-0 pl-10 pr-10`}
+                      placeholder={
+                        isFrench
+                          ? "Titre, projet, description..."
+                          : "Title, project, description..."
+                      }
+                    />
+                    {taskFilterValues.query ? (
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-md px-1 text-muted transition-colors hover:text-foreground"
+                        onClick={() => {
+                          setTaskFilterValues((currentValues) => ({
+                            ...currentValues,
+                            query: "",
+                          }));
+                        }}
+                        aria-label={isFrench ? "Effacer la recherche" : "Clear search"}
+                        title={isFrench ? "Effacer la recherche" : "Clear search"}
+                      >
+                        <CloseIcon />
+                      </button>
+                    ) : null}
+                  </div>
+                </label>
+
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Statut" : "Status"}
+                  <select
+                    value={taskFilterValues.status}
+                    onChange={(event) => {
+                      setTaskFilterValues((currentValues) => ({
+                        ...currentValues,
+                        status: isTaskStatus(event.target.value) ? event.target.value : "all",
+                      }));
+                    }}
+                    className={`${boardFilterFieldClass} mt-2`}
+                  >
+                    <option value="all">{isFrench ? "Tous les statuts" : "All statuses"}</option>
+                    {boardColumns.map((column) => (
+                      <option key={column.status} value={column.status}>
+                        {column.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Priorite" : "Priority"}
+                  <select
+                    value={taskFilterValues.priority}
+                    onChange={(event) => {
+                      setTaskFilterValues((currentValues) => ({
+                        ...currentValues,
+                        priority: isTaskPriority(event.target.value) ? event.target.value : "all",
+                      }));
+                    }}
+                    className={`${boardFilterFieldClass} mt-2`}
+                  >
+                    <option value="all">{isFrench ? "Toutes les priorites" : "All priorities"}</option>
+                    {priorityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Projet" : "Project"}
+                  <select
+                    value={taskFilterValues.project}
+                    onChange={(event) => {
+                      setTaskFilterValues((currentValues) => ({
+                        ...currentValues,
+                        project: event.target.value,
+                      }));
+                    }}
+                    className={`${boardFilterFieldClass} mt-2`}
+                  >
+                    <option value="">{isFrench ? "Tous les projets" : "All projects"}</option>
+                    {taskFilterProjectOptions.map((projectName) => (
+                      <option key={projectName} value={projectName}>
+                        {projectName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    className={`w-full xl:w-auto ${controlButtonClass}`}
+                    onClick={() => setTaskFilterValues(DEFAULT_TASK_FILTER_VALUES)}
+                    disabled={!hasActiveTaskFilters}
+                  >
+                    {isFrench ? "Reinitialiser" : "Reset"}
+                  </button>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-muted">
+                {hasActiveTaskFilters
+                  ? isFrench
+                    ? `${filteredTasks.length} tache${filteredTasks.length === 1 ? "" : "s"} visible${filteredTasks.length === 1 ? "" : "s"} sur ${tasks.length}.`
+                    : `${filteredTasks.length} task${filteredTasks.length === 1 ? "" : "s"} shown out of ${tasks.length}.`
+                  : isFrench
+                  ? "Filtrez rapidement par texte, statut, priorite ou projet."
+                  : "Quickly filter by text, status, priority, or project."}
+              </p>
+            </section>
+
+            {isEmptyBoard ? (
+              <section className="mt-4 rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted shadow-sm">
+                <p className="font-semibold text-foreground">
+                  {isFrench
+                    ? "Aucune tache n'est planifiee pour cette date."
+                    : "No tasks are scheduled for this date yet."}
+                </p>
+                <p className="mt-1">
+                  {isFrench
+                    ? "Creez votre premiere tache pour remplir ce tableau."
+                    : "Create your first task to populate this board."}
+                </p>
+              </section>
+            ) : null}
+
+            {isFilteredBoardEmpty ? (
+              <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm">
+                <p className="font-semibold">
+                  {isFrench
+                    ? "Aucune tache ne correspond aux filtres actifs."
+                    : "No tasks match the active filters."}
+                </p>
+                <p className="mt-1">
+                  {isFrench
+                    ? "Ajustez la recherche ou reinitialisez les filtres pour revoir tout le planning."
+                    : "Adjust the search or reset filters to show the full schedule again."}
+                </p>
+              </section>
+            ) : null}
+
+            <DndContext
+              sensors={sensors}
+              collisionDetection={pointerWithin}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={() => setActiveTaskId(null)}
+            >
+              <main className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {boardColumns.map((column) => {
+                  const columnTasks = filteredTasksByStatus[column.status];
+                  const totalColumnTasks = tasksByStatus[column.status];
+
+                  return (
+                    <section
+                      key={column.status}
+                      className={`flex min-h-[340px] flex-col rounded-xl border-t-2 bg-surface-soft/50 px-3 py-3 ${statusColumnClassByStatus[column.status]}`}
+                    >
+                      <header className="flex items-center justify-between gap-2 pb-2">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xs font-semibold text-foreground">
+                            {column.label}
+                          </h2>
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-surface px-1.5 text-[10px] font-semibold text-muted">
+                            {hasActiveTaskFilters ? `${columnTasks.length}/${totalColumnTasks.length}` : columnTasks.length}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
+                          onClick={() => openCreateTaskDialog(column.status)}
+                          disabled={isMutationPending}
+                          aria-label={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
+                          title={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
+                        >
+                          <PlusIcon />
+                        </button>
+                      </header>
+
+                      <TaskColumn status={column.status}>
+                        {isLoading ? (
+                          <>
+                            <div className="h-20 animate-pulse rounded-2xl bg-surface-soft" />
+                            <div className="h-16 animate-pulse rounded-2xl bg-surface-soft" />
+                          </>
+                        ) : columnTasks.length > 0 ? (
+                          columnTasks.map((task) => {
+                            const isSavingTask =
+                              pendingTaskIds.includes(task.id) ||
+                              (isDeletingTask && taskToDelete?.id === task.id) ||
+                              (isSubmittingTask && editingTaskId === task.id);
+
+                            return (
+                              <TaskCard
+                                key={task.id}
+                                locale={activeLocale}
+                                task={task}
+                                isDragging={activeTaskId === task.id}
+                                isSaving={isSavingTask}
+                                onEdit={openEditTaskDialog}
+                                onDelete={openDeleteDialog}
+                              />
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-line bg-surface-soft px-3 py-4 text-sm text-muted">
+                            {hasActiveTaskFilters
+                              ? isFrench
+                                ? "Aucune tache visible avec ces filtres."
+                                : "No visible tasks with these filters."
+                              : column.emptyLabel}
+                          </div>
+                        )}
+                      </TaskColumn>
+                    </section>
+                  );
+                })}
+              </main>
+            </DndContext>
+          </>
+        )}
+      </section>
+
+      <section
+        id="affirmation"
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getDashboardDropClassName("affirmation")}`}
+        style={{ order: getDashboardBlockVisualOrder("affirmation"), animationDelay: "0.15s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("affirmation", event)}
+        onDrop={(event) => handleDashboardBlockDrop("affirmation", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Affirmation du jour" : "Day Affirmation"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench
+                ? "Une phrase intentionnelle pour la journee."
+                : "One intentional statement for the day."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!dashboardBlockCollapsed.affirmation ? (
+              <button
+                type="button"
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${isAffirmationCompleted ? "bg-accent" : "bg-line"}`}
+                onClick={() => {
+                  void saveDayAffirmation({ isCompleted: !isAffirmationCompleted });
+                }}
+                disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                role="switch"
+                aria-checked={isAffirmationCompleted}
+                aria-label={isFrench ? "Affirmation terminee" : "Affirmation completed"}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isAffirmationCompleted ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("affirmation", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("affirmation")}
+              title={getDashboardDragHandleLabel("affirmation")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("affirmation")}
+              aria-expanded={!dashboardBlockCollapsed.affirmation}
+              aria-label={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
+              title={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.affirmation} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.affirmation ? (
+          <p className="mt-3 text-xs text-muted">
+            {collapsedHintLabel}{" "}
+            {isAffirmationCompleted
+              ? isFrench
+                ? "Statut: terminee."
+                : "Status: completed."
+              : isFrench
+              ? "Statut: en attente."
+              : "Status: pending."}
+          </p>
+        ) : (
+          <>
+            <div className="mt-4 space-y-3">
+              <div className="block text-sm font-semibold text-foreground">
+                <span>{isFrench ? "Phrase du jour" : "Today statement"}</span>
+                <RichTextEditor
+                  locale={activeLocale}
+                  value={dayAffirmationDraft}
+                  onChange={(nextValue) => {
+                    updateDayAffirmationDraft(nextValue);
+                    setDayAffirmationErrorMessage(null);
+                  }}
+                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className={primaryButtonClass}
+                  onClick={() => {
+                    void saveDayAffirmation();
+                  }}
+                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                >
+                  <SaveIcon />
+                  {isDayAffirmationSaving
+                    ? isFrench
+                      ? "Enregistrement..."
+                      : "Saving..."
+                    : isFrench
+                    ? "Enregistrer l'affirmation"
+                    : "Save affirmation"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+              <p>
+                {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
+              </p>
+              {dayAffirmation?.updatedAt ? (
+                <p>
+                  {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+                  {formatDateTime(dayAffirmation.updatedAt, activeLocale, activeTimeZone)}
+                </p>
+              ) : null}
+            </div>
+
+            {dayAffirmationErrorMessage ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {dayAffirmationErrorMessage}
+              </p>
+            ) : null}
+          </>
+        )}
+      </section>
+
+      <section
+        id="reminders"
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-amber-50/40 via-surface to-orange-50/30 p-6 shadow-sm ${getDashboardDropClassName("reminders")}`}
+        style={{ order: getDashboardBlockVisualOrder("reminders"), animationDelay: "0.18s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("reminders", event)}
+        onDrop={(event) => handleDashboardBlockDrop("reminders", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Rappels" : "Reminders"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench
+                ? "Vos rappels actifs jusqu'a la journee selectionnee."
+                : "Your active reminders up to the selected day."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!dashboardBlockCollapsed.reminders ? (
+              <button
+                type="button"
+                className={primaryButtonClass}
+                onClick={openCreateReminderDialog}
+                disabled={isLoadingReminders}
+              >
+                <PlusIcon />
+                {isFrench ? "Ajouter" : "Add"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("reminders", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("reminders")}
+              title={getDashboardDragHandleLabel("reminders")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("reminders")}
+              aria-expanded={!dashboardBlockCollapsed.reminders}
+              aria-label={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
+              title={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.reminders} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.reminders ? (
+          <p className="mt-3 text-xs text-muted">
+            {collapsedHintLabel}{" "}
+            {reminders.length === 0
+              ? isFrench
+                ? "Aucun rappel."
+                : "No reminders."
+              : isFrench
+              ? `${reminders.length} rappel(s).`
+              : `${reminders.length} reminder(s).`}
+          </p>
+        ) : (
+          <>
+            {isLoadingReminders ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Chargement..." : "Loading..."}
+              </p>
+            ) : reminders.length === 0 ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Aucun rappel actif." : "No active reminders."}
+              </p>
+            ) : (
+              <ul className="mt-4 space-y-2">
+                {reminders.map((reminder) => {
+                  const remindAtDate = new Date(reminder.remindAt);
+                  const timeStr = remindAtDate.toLocaleTimeString(isFrench ? "fr-FR" : "en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: activeTimeZone ?? undefined,
+                  });
+
+                  return (
+                    <li
+                      key={reminder.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white/60 px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {reminder.title}
+                          {reminder.project ? (
+                            <span className="ml-2 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{reminder.project}</span>
+                          ) : null}
+                        </p>
+                        {reminder.assignees ? (
+                          <p className="truncate text-xs text-muted">{reminder.assignees}</p>
+                        ) : null}
+                        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <span>{timeStr}</span>
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[reminder.status]}`}
+                          >
+                            {formatReminderStatus(reminder.status, activeLocale)}
+                          </span>
+                          {remindAtDate.getTime() < Date.now() ? (
+                            <span>{isFrench ? "Echeance depassee" : "Past due"}</span>
+                          ) : null}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!isReminderResolvedStatus(reminder.status) ? (
+                          <button
+                            type="button"
+                            className="rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-soft"
+                            onClick={() => { void handleCompleteReminder(reminder.id); }}
+                          >
+                            {isFrench ? "Traiter" : "Complete"}
+                          </button>
+                        ) : null}
+                        {!isReminderResolvedStatus(reminder.status) ? (
+                          <button
+                            type="button"
+                            className="rounded-md px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-surface-soft hover:text-foreground"
+                            onClick={() => { void handleCancelReminder(reminder.id); }}
+                          >
+                            {isFrench ? "Annuler" : "Cancel"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                          onClick={() => openEditReminderDialog(reminder)}
+                        >
+                          {isFrench ? "Modifier" : "Edit"}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {reminderErrorMessage && !reminderDialogMode ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {reminderErrorMessage}
+              </p>
+            ) : null}
+          </>
+        )}
+      </section>
+
+      <section
+        id="bilan"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("bilan")}`}
+        style={{ order: getDashboardBlockVisualOrder("bilan"), animationDelay: "0.25s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("bilan", event)}
+        onDrop={(event) => handleDashboardBlockDrop("bilan", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Bilan du jour" : "Day Bilan"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench
+                ? "Capturez vos victoires, blocages et top 3 pour demain."
+                : "Capture wins, blockers, and your top 3 for tomorrow."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!dashboardBlockCollapsed.bilan ? (
+              <button
+                type="button"
+                className={primaryButtonClass}
+                onClick={handleSaveDayBilan}
+                disabled={isDayBilanLoading || isDayBilanSaving}
+              >
+                <SaveIcon />
+                {isDayBilanSaving
+                  ? isFrench
+                    ? "Enregistrement..."
+                    : "Saving..."
+                  : isFrench
+                  ? "Enregistrer le bilan"
+                  : "Save bilan"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("bilan", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("bilan")}
+              title={getDashboardDragHandleLabel("bilan")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("bilan")}
+              aria-expanded={!dashboardBlockCollapsed.bilan}
+              aria-label={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
+              title={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.bilan} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.bilan ? (
+          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
+                  {isFrench ? "Taches terminees" : "Done Tasks"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.done.length}</p>
+              </div>
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
+                  {isFrench ? "Actionnables" : "Actionable"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{actionableTaskCount}</p>
+              </div>
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
+                  {isFrench ? "Annulees" : "Cancelled"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.cancelled.length}</p>
+              </div>
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
+                  {isFrench ? "Affirmation" : "Affirmation"}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-foreground">
+                  {isAffirmationCompleted
+                    ? isFrench
+                      ? "Terminee"
+                      : "Done"
+                    : isFrench
+                    ? "En attente"
+                    : "Pending"}
+                </p>
+              </div>
+            </div>
+
+            {isDayBilanLoading ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Chargement du bilan du jour..." : "Loading day bilan..."}
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{isFrench ? "Humeur" : "Mood"}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    {[
+                      { value: "1", emoji: "\ud83d\ude2b", label: isFrench ? "Tres difficile" : "Very hard" },
+                      { value: "2", emoji: "\ud83d\ude1f", label: isFrench ? "Difficile" : "Hard" },
+                      { value: "3", emoji: "\ud83d\ude10", label: isFrench ? "Neutre" : "Neutral" },
+                      { value: "4", emoji: "\ud83d\ude0a", label: isFrench ? "Bonne" : "Good" },
+                      { value: "5", emoji: "\ud83e\udd29", label: isFrench ? "Excellente" : "Excellent" },
+                    ].map((mood) => (
+                      <button
+                        key={mood.value}
+                        type="button"
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl transition-all duration-200 ${
+                          dayBilanFormValues.mood === mood.value
+                            ? "scale-110 bg-accent-soft ring-2 ring-accent"
+                            : "bg-surface-soft hover:scale-105 hover:bg-surface"
+                        }`}
+                        onClick={() => updateDayBilanField("mood", dayBilanFormValues.mood === mood.value ? "" : mood.value)}
+                        disabled={isDayBilanSaving}
+                        title={mood.label}
+                        aria-label={mood.label}
+                      >
+                        {mood.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Victoires" : "Wins"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={dayBilanFormValues.wins}
+                      onChange={(nextValue) => updateDayBilanField("wins", nextValue)}
+                      disabled={isDayBilanSaving}
+                    />
+                  </div>
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Blocages" : "Blockers"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={dayBilanFormValues.blockers}
+                      onChange={(nextValue) => updateDayBilanField("blockers", nextValue)}
+                      disabled={isDayBilanSaving}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Lecons apprises" : "Lessons learned"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={dayBilanFormValues.lessonsLearned}
+                      onChange={(nextValue) => updateDayBilanField("lessonsLearned", nextValue)}
+                      disabled={isDayBilanSaving}
+                    />
+                  </div>
+                  <div className="block text-sm font-semibold text-foreground">
+                    <span>{isFrench ? "Top 3 de demain" : "Tomorrow top 3"}</span>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={dayBilanFormValues.tomorrowTop3}
+                      onChange={(nextValue) => updateDayBilanField("tomorrowTop3", nextValue)}
+                      disabled={isDayBilanSaving}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {dayBilan?.updatedAt ? (
+              <p className="mt-3 text-xs text-muted">
+                {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+                {formatDateTime(dayBilan.updatedAt, activeLocale, activeTimeZone)}
+              </p>
+            ) : null}
+
+            {dayBilanErrorMessage ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {dayBilanErrorMessage}
+              </p>
+            ) : null}
+
+            {dayBilanSuccessMessage ? (
+              <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                {dayBilanSuccessMessage}
+              </p>
+            ) : null}
+          </>
+        )}
+      </section>
+
+      <section
+        id="notes"
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getDashboardDropClassName("notes")}`}
+        style={{ order: getDashboardBlockVisualOrder("notes"), animationDelay: "0.19s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("notes", event)}
+        onDrop={(event) => handleDashboardBlockDrop("notes", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Notes" : "Notes"}
+            </h2>
+            <p className="text-sm text-muted">
+              {isFrench ? "Vos notes libres et liees aux evenements." : "Your standalone and event-linked notes."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={primaryButtonClass}
+              onClick={() => openCreateNoteDialog()}
+              disabled={isLoadingNotes}
+            >
+              <PlusIcon />
+              {isFrench ? "Ajouter une note" : "Add note"}
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("notes", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("notes")}
+              title={getDashboardDragHandleLabel("notes")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("notes")}
+              aria-expanded={!dashboardBlockCollapsed.notes}
+              aria-label={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
+              title={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.notes} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.notes ? (
+          <p className="mt-3 text-xs text-muted">
+            {collapsedHintLabel}{" "}
+            {notes.length === 0
+              ? isFrench ? "Aucune note." : "No notes."
+              : isFrench ? `${notes.length} note(s).` : `${notes.length} note(s).`}
+          </p>
+        ) : (
+          <>
+            {isLoadingNotes ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Chargement..." : "Loading..."}
+              </p>
+            ) : notes.length === 0 && noteDialogMode === null ? (
+              <p className="mt-4 text-sm text-muted">
+                {isFrench ? "Aucune note. Créez votre première note." : "No notes yet. Create your first note."}
+              </p>
+            ) : (
+              <ul className="mt-4 grid gap-3 md:grid-cols-2">
+                {notes.map((note) => {
+                  const isExpanded = expandedNoteId === note.id;
+                  const attachmentsForNote = noteAttachments[note.id] ?? [];
+                  const hasLoadedAttachments = Object.prototype.hasOwnProperty.call(noteAttachments, note.id);
+                  const previewText = getRichTextPreviewText(note.body);
+                  const noteTitle =
+                    note.title?.trim() ||
+                    (isFrench ? "Note sans titre" : "Untitled note");
+                  const noteAccentClass = note.linkedCalendarEvent
+                    ? "from-sky-500 via-cyan-400 to-indigo-400"
+                    : note.targetDate
+                      ? "from-amber-400 via-orange-300 to-rose-300"
+                      : "from-slate-300 via-slate-200 to-transparent";
+                  const attachmentLabel = hasLoadedAttachments
+                    ? isFrench
+                      ? `${attachmentsForNote.length} document${attachmentsForNote.length > 1 ? "s" : ""}`
+                      : `${attachmentsForNote.length} document${attachmentsForNote.length === 1 ? "" : "s"}`
+                    : isFrench
+                      ? "Documents"
+                      : "Documents";
+
+                  return (
+                    <li
+                      key={note.id}
+                      className={`group relative overflow-hidden rounded-2xl border border-line bg-white/90 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                        isExpanded ? "md:col-span-2" : ""
+                      }`}
+                    >
+                      <div className={`h-1.5 w-full bg-gradient-to-r ${noteAccentClass}`} />
+
+                      <div className="p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {note.linkedCalendarEvent ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                                  <CalendarIcon />
+                                  <span className="truncate max-w-[220px]">
+                                    {note.linkedCalendarEvent.title}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {note.targetDate ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                  <CalendarIcon />
+                                  {formatDateOnlyForLocale(note.targetDate, activeLocale)}
+                                </span>
+                              ) : null}
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                <span className="font-semibold">{attachmentLabel}</span>
+                              </span>
+                            </div>
+
+                            <div className="mt-3">
+                              <p className="truncate text-base font-semibold text-foreground transition-colors group-hover:text-accent">
+                                {noteTitle}
+                              </p>
+                              <p className="mt-1 text-xs text-muted">
+                                {isFrench ? "Mis a jour" : "Updated"}{" "}
+                                {formatDateTime(note.updatedAt, activeLocale, activeTimeZone)}
+                              </p>
+                            </div>
+
+                            <div className="mt-3 rounded-2xl border border-line/80 bg-gradient-to-br from-surface-soft/90 to-white px-4 py-3">
+                              <p className="text-sm leading-6 text-foreground/85 line-clamp-4">
+                                {previewText || (isFrench ? "Note vide." : "Empty note.")}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
+                              onClick={() => { void handleExpandNote(note.id); }}
+                              title={isExpanded
+                                ? (isFrench ? "Replier la note" : "Collapse note")
+                                : (isFrench ? "Afficher les details" : "Show details")}
+                              aria-label={isExpanded
+                                ? (isFrench ? "Replier la note" : "Collapse note")
+                                : (isFrench ? "Afficher les details" : "Show details")}
+                            >
+                              <CollapseChevronIcon isCollapsed={!isExpanded} />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
+                              onClick={() => openEditNoteDialog(note)}
+                              title={isFrench ? "Modifier la note" : "Edit note"}
+                              aria-label={isFrench ? "Modifier la note" : "Edit note"}
+                            >
+                              <PencilIcon />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-red-100 bg-red-50/80 px-0 text-rose-500 hover:border-red-200 hover:bg-rose-50 hover:text-rose-600`}
+                              onClick={() => { void handleDeleteNote(note.id); }}
+                              title={isFrench ? "Supprimer la note" : "Delete note"}
+                              aria-label={isFrench ? "Supprimer la note" : "Delete note"}
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/80 pt-3">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                            {note.linkedCalendarEvent ? (
+                              <span>
+                                {isFrench ? "Lie a un evenement" : "Linked to an event"}
+                              </span>
+                            ) : (
+                              <span>
+                                {isFrench ? "Note libre" : "Standalone note"}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className={`${controlButtonClass} px-3 py-1.5 text-xs`}
+                            onClick={() => { void handleExpandNote(note.id); }}
+                          >
+                            {isExpanded
+                              ? isFrench ? "Masquer les details" : "Hide details"
+                              : isFrench ? "Voir les details" : "View details"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isExpanded ? (
+                        <div className="border-t border-line bg-surface-soft/55 px-4 py-4 sm:px-5">
+                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
+                            <section>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                {isFrench ? "Contenu complet" : "Full content"}
+                              </p>
+                              <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
+                                <RichTextContent
+                                  value={note.body}
+                                  className="rich-text-render text-sm leading-6 text-foreground"
+                                />
+                              </div>
+                            </section>
+
+                            <section className="rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                  {isFrench ? "Documents" : "Documents"}
+                                </p>
+                                <span className="rounded-full bg-surface-soft px-2 py-1 text-[11px] font-semibold text-muted">
+                                  {attachmentsForNote.length}
+                                </span>
+                              </div>
+
+                              {attachmentsForNote.length > 0 ? (
+                                <ul className="mt-3 flex flex-col gap-1.5">
+                                  {attachmentsForNote.map((attachment) => (
+                                    <li
+                                      key={attachment.id}
+                                      className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft/60 px-3 py-2"
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                        <a
+                                          href={attachment.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                          download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                        >
+                                          {isDataUrl(attachment.url)
+                                            ? isFrench ? "Ouvrir le fichier" : "Open file"
+                                            : attachment.url}
+                                        </a>
+                                        {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                          <p className="mt-0.5 text-[11px] text-muted">
+                                            {[
+                                              attachment.contentType ?? null,
+                                              typeof attachment.sizeBytes === "number"
+                                                ? formatFileSize(attachment.sizeBytes)
+                                                : null,
+                                            ]
+                                              .filter((value): value is string => Boolean(value))
+                                              .join(" · ")}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className={`${iconButtonClass} h-8 w-8 rounded-lg px-0 text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50`}
+                                        disabled={pendingNoteAttachmentIds.includes(attachment.id)}
+                                        onClick={() => { void handleDeleteNoteAttachment(note.id, attachment.id); }}
+                                        aria-label={isFrench ? "Supprimer" : "Delete"}
+                                      >
+                                        {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-3 rounded-xl border border-dashed border-line bg-surface-soft/40 px-3 py-3 text-sm text-muted">
+                                  {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                                </p>
+                              )}
+
+                              <div className="mt-3 grid gap-2">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                                  {isFrench ? "Nom du fichier" : "File name"}
+                                  <input
+                                    type="text"
+                                    value={noteAttachmentNameDraft}
+                                    onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
+                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                    placeholder={isFrench ? "Nom du fichier" : "File name"}
+                                    disabled={isCreatingNoteAttachment}
+                                  />
+                                </label>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                                  {isFrench ? "Fichier" : "File"}
+                                  <input
+                                    ref={noteAttachmentFileInputRef}
+                                    type="file"
+                                    onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
+                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                                    disabled={isCreatingNoteAttachment}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className={`${controlButtonClass} justify-center rounded-xl border-line bg-surface-soft/70`}
+                                  disabled={isCreatingNoteAttachment}
+                                  onClick={() => { void handleCreateNoteAttachment(note.id); }}
+                                >
+                                  <PlusIcon />
+                                  {isCreatingNoteAttachment
+                                    ? isFrench ? "Envoi..." : "Uploading..."
+                                    : isFrench ? "Ajouter un document" : "Add document"}
+                                </button>
+                              </div>
+
+                              {noteAttachmentErrorMessage ? (
+                                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                  {noteAttachmentErrorMessage}
+                                </p>
+                              ) : null}
+                            </section>
+                          </div>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+
+      <section
         id="gaming"
         className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("gamingTrack")}`}
         style={{ order: getDashboardBlockVisualOrder("gamingTrack"), animationDelay: "0.05s" }}
@@ -10842,1129 +11928,6 @@ export function AppShell() {
                   </p>
                 ) : null}
               </div>
-            ) : null}
-          </>
-        )}
-      </section>
-
-      {carryOverMessage ? (
-        <section
-          className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
-          style={{ order: getDashboardBlockVisualOrder("dailyControls", 1) }}
-        >
-          {carryOverMessage}
-        </section>
-      ) : null}
-
-      {carryOverErrorMessage ? (
-        <section
-          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
-          style={{ order: getDashboardBlockVisualOrder("dailyControls", 2) }}
-        >
-          {carryOverErrorMessage}
-        </section>
-      ) : null}
-
-      <section
-        id="affirmation"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getDashboardDropClassName("affirmation")}`}
-        style={{ order: getDashboardBlockVisualOrder("affirmation"), animationDelay: "0.15s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("affirmation", event)}
-        onDrop={(event) => handleDashboardBlockDrop("affirmation", event)}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className={sectionHeaderClass}>
-              {isFrench ? "Affirmation du jour" : "Day Affirmation"}
-            </h2>
-            <p className="text-sm text-muted">
-              {isFrench
-                ? "Une phrase intentionnelle pour la journee."
-                : "One intentional statement for the day."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!dashboardBlockCollapsed.affirmation ? (
-              <button
-                type="button"
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${isAffirmationCompleted ? "bg-accent" : "bg-line"}`}
-                onClick={() => {
-                  void saveDayAffirmation({ isCompleted: !isAffirmationCompleted });
-                }}
-                disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-                role="switch"
-                aria-checked={isAffirmationCompleted}
-                aria-label={isFrench ? "Affirmation terminee" : "Affirmation completed"}
-              >
-                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isAffirmationCompleted ? "translate-x-6" : "translate-x-1"}`} />
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("affirmation", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("affirmation")}
-              title={getDashboardDragHandleLabel("affirmation")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("affirmation")}
-              aria-expanded={!dashboardBlockCollapsed.affirmation}
-              aria-label={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
-              title={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.affirmation} />
-            </button>
-          </div>
-        </div>
-
-        {dashboardBlockCollapsed.affirmation ? (
-          <p className="mt-3 text-xs text-muted">
-            {collapsedHintLabel}{" "}
-            {isAffirmationCompleted
-              ? isFrench
-                ? "Statut: terminee."
-                : "Status: completed."
-              : isFrench
-              ? "Statut: en attente."
-              : "Status: pending."}
-          </p>
-        ) : (
-          <>
-            <div className="mt-4 space-y-3">
-              <div className="block text-sm font-semibold text-foreground">
-                <span>{isFrench ? "Phrase du jour" : "Today statement"}</span>
-                <RichTextEditor
-                  locale={activeLocale}
-                  value={dayAffirmationDraft}
-                  onChange={(nextValue) => {
-                    updateDayAffirmationDraft(nextValue);
-                    setDayAffirmationErrorMessage(null);
-                  }}
-                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-                />
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className={primaryButtonClass}
-                  onClick={() => {
-                    void saveDayAffirmation();
-                  }}
-                  disabled={isDayAffirmationLoading || isDayAffirmationSaving}
-                >
-                  <SaveIcon />
-                  {isDayAffirmationSaving
-                    ? isFrench
-                      ? "Enregistrement..."
-                      : "Saving..."
-                    : isFrench
-                    ? "Enregistrer l'affirmation"
-                    : "Save affirmation"}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
-              <p>
-                {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
-              </p>
-              {dayAffirmation?.updatedAt ? (
-                <p>
-                  {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
-                  {formatDateTime(dayAffirmation.updatedAt, activeLocale, activeTimeZone)}
-                </p>
-              ) : null}
-            </div>
-
-            {dayAffirmationErrorMessage ? (
-              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                {dayAffirmationErrorMessage}
-              </p>
-            ) : null}
-          </>
-        )}
-      </section>
-
-      <section
-        id="reminders"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-amber-50/40 via-surface to-orange-50/30 p-6 shadow-sm ${getDashboardDropClassName("reminders")}`}
-        style={{ order: getDashboardBlockVisualOrder("reminders"), animationDelay: "0.18s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("reminders", event)}
-        onDrop={(event) => handleDashboardBlockDrop("reminders", event)}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className={sectionHeaderClass}>
-              {isFrench ? "Rappels" : "Reminders"}
-            </h2>
-            <p className="text-sm text-muted">
-              {isFrench
-                ? "Vos rappels actifs jusqu'a la journee selectionnee."
-                : "Your active reminders up to the selected day."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!dashboardBlockCollapsed.reminders ? (
-              <button
-                type="button"
-                className={primaryButtonClass}
-                onClick={openCreateReminderDialog}
-                disabled={isLoadingReminders}
-              >
-                <PlusIcon />
-                {isFrench ? "Ajouter" : "Add"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("reminders", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("reminders")}
-              title={getDashboardDragHandleLabel("reminders")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("reminders")}
-              aria-expanded={!dashboardBlockCollapsed.reminders}
-              aria-label={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
-              title={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.reminders} />
-            </button>
-          </div>
-        </div>
-
-        {dashboardBlockCollapsed.reminders ? (
-          <p className="mt-3 text-xs text-muted">
-            {collapsedHintLabel}{" "}
-            {reminders.length === 0
-              ? isFrench
-                ? "Aucun rappel."
-                : "No reminders."
-              : isFrench
-              ? `${reminders.length} rappel(s).`
-              : `${reminders.length} reminder(s).`}
-          </p>
-        ) : (
-          <>
-            {isLoadingReminders ? (
-              <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Chargement..." : "Loading..."}
-              </p>
-            ) : reminders.length === 0 ? (
-              <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Aucun rappel actif." : "No active reminders."}
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-2">
-                {reminders.map((reminder) => {
-                  const remindAtDate = new Date(reminder.remindAt);
-                  const timeStr = remindAtDate.toLocaleTimeString(isFrench ? "fr-FR" : "en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: activeTimeZone ?? undefined,
-                  });
-
-                  return (
-                    <li
-                      key={reminder.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white/60 px-3 py-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {reminder.title}
-                          {reminder.project ? (
-                            <span className="ml-2 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{reminder.project}</span>
-                          ) : null}
-                        </p>
-                        {reminder.assignees ? (
-                          <p className="truncate text-xs text-muted">{reminder.assignees}</p>
-                        ) : null}
-                        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                          <span>{timeStr}</span>
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[reminder.status]}`}
-                          >
-                            {formatReminderStatus(reminder.status, activeLocale)}
-                          </span>
-                          {remindAtDate.getTime() < Date.now() ? (
-                            <span>{isFrench ? "Echeance depassee" : "Past due"}</span>
-                          ) : null}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {!isReminderResolvedStatus(reminder.status) ? (
-                          <button
-                            type="button"
-                            className="rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-soft"
-                            onClick={() => { void handleCompleteReminder(reminder.id); }}
-                          >
-                            {isFrench ? "Traiter" : "Complete"}
-                          </button>
-                        ) : null}
-                        {!isReminderResolvedStatus(reminder.status) ? (
-                          <button
-                            type="button"
-                            className="rounded-md px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-surface-soft hover:text-foreground"
-                            onClick={() => { void handleCancelReminder(reminder.id); }}
-                          >
-                            {isFrench ? "Annuler" : "Cancel"}
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                          onClick={() => openEditReminderDialog(reminder)}
-                        >
-                          {isFrench ? "Modifier" : "Edit"}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {reminderErrorMessage && !reminderDialogMode ? (
-              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                {reminderErrorMessage}
-              </p>
-            ) : null}
-          </>
-        )}
-      </section>
-
-      {/* Notes section */}
-      <section
-        id="notes"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getDashboardDropClassName("notes")}`}
-        style={{ order: getDashboardBlockVisualOrder("notes"), animationDelay: "0.19s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("notes", event)}
-        onDrop={(event) => handleDashboardBlockDrop("notes", event)}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className={sectionHeaderClass}>
-              {isFrench ? "Notes" : "Notes"}
-            </h2>
-            <p className="text-sm text-muted">
-              {isFrench ? "Vos notes libres et liees aux evenements." : "Your standalone and event-linked notes."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={primaryButtonClass}
-              onClick={() => openCreateNoteDialog()}
-              disabled={isLoadingNotes}
-            >
-              <PlusIcon />
-              {isFrench ? "Ajouter une note" : "Add note"}
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("notes", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("notes")}
-              title={getDashboardDragHandleLabel("notes")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("notes")}
-              aria-expanded={!dashboardBlockCollapsed.notes}
-              aria-label={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
-              title={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.notes} />
-            </button>
-          </div>
-        </div>
-
-        {dashboardBlockCollapsed.notes ? (
-          <p className="mt-3 text-xs text-muted">
-            {collapsedHintLabel}{" "}
-            {notes.length === 0
-              ? isFrench ? "Aucune note." : "No notes."
-              : isFrench ? `${notes.length} note(s).` : `${notes.length} note(s).`}
-          </p>
-        ) : (
-          <>
-            {isLoadingNotes ? (
-              <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Chargement..." : "Loading..."}
-              </p>
-            ) : notes.length === 0 && noteDialogMode === null ? (
-              <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Aucune note. Créez votre première note." : "No notes yet. Create your first note."}
-              </p>
-            ) : (
-              <ul className="mt-4 grid gap-3 md:grid-cols-2">
-                {notes.map((note) => {
-                  const isExpanded = expandedNoteId === note.id;
-                  const attachmentsForNote = noteAttachments[note.id] ?? [];
-                  const hasLoadedAttachments = Object.prototype.hasOwnProperty.call(noteAttachments, note.id);
-                  const previewText = getRichTextPreviewText(note.body);
-                  const noteTitle =
-                    note.title?.trim() ||
-                    (isFrench ? "Note sans titre" : "Untitled note");
-                  const noteAccentClass = note.linkedCalendarEvent
-                    ? "from-sky-500 via-cyan-400 to-indigo-400"
-                    : note.targetDate
-                      ? "from-amber-400 via-orange-300 to-rose-300"
-                      : "from-slate-300 via-slate-200 to-transparent";
-                  const attachmentLabel = hasLoadedAttachments
-                    ? isFrench
-                      ? `${attachmentsForNote.length} document${attachmentsForNote.length > 1 ? "s" : ""}`
-                      : `${attachmentsForNote.length} document${attachmentsForNote.length === 1 ? "" : "s"}`
-                    : isFrench
-                      ? "Documents"
-                      : "Documents";
-
-                  return (
-                    <li
-                      key={note.id}
-                      className={`group relative overflow-hidden rounded-2xl border border-line bg-white/90 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                        isExpanded ? "md:col-span-2" : ""
-                      }`}
-                    >
-                      <div className={`h-1.5 w-full bg-gradient-to-r ${noteAccentClass}`} />
-
-                      <div className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {note.linkedCalendarEvent ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
-                                  <CalendarIcon />
-                                  <span className="truncate max-w-[220px]">
-                                    {note.linkedCalendarEvent.title}
-                                  </span>
-                                </span>
-                              ) : null}
-                              {note.targetDate ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                                  <CalendarIcon />
-                                  {formatDateOnlyForLocale(note.targetDate, activeLocale)}
-                                </span>
-                              ) : null}
-                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                                <span className="font-semibold">{attachmentLabel}</span>
-                              </span>
-                            </div>
-
-                            <div className="mt-3">
-                              <p className="truncate text-base font-semibold text-foreground transition-colors group-hover:text-accent">
-                                {noteTitle}
-                              </p>
-                              <p className="mt-1 text-xs text-muted">
-                                {isFrench ? "Mis a jour" : "Updated"}{" "}
-                                {formatDateTime(note.updatedAt, activeLocale, activeTimeZone)}
-                              </p>
-                            </div>
-
-                            <div className="mt-3 rounded-2xl border border-line/80 bg-gradient-to-br from-surface-soft/90 to-white px-4 py-3">
-                              <p className="text-sm leading-6 text-foreground/85 line-clamp-4">
-                                {previewText || (isFrench ? "Note vide." : "Empty note.")}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
-                              onClick={() => { void handleExpandNote(note.id); }}
-                              title={isExpanded
-                                ? (isFrench ? "Replier la note" : "Collapse note")
-                                : (isFrench ? "Afficher les details" : "Show details")}
-                              aria-label={isExpanded
-                                ? (isFrench ? "Replier la note" : "Collapse note")
-                                : (isFrench ? "Afficher les details" : "Show details")}
-                            >
-                              <CollapseChevronIcon isCollapsed={!isExpanded} />
-                            </button>
-                            <button
-                              type="button"
-                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
-                              onClick={() => openEditNoteDialog(note)}
-                              title={isFrench ? "Modifier la note" : "Edit note"}
-                              aria-label={isFrench ? "Modifier la note" : "Edit note"}
-                            >
-                              <PencilIcon />
-                            </button>
-                            <button
-                              type="button"
-                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-red-100 bg-red-50/80 px-0 text-rose-500 hover:border-red-200 hover:bg-rose-50 hover:text-rose-600`}
-                              onClick={() => { void handleDeleteNote(note.id); }}
-                              title={isFrench ? "Supprimer la note" : "Delete note"}
-                              aria-label={isFrench ? "Supprimer la note" : "Delete note"}
-                            >
-                              <TrashIcon />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/80 pt-3">
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                            {note.linkedCalendarEvent ? (
-                              <span>
-                                {isFrench ? "Lie a un evenement" : "Linked to an event"}
-                              </span>
-                            ) : (
-                              <span>
-                                {isFrench ? "Note libre" : "Standalone note"}
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            className={`${controlButtonClass} px-3 py-1.5 text-xs`}
-                            onClick={() => { void handleExpandNote(note.id); }}
-                          >
-                            {isExpanded
-                              ? isFrench ? "Masquer les details" : "Hide details"
-                              : isFrench ? "Voir les details" : "View details"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {isExpanded ? (
-                        <div className="border-t border-line bg-surface-soft/55 px-4 py-4 sm:px-5">
-                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
-                            <section>
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                                {isFrench ? "Contenu complet" : "Full content"}
-                              </p>
-                              <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
-                                <RichTextContent
-                                  value={note.body}
-                                  className="rich-text-render text-sm leading-6 text-foreground"
-                                />
-                              </div>
-                            </section>
-
-                            <section className="rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                                  {isFrench ? "Documents" : "Documents"}
-                                </p>
-                                <span className="rounded-full bg-surface-soft px-2 py-1 text-[11px] font-semibold text-muted">
-                                  {attachmentsForNote.length}
-                                </span>
-                              </div>
-
-                              {attachmentsForNote.length > 0 ? (
-                                <ul className="mt-3 flex flex-col gap-1.5">
-                                  {attachmentsForNote.map((attachment) => (
-                                    <li
-                                      key={attachment.id}
-                                      className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft/60 px-3 py-2"
-                                    >
-                                      <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                                        <a
-                                          href={attachment.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                                          download={isDataUrl(attachment.url) ? attachment.name : undefined}
-                                        >
-                                          {isDataUrl(attachment.url)
-                                            ? isFrench ? "Ouvrir le fichier" : "Open file"
-                                            : attachment.url}
-                                        </a>
-                                        {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
-                                          <p className="mt-0.5 text-[11px] text-muted">
-                                            {[
-                                              attachment.contentType ?? null,
-                                              typeof attachment.sizeBytes === "number"
-                                                ? formatFileSize(attachment.sizeBytes)
-                                                : null,
-                                            ]
-                                              .filter((value): value is string => Boolean(value))
-                                              .join(" · ")}
-                                          </p>
-                                        ) : null}
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className={`${iconButtonClass} h-8 w-8 rounded-lg px-0 text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50`}
-                                        disabled={pendingNoteAttachmentIds.includes(attachment.id)}
-                                        onClick={() => { void handleDeleteNoteAttachment(note.id, attachment.id); }}
-                                        aria-label={isFrench ? "Supprimer" : "Delete"}
-                                      >
-                                        {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
-                                      </button>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-3 rounded-xl border border-dashed border-line bg-surface-soft/40 px-3 py-3 text-sm text-muted">
-                                  {isFrench ? "Aucun document pour le moment." : "No documents yet."}
-                                </p>
-                              )}
-
-                              <div className="mt-3 grid gap-2">
-                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                                  {isFrench ? "Nom du fichier" : "File name"}
-                                  <input
-                                    type="text"
-                                    value={noteAttachmentNameDraft}
-                                    onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
-                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                    placeholder={isFrench ? "Nom du fichier" : "File name"}
-                                    disabled={isCreatingNoteAttachment}
-                                  />
-                                </label>
-                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                                  {isFrench ? "Fichier" : "File"}
-                                  <input
-                                    ref={noteAttachmentFileInputRef}
-                                    type="file"
-                                    onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
-                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                    disabled={isCreatingNoteAttachment}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  className={`${controlButtonClass} justify-center rounded-xl border-line bg-surface-soft/70`}
-                                  disabled={isCreatingNoteAttachment}
-                                  onClick={() => { void handleCreateNoteAttachment(note.id); }}
-                                >
-                                  <PlusIcon />
-                                  {isCreatingNoteAttachment
-                                    ? isFrench ? "Envoi..." : "Uploading..."
-                                    : isFrench ? "Ajouter un document" : "Add document"}
-                                </button>
-                              </div>
-
-                              {noteAttachmentErrorMessage ? (
-                                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                  {noteAttachmentErrorMessage}
-                                </p>
-                              ) : null}
-                            </section>
-                          </div>
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </>
-        )}
-      </section>
-
-      {errorMessage ? (
-        <section
-          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
-          style={{ order: getDashboardBlockVisualOrder("board", 1) }}
-        >
-          {errorMessage}
-        </section>
-      ) : null}
-
-      {dragErrorMessage ? (
-        <section
-          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
-          style={{ order: getDashboardBlockVisualOrder("board", 2) }}
-        >
-          {dragErrorMessage}
-        </section>
-      ) : null}
-
-      <section
-        id="board"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("board")}`}
-        style={{ order: getDashboardBlockVisualOrder("board"), animationDelay: "0.2s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("board", event)}
-        onDrop={(event) => handleDashboardBlockDrop("board", event)}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("board", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("board")}
-              title={getDashboardDragHandleLabel("board")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("board")}
-              aria-expanded={!dashboardBlockCollapsed.board}
-              aria-label={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
-              title={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.board} />
-            </button>
-          </div>
-        </div>
-
-        {dashboardBlockCollapsed.board ? (
-          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
-        ) : (
-          <>
-            <section className="mt-4 rounded-2xl border border-line bg-surface-soft/60 p-4">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.9fr))_auto]">
-                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                  {isFrench ? "Recherche" : "Search"}
-                  <div className="relative mt-2">
-                    <span className="pointer-events-none absolute inset-y-0 left-3 inline-flex items-center text-muted">
-                      <SearchIcon />
-                    </span>
-                    <input
-                      type="search"
-                      value={taskFilterValues.query}
-                      onChange={(event) => {
-                        setTaskFilterValues((currentValues) => ({
-                          ...currentValues,
-                          query: event.target.value,
-                        }));
-                      }}
-                      className={`${boardFilterFieldClass} mt-0 pl-10 pr-10`}
-                      placeholder={
-                        isFrench
-                          ? "Titre, projet, description..."
-                          : "Title, project, description..."
-                      }
-                    />
-                    {taskFilterValues.query ? (
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-md px-1 text-muted transition-colors hover:text-foreground"
-                        onClick={() => {
-                          setTaskFilterValues((currentValues) => ({
-                            ...currentValues,
-                            query: "",
-                          }));
-                        }}
-                        aria-label={isFrench ? "Effacer la recherche" : "Clear search"}
-                        title={isFrench ? "Effacer la recherche" : "Clear search"}
-                      >
-                        <CloseIcon />
-                      </button>
-                    ) : null}
-                  </div>
-                </label>
-
-                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                  {isFrench ? "Statut" : "Status"}
-                  <select
-                    value={taskFilterValues.status}
-                    onChange={(event) => {
-                      setTaskFilterValues((currentValues) => ({
-                        ...currentValues,
-                        status: isTaskStatus(event.target.value) ? event.target.value : "all",
-                      }));
-                    }}
-                    className={`${boardFilterFieldClass} mt-2`}
-                  >
-                    <option value="all">{isFrench ? "Tous les statuts" : "All statuses"}</option>
-                    {boardColumns.map((column) => (
-                      <option key={column.status} value={column.status}>
-                        {column.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                  {isFrench ? "Priorite" : "Priority"}
-                  <select
-                    value={taskFilterValues.priority}
-                    onChange={(event) => {
-                      setTaskFilterValues((currentValues) => ({
-                        ...currentValues,
-                        priority: isTaskPriority(event.target.value) ? event.target.value : "all",
-                      }));
-                    }}
-                    className={`${boardFilterFieldClass} mt-2`}
-                  >
-                    <option value="all">{isFrench ? "Toutes les priorites" : "All priorities"}</option>
-                    {priorityOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                  {isFrench ? "Projet" : "Project"}
-                  <select
-                    value={taskFilterValues.project}
-                    onChange={(event) => {
-                      setTaskFilterValues((currentValues) => ({
-                        ...currentValues,
-                        project: event.target.value,
-                      }));
-                    }}
-                    className={`${boardFilterFieldClass} mt-2`}
-                  >
-                    <option value="">{isFrench ? "Tous les projets" : "All projects"}</option>
-                    {taskFilterProjectOptions.map((projectName) => (
-                      <option key={projectName} value={projectName}>
-                        {projectName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    className={`w-full xl:w-auto ${controlButtonClass}`}
-                    onClick={() => setTaskFilterValues(DEFAULT_TASK_FILTER_VALUES)}
-                    disabled={!hasActiveTaskFilters}
-                  >
-                    {isFrench ? "Reinitialiser" : "Reset"}
-                  </button>
-                </div>
-              </div>
-
-              <p className="mt-3 text-xs text-muted">
-                {hasActiveTaskFilters
-                  ? isFrench
-                    ? `${filteredTasks.length} tache${filteredTasks.length === 1 ? "" : "s"} visible${filteredTasks.length === 1 ? "" : "s"} sur ${tasks.length}.`
-                    : `${filteredTasks.length} task${filteredTasks.length === 1 ? "" : "s"} shown out of ${tasks.length}.`
-                  : isFrench
-                  ? "Filtrez rapidement par texte, statut, priorite ou projet."
-                  : "Quickly filter by text, status, priority, or project."}
-              </p>
-            </section>
-
-            {isEmptyBoard ? (
-              <section className="mt-4 rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted shadow-sm">
-                <p className="font-semibold text-foreground">
-                  {isFrench
-                    ? "Aucune tache n'est planifiee pour cette date."
-                    : "No tasks are scheduled for this date yet."}
-                </p>
-                <p className="mt-1">
-                  {isFrench
-                    ? "Creez votre premiere tache pour remplir ce tableau."
-                    : "Create your first task to populate this board."}
-                </p>
-              </section>
-            ) : null}
-
-            {isFilteredBoardEmpty ? (
-              <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm">
-                <p className="font-semibold">
-                  {isFrench
-                    ? "Aucune tache ne correspond aux filtres actifs."
-                    : "No tasks match the active filters."}
-                </p>
-                <p className="mt-1">
-                  {isFrench
-                    ? "Ajustez la recherche ou reinitialisez les filtres pour revoir tout le planning."
-                    : "Adjust the search or reset filters to show the full schedule again."}
-                </p>
-              </section>
-            ) : null}
-
-            <DndContext
-              sensors={sensors}
-              collisionDetection={pointerWithin}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDragCancel={() => setActiveTaskId(null)}
-            >
-              <main className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {boardColumns.map((column) => {
-                  const columnTasks = filteredTasksByStatus[column.status];
-                  const totalColumnTasks = tasksByStatus[column.status];
-
-                  return (
-                    <section
-                      key={column.status}
-                      className={`flex min-h-[340px] flex-col rounded-xl border-t-2 bg-surface-soft/50 px-3 py-3 ${statusColumnClassByStatus[column.status]}`}
-                    >
-                      <header className="flex items-center justify-between gap-2 pb-2">
-                        <div className="flex items-center gap-2">
-                          <h2 className="text-xs font-semibold text-foreground">
-                            {column.label}
-                          </h2>
-                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-surface px-1.5 text-[10px] font-semibold text-muted">
-                            {hasActiveTaskFilters ? `${columnTasks.length}/${totalColumnTasks.length}` : columnTasks.length}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
-                          onClick={() => openCreateTaskDialog(column.status)}
-                          disabled={isMutationPending}
-                          aria-label={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
-                          title={isFrench ? `Nouvelle tache (${column.label})` : `New task (${column.label})`}
-                        >
-                          <PlusIcon />
-                        </button>
-                      </header>
-
-                      <TaskColumn status={column.status}>
-                        {isLoading ? (
-                          <>
-                            <div className="h-20 animate-pulse rounded-2xl bg-surface-soft" />
-                            <div className="h-16 animate-pulse rounded-2xl bg-surface-soft" />
-                          </>
-                        ) : columnTasks.length > 0 ? (
-                          columnTasks.map((task) => {
-                            const isSavingTask =
-                              pendingTaskIds.includes(task.id) ||
-                              (isDeletingTask && taskToDelete?.id === task.id) ||
-                              (isSubmittingTask && editingTaskId === task.id);
-
-                            return (
-                              <TaskCard
-                                key={task.id}
-                                locale={activeLocale}
-                                task={task}
-                                isDragging={activeTaskId === task.id}
-                                isSaving={isSavingTask}
-                                onEdit={openEditTaskDialog}
-                                onDelete={openDeleteDialog}
-                              />
-                            );
-                          })
-                        ) : (
-                          <div className="rounded-2xl border border-dashed border-line bg-surface-soft px-3 py-4 text-sm text-muted">
-                            {hasActiveTaskFilters
-                              ? isFrench
-                                ? "Aucune tache visible avec ces filtres."
-                                : "No visible tasks with these filters."
-                              : column.emptyLabel}
-                          </div>
-                        )}
-                      </TaskColumn>
-                    </section>
-                  );
-                })}
-              </main>
-            </DndContext>
-          </>
-        )}
-      </section>
-
-      <section
-        id="bilan"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("bilan")}`}
-        style={{ order: getDashboardBlockVisualOrder("bilan"), animationDelay: "0.25s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("bilan", event)}
-        onDrop={(event) => handleDashboardBlockDrop("bilan", event)}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className={sectionHeaderClass}>
-              {isFrench ? "Bilan du jour" : "Day Bilan"}
-            </h2>
-            <p className="text-sm text-muted">
-              {isFrench
-                ? "Capturez vos victoires, blocages et top 3 pour demain."
-                : "Capture wins, blockers, and your top 3 for tomorrow."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!dashboardBlockCollapsed.bilan ? (
-              <button
-                type="button"
-                className={primaryButtonClass}
-                onClick={handleSaveDayBilan}
-                disabled={isDayBilanLoading || isDayBilanSaving}
-              >
-                <SaveIcon />
-                {isDayBilanSaving
-                  ? isFrench
-                    ? "Enregistrement..."
-                    : "Saving..."
-                  : isFrench
-                  ? "Enregistrer le bilan"
-                  : "Save bilan"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("bilan", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("bilan")}
-              title={getDashboardDragHandleLabel("bilan")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("bilan")}
-              aria-expanded={!dashboardBlockCollapsed.bilan}
-              aria-label={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
-              title={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.bilan} />
-            </button>
-          </div>
-        </div>
-
-        {dashboardBlockCollapsed.bilan ? (
-          <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
-        ) : (
-          <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-lg border border-line p-3">
-                <p className="text-[11px] font-medium text-muted">
-                  {isFrench ? "Taches terminees" : "Done Tasks"}
-                </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.done.length}</p>
-              </div>
-              <div className="rounded-lg border border-line p-3">
-                <p className="text-[11px] font-medium text-muted">
-                  {isFrench ? "Actionnables" : "Actionable"}
-                </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{actionableTaskCount}</p>
-              </div>
-              <div className="rounded-lg border border-line p-3">
-                <p className="text-[11px] font-medium text-muted">
-                  {isFrench ? "Annulees" : "Cancelled"}
-                </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{tasksByStatus.cancelled.length}</p>
-              </div>
-              <div className="rounded-lg border border-line p-3">
-                <p className="text-[11px] font-medium text-muted">
-                  {isFrench ? "Affirmation" : "Affirmation"}
-                </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">
-                  {isAffirmationCompleted
-                    ? isFrench
-                      ? "Terminee"
-                      : "Done"
-                    : isFrench
-                    ? "En attente"
-                    : "Pending"}
-                </p>
-              </div>
-            </div>
-
-            {isDayBilanLoading ? (
-              <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Chargement du bilan du jour..." : "Loading day bilan..."}
-              </p>
-            ) : (
-              <div className="mt-4 space-y-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{isFrench ? "Humeur" : "Mood"}</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    {[
-                      { value: "1", emoji: "\ud83d\ude2b", label: isFrench ? "Tres difficile" : "Very hard" },
-                      { value: "2", emoji: "\ud83d\ude1f", label: isFrench ? "Difficile" : "Hard" },
-                      { value: "3", emoji: "\ud83d\ude10", label: isFrench ? "Neutre" : "Neutral" },
-                      { value: "4", emoji: "\ud83d\ude0a", label: isFrench ? "Bonne" : "Good" },
-                      { value: "5", emoji: "\ud83e\udd29", label: isFrench ? "Excellente" : "Excellent" },
-                    ].map((mood) => (
-                      <button
-                        key={mood.value}
-                        type="button"
-                        className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl transition-all duration-200 ${
-                          dayBilanFormValues.mood === mood.value
-                            ? "scale-110 bg-accent-soft ring-2 ring-accent"
-                            : "bg-surface-soft hover:scale-105 hover:bg-surface"
-                        }`}
-                        onClick={() => updateDayBilanField("mood", dayBilanFormValues.mood === mood.value ? "" : mood.value)}
-                        disabled={isDayBilanSaving}
-                        title={mood.label}
-                        aria-label={mood.label}
-                      >
-                        {mood.emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="block text-sm font-semibold text-foreground">
-                    <span>{isFrench ? "Victoires" : "Wins"}</span>
-                    <RichTextEditor
-                      locale={activeLocale}
-                      value={dayBilanFormValues.wins}
-                      onChange={(nextValue) => updateDayBilanField("wins", nextValue)}
-                      disabled={isDayBilanSaving}
-                    />
-                  </div>
-                  <div className="block text-sm font-semibold text-foreground">
-                    <span>{isFrench ? "Blocages" : "Blockers"}</span>
-                    <RichTextEditor
-                      locale={activeLocale}
-                      value={dayBilanFormValues.blockers}
-                      onChange={(nextValue) => updateDayBilanField("blockers", nextValue)}
-                      disabled={isDayBilanSaving}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="block text-sm font-semibold text-foreground">
-                    <span>{isFrench ? "Lecons apprises" : "Lessons learned"}</span>
-                    <RichTextEditor
-                      locale={activeLocale}
-                      value={dayBilanFormValues.lessonsLearned}
-                      onChange={(nextValue) => updateDayBilanField("lessonsLearned", nextValue)}
-                      disabled={isDayBilanSaving}
-                    />
-                  </div>
-                  <div className="block text-sm font-semibold text-foreground">
-                    <span>{isFrench ? "Top 3 de demain" : "Tomorrow top 3"}</span>
-                    <RichTextEditor
-                      locale={activeLocale}
-                      value={dayBilanFormValues.tomorrowTop3}
-                      onChange={(nextValue) => updateDayBilanField("tomorrowTop3", nextValue)}
-                      disabled={isDayBilanSaving}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {dayBilan?.updatedAt ? (
-              <p className="mt-3 text-xs text-muted">
-                {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
-                {formatDateTime(dayBilan.updatedAt, activeLocale, activeTimeZone)}
-              </p>
-            ) : null}
-
-            {dayBilanErrorMessage ? (
-              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                {dayBilanErrorMessage}
-              </p>
-            ) : null}
-
-            {dayBilanSuccessMessage ? (
-              <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                {dayBilanSuccessMessage}
-              </p>
             ) : null}
           </>
         )}
