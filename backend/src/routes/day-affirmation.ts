@@ -230,8 +230,9 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
       ? "Retranscris intégralement tout le texte visible sur cette image, mot pour mot, de haut en bas. Inclus absolument tout : les titres, sous-titres, textes en encadré ou en grisé, paragraphes du corps du texte, citations en italique, attributions d'auteurs, numéros de page. N'omets, ne résume, ne reformule, ne saute aucun mot. Reproduis chaque mot exactement tel qu'il est écrit, dans l'ordre d'apparition."
       : "Transcribe all text visible in this image, word for word, from top to bottom. Include everything: titles, subtitles, boxed or shaded text, body paragraphs, italic quotes, author attributions, page numbers. Do not omit, summarize, rephrase, or skip any word. Reproduce each word exactly as written, in order of appearance.";
 
+    const visionTimeoutMs = Math.max(requestTimeoutMs ?? 60000, 60000);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs ?? 30000);
+    const timeout = setTimeout(() => controller.abort(), visionTimeoutMs);
 
     try {
       const response = await fetch(`${openAiBaseUrl.replace(/\/$/, "")}/chat/completions`, {
