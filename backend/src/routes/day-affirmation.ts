@@ -78,6 +78,7 @@ const reformatBodySchema = z.object({
   text: z.string().trim().min(1, "text is required").max(20000, "text is too long"),
   instruction: z.string().trim().max(500).optional(),
   locale: z.enum(["en", "fr"]).optional(),
+  date: targetDateSchema.optional(),
 });
 
 type OpenAiChatResponse = {
@@ -220,16 +221,14 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
     }
 
     const isFrench = locale === "fr";
-    const targetDate = date ? parseDateOnly(date) : new Date();
-    const dayOfMonth = targetDate ? targetDate.getDate() : new Date().getDate();
 
     const systemPrompt = isFrench
-      ? "Tu es un assistant qui analyse des images de citations ou textes inspirants et crée du contenu structuré pour un journal personnel."
-      : "You are an assistant that analyzes images of inspiring quotes or texts and creates structured content for a personal journal.";
+      ? "Tu es un assistant spécialisé dans la transcription fidèle et intégrale de textes imprimés ou manuscrits visibles sur des photos."
+      : "You are an assistant specialized in faithful and complete transcription of printed or handwritten text visible in photos.";
 
     const userPrompt = isFrench
-      ? `Analyse cette image et crée un contenu structuré en 3 sections pour mon journal du ${dayOfMonth} :\n\n**1. Citation du ${dayOfMonth}** : Retranscris fidèlement le texte visible sur l'image.\n\n**2. Enseignements à retenir** : Donne 2-3 enseignements clés ou insights issus de ce texte.\n\n**3. Exercices pour la journée** : Propose 2-3 exercices concrets ou actions inspirés par ce contenu.\n\nRéponds uniquement avec le contenu structuré, sans introduction ni conclusion.`
-      : `Analyze this image and create structured content in 3 sections for my journal entry on the ${dayOfMonth}th:\n\n**1. Quote of the ${dayOfMonth}th**: Faithfully transcribe the text visible in the image.\n\n**2. Key lessons**: Give 2-3 key teachings or insights from this text.\n\n**3. Exercises for the day**: Suggest 2-3 concrete exercises or actions inspired by this content.\n\nRespond only with the structured content, no introduction or conclusion.`;
+      ? "Retranscris intégralement tout le texte visible sur cette image, mot pour mot, de haut en bas. Inclus absolument tout : les titres, sous-titres, textes en encadré ou en grisé, paragraphes du corps du texte, citations en italique, attributions d'auteurs, numéros de page. N'omets, ne résume, ne reformule, ne saute aucun mot. Reproduis chaque mot exactement tel qu'il est écrit, dans l'ordre d'apparition."
+      : "Transcribe all text visible in this image, word for word, from top to bottom. Include everything: titles, subtitles, boxed or shaded text, body paragraphs, italic quotes, author attributions, page numbers. Do not omit, summarize, rephrase, or skip any word. Reproduce each word exactly as written, in order of appearance.";
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), requestTimeoutMs ?? 30000);
@@ -243,8 +242,8 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
         },
         body: JSON.stringify({
           model: openAiModel,
-          temperature: 0.3,
-          max_tokens: 1000,
+          temperature: 0.1,
+          max_tokens: 2000,
           messages: [
             { role: "system", content: systemPrompt },
             {
@@ -301,7 +300,7 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
       return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid request body", details);
     }
 
-    const { text, instruction, locale } = bodyResult.data;
+    const { text, instruction, locale, date } = bodyResult.data;
 
     const { openAiApiKey, openAiModel, openAiBaseUrl, requestTimeoutMs } = options;
 
@@ -310,15 +309,18 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
     }
 
     const isFrench = locale === "fr";
+    const targetDate = date ? parseDateOnly(date) : new Date();
+    const dayOfMonth = targetDate ? targetDate.getDate() : new Date().getDate();
+
     const defaultInstruction = isFrench
-      ? "Reformate ce texte en une belle affirmation positive au présent, percutante et personnelle."
-      : "Reformat this text into a beautiful, impactful, positive affirmation in the present tense.";
+      ? `Analyse ce texte et crée un contenu structuré en 3 sections pour mon journal du ${dayOfMonth} :\n\n**1. Citation du ${dayOfMonth}** : Retranscris la citation principale ou l'idée centrale du texte (quelques lignes).\n\n**2. Enseignements à retenir** : Donne 2-3 enseignements clés ou insights issus de ce texte.\n\n**3. Exercices pour la journée** : Propose 2-3 exercices concrets ou actions inspirés par ce contenu.\n\nRéponds uniquement avec le contenu structuré, sans introduction ni conclusion.`
+      : `Analyze this text and create structured content in 3 sections for my journal entry on the ${dayOfMonth}th:\n\n**1. Quote of the ${dayOfMonth}th**: Transcribe the main quote or central idea from the text (a few lines).\n\n**2. Key lessons**: Give 2-3 key teachings or insights from this text.\n\n**3. Exercises for the day**: Suggest 2-3 concrete exercises or actions inspired by this content.\n\nRespond only with the structured content, no introduction or conclusion.`;
 
     const effectiveInstruction = instruction?.trim() || defaultInstruction;
 
     const systemPrompt = isFrench
-      ? "Tu es un assistant qui reformate des textes en affirmations positives pour un journal personnel. Réponds uniquement avec le texte reformaté, sans explications."
-      : "You are an assistant that reformats texts into positive affirmations for a personal journal. Respond only with the reformatted text, no explanations.";
+      ? "Tu es un assistant qui structure et reformate des textes pour un journal personnel. Réponds uniquement avec le texte demandé, sans explications."
+      : "You are an assistant that structures and reformats texts for a personal journal. Respond only with the requested text, no explanations.";
 
     const userPrompt = `${effectiveInstruction}\n\nTexte :\n${text}`;
 
@@ -335,7 +337,7 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
         body: JSON.stringify({
           model: openAiModel,
           temperature: 0.5,
-          max_tokens: 500,
+          max_tokens: 1500,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
