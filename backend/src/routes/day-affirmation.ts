@@ -2,7 +2,6 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../auth/auth-service";
 import { DayAffirmationStore } from "../day-affirmation/day-affirmation-store";
-import { createAssistantDocumentExtractor } from "../assistant/assistant-document-extractor";
 import { formatDateOnly, parseDateOnly } from "../tasks/task-store";
 import {
   getBearerToken,
@@ -71,6 +70,8 @@ function serializeDayAffirmation(affirmation: {
 
 const extractTextBodySchema = z.object({
   imageDataUrl: z.string().min(1, "imageDataUrl is required"),
+  locale: z.enum(["en", "fr"]).optional(),
+  date: targetDateSchema.optional(),
 });
 
 const reformatBodySchema = z.object({
@@ -83,8 +84,6 @@ type OpenAiChatResponse = {
   choices?: Array<{ message?: { content?: string | null } }>;
   error?: { message?: string };
 };
-
-const documentExtractor = createAssistantDocumentExtractor();
 
 const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = async (app, options) => {
   const { authService, dayAffirmationStore } = options;
@@ -208,32 +207,83 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
       return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid request body", details);
     }
 
-    const { imageDataUrl } = bodyResult.data;
+    const { imageDataUrl, locale, date } = bodyResult.data;
 
     if (!imageDataUrl.startsWith("data:image/")) {
       return sendError(reply, 400, "VALIDATION_ERROR", "imageDataUrl must be a data URL of an image");
     }
 
+    const { openAiApiKey, openAiModel, openAiBaseUrl, requestTimeoutMs } = options;
+
+    if (!openAiApiKey || !openAiModel || !openAiBaseUrl) {
+      return sendError(reply, 503, "AI_UNAVAILABLE", "AI vision is not configured");
+    }
+
+    const isFrench = locale === "fr";
+    const targetDate = date ? parseDateOnly(date) : new Date();
+    const dayOfMonth = targetDate ? targetDate.getDate() : new Date().getDate();
+
+    const systemPrompt = isFrench
+      ? "Tu es un assistant qui analyse des images de citations ou textes inspirants et crée du contenu structuré pour un journal personnel."
+      : "You are an assistant that analyzes images of inspiring quotes or texts and creates structured content for a personal journal.";
+
+    const userPrompt = isFrench
+      ? `Analyse cette image et crée un contenu structuré en 3 sections pour mon journal du ${dayOfMonth} :\n\n**1. Citation du ${dayOfMonth}** : Retranscris fidèlement le texte visible sur l'image.\n\n**2. Enseignements à retenir** : Donne 2-3 enseignements clés ou insights issus de ce texte.\n\n**3. Exercices pour la journée** : Propose 2-3 exercices concrets ou actions inspirés par ce contenu.\n\nRéponds uniquement avec le contenu structuré, sans introduction ni conclusion.`
+      : `Analyze this image and create structured content in 3 sections for my journal entry on the ${dayOfMonth}th:\n\n**1. Quote of the ${dayOfMonth}th**: Faithfully transcribe the text visible in the image.\n\n**2. Key lessons**: Give 2-3 key teachings or insights from this text.\n\n**3. Exercises for the day**: Suggest 2-3 concrete exercises or actions inspired by this content.\n\nRespond only with the structured content, no introduction or conclusion.`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs ?? 30000);
+
     try {
-      const extraction = await documentExtractor.extractFromAttachment({
-        name: "photo",
-        url: imageDataUrl,
-        contentType: null,
+      const response = await fetch(`${openAiBaseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          temperature: 0.3,
+          max_tokens: 1000,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: userPrompt },
+                { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } },
+              ],
+            },
+          ],
+        }),
+        signal: controller.signal,
       });
 
-      if (extraction.status === "unsupported") {
-        return sendError(reply, 422, "OCR_UNAVAILABLE", extraction.warning ?? "OCR is not available");
+      clearTimeout(timeout);
+
+      const payload = (await response.json().catch(() => null)) as OpenAiChatResponse | null;
+
+      if (!response.ok) {
+        const message = payload?.error?.message ?? `OpenAI request failed (HTTP ${response.status})`;
+        request.log.error({ status: response.status }, message);
+        return sendError(reply, 502, "AI_ERROR", "Vision extraction failed");
+      }
+
+      const content = payload?.choices?.[0]?.message?.content?.trim();
+      if (!content) {
+        return sendError(reply, 502, "AI_ERROR", "AI returned an empty response");
       }
 
       return reply.send({
         data: {
-          text: extraction.text,
-          status: extraction.status,
-          warning: extraction.warning,
+          text: content,
+          status: "ready",
+          warning: null,
         },
       });
     } catch (error) {
-      request.log.error(error, "Failed to extract text from image");
+      clearTimeout(timeout);
+      request.log.error(error, "Failed to extract text from image via Vision");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to extract text from image");
     }
   });

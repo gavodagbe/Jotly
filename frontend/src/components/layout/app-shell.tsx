@@ -3166,12 +3166,14 @@ async function upsertDayAffirmation(
 
 async function extractAffirmationTextFromImage(
   imageDataUrl: string,
+  locale: "en" | "fr",
+  date: string,
   token: string
 ): Promise<{ text: string; status: string; warning: string | null }> {
   const response = await fetch("/backend-api/day-affirmation/extract-text", {
     method: "POST",
     headers: createAuthHeaders(token, true),
-    body: JSON.stringify({ imageDataUrl }),
+    body: JSON.stringify({ imageDataUrl, locale, date }),
   });
 
   const payload = (await response.json().catch(() => null)) as
@@ -10837,7 +10839,7 @@ export function AppShell() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-medium text-foreground">
-                        {isFrench ? "2. Extraire le texte" : "2. Extract text"}
+                        {isFrench ? "2. Analyser avec l'IA" : "2. Analyze with AI"}
                       </p>
                       <button
                         type="button"
@@ -10849,12 +10851,12 @@ export function AppShell() {
                           setAffirmationOcrError(null);
                           setAffirmationOcrReformattedText("");
                           try {
-                            const result = await extractAffirmationTextFromImage(affirmationOcrImagePreview, authToken);
+                            const result = await extractAffirmationTextFromImage(affirmationOcrImagePreview, activeLocale, selectedDate, authToken);
                             if (result.status === "empty" || result.text.trim().length === 0) {
                               setAffirmationOcrError(
                                 isFrench
-                                  ? "Aucun texte detecte dans l'image. Essayez avec une image plus nette."
-                                  : "No text detected in the image. Try a clearer image."
+                                  ? "Impossible d'analyser l'image. Essayez avec une image plus nette."
+                                  : "Unable to analyze the image. Try a clearer image."
                               );
                             } else {
                               setAffirmationOcrExtractedText(result.text);
@@ -10874,14 +10876,14 @@ export function AppShell() {
                             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
                             </svg>
-                            {isFrench ? "Extraction..." : "Extracting..."}
+                            {isFrench ? "Analyse en cours..." : "Analyzing..."}
                           </>
                         ) : (
                           <>
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
-                              <path d="M4 5h12M4 8h8M4 11h6M4 14h4" strokeLinecap="round"/>
+                              <path d="M10 2a8 8 0 100 16A8 8 0 0010 2zM7 9l2 2 4-4" strokeLinecap="round" strokeLinejoin="round"/>
                             </svg>
-                            {isFrench ? "Extraire le texte" : "Extract text"}
+                            {isFrench ? "Analyser l'image" : "Analyze image"}
                           </>
                         )}
                       </button>
@@ -10894,7 +10896,7 @@ export function AppShell() {
                           setAffirmationOcrExtractedText(e.target.value);
                           setAffirmationOcrReformattedText("");
                         }}
-                        placeholder={isFrench ? "Texte extrait (modifiable)..." : "Extracted text (editable)..."}
+                        placeholder={isFrench ? "Contenu structuré généré (modifiable)..." : "Generated structured content (editable)..."}
                       />
                     ) : null}
                   </div>
