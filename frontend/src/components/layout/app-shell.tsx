@@ -6173,6 +6173,7 @@ export function AppShell() {
   const [dayAffirmationDraft, setDayAffirmationDraft] = useState("");
   const dayAffirmationDraftRef = useRef(dayAffirmationDraft);
   const dayAffirmationCacheRef = useRef<Record<string, DayAffirmation | null>>({});
+  const [affirmationRefreshKey, setAffirmationRefreshKey] = useState(0);
   const [isDayAffirmationLoading, setIsDayAffirmationLoading] = useState(false);
   const [isDayAffirmationSaving, setIsDayAffirmationSaving] = useState(false);
   const [dayAffirmationErrorMessage, setDayAffirmationErrorMessage] = useState<string | null>(null);
@@ -9411,6 +9412,22 @@ export function AppShell() {
     return () => controller.abort();
   }, [authToken, authUser, dayAffirmation, dayBilan, gamingTrackPeriod, isAuthReady, isFrench, selectedDate, tasks]);
 
+  const selectedDateRef = useRef(selectedDate);
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        delete dayAffirmationCacheRef.current[selectedDateRef.current];
+        setAffirmationRefreshKey((k) => k + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   useEffect(() => {
     if (!isAuthReady) {
       return;
@@ -9474,7 +9491,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [applyDayAffirmationState, authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [affirmationRefreshKey, applyDayAffirmationState, authToken, authUser, isAuthReady, isFrench, selectedDate]);
 
   useEffect(() => {
     if (!isAuthReady) {
