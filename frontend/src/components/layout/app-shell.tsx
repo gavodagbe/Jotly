@@ -3195,12 +3195,13 @@ async function reformatAffirmationText(
   text: string,
   instruction: string | undefined,
   locale: "en" | "fr",
+  date: string,
   token: string
 ): Promise<string> {
   const response = await fetch("/backend-api/day-affirmation/reformat", {
     method: "POST",
     headers: createAuthHeaders(token, true),
-    body: JSON.stringify({ text, instruction: instruction || undefined, locale }),
+    body: JSON.stringify({ text, instruction: instruction || undefined, locale, date }),
   });
 
   const payload = (await response.json().catch(() => null)) as
@@ -10906,19 +10907,19 @@ export function AppShell() {
                 {affirmationOcrExtractedText ? (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-foreground">
-                      {isFrench ? "3. Reformater avec l'IA (optionnel)" : "3. AI reformat (optional)"}
+                      {isFrench ? "3. Structurer avec l'IA" : "3. Structure with AI"}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {(isFrench
                         ? [
+                            "Générer les 3 sections (citation / enseignements / exercices)",
                             "En faire une affirmation positive au présent",
                             "Reformuler en une phrase percutante",
-                            "Traduire en français et reformater",
                           ]
                         : [
+                            "Generate the 3 sections (quote / lessons / exercises)",
                             "Turn into a positive present-tense affirmation",
                             "Rewrite as one impactful sentence",
-                            "Translate to English and reformat",
                           ]
                       ).map((preset) => (
                         <button
@@ -10961,6 +10962,7 @@ export function AppShell() {
                             affirmationOcrExtractedText,
                             affirmationOcrCustomInstruction.trim() || undefined,
                             activeLocale,
+                            selectedDate,
                             authToken
                           );
                           setAffirmationOcrReformattedText(result);
