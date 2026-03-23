@@ -21,6 +21,13 @@ import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { TextStyle } from "@tiptap/extension-text-style";
+import Color from "@tiptap/extension-color";
+import Image from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app-meta";
 
 type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
@@ -1654,9 +1661,12 @@ const allowedRichTextTags = new Set([
   "blockquote",
   "br",
   "code",
+  "col",
+  "colgroup",
   "div",
   "em",
   "hr",
+  "img",
   "input",
   "label",
   "li",
@@ -1666,6 +1676,13 @@ const allowedRichTextTags = new Set([
   "s",
   "span",
   "strong",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
   "u",
   "ul",
 ]);
@@ -1701,11 +1718,19 @@ function sanitizeRichTextTag(tag: string): string {
 
   const isClosingTag = closingSlash === "/";
   if (isClosingTag) {
-    return tagName === "br" || tagName === "hr" || tagName === "input" ? "" : `</${tagName}>`;
+    return tagName === "br" || tagName === "hr" || tagName === "input" || tagName === "img" || tagName === "col" ? "" : `</${tagName}>`;
   }
 
-  if (tagName === "br" || tagName === "hr") {
+  if (tagName === "br" || tagName === "hr" || tagName === "col") {
     return `<${tagName}>`;
+  }
+
+  if (tagName === "img") {
+    const src = getHtmlAttributeValue(rawAttributes, "src");
+    const alt = getHtmlAttributeValue(rawAttributes, "alt") ?? "";
+    const safeUrl = src ? sanitizeRichTextUrl(src) : null;
+    if (!safeUrl) return "";
+    return `<img src="${escapeHtml(safeUrl)}" alt="${escapeHtml(alt)}">`;
   }
 
   if (tagName === "a") {
@@ -1737,6 +1762,26 @@ function sanitizeRichTextTag(tag: string): string {
 
     const isChecked = /\bchecked(?:\s*=\s*(?:"checked"|'checked'|checked))?/i.test(rawAttributes);
     return `<input type="checkbox"${isChecked ? " checked" : ""} disabled>`;
+  }
+
+  if (tagName === "span") {
+    const style = getHtmlAttributeValue(rawAttributes, "style");
+    if (style) {
+      const colorMatch = /color:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]+\)|[a-z]+)/i.exec(style);
+      if (colorMatch) {
+        return `<span style="color:${escapeHtml(colorMatch[1])}">`;
+      }
+    }
+    return "<span>";
+  }
+
+  if (tagName === "td" || tagName === "th") {
+    const colspan = getHtmlAttributeValue(rawAttributes, "colspan");
+    const rowspan = getHtmlAttributeValue(rawAttributes, "rowspan");
+    let attrs = "";
+    if (colspan && /^\d+$/.test(colspan)) attrs += ` colspan="${colspan}"`;
+    if (rowspan && /^\d+$/.test(rowspan)) attrs += ` rowspan="${rowspan}"`;
+    return `<${tagName}${attrs}>`;
   }
 
   return `<${tagName}>`;
@@ -5020,6 +5065,8 @@ function TiptapToolbar({
   disabled: boolean;
   locale: UserLocale;
 }) {
+  const colorInputRef = useRef<HTMLInputElement>(null);
+
   if (!editor) {
     return null;
   }
@@ -5036,6 +5083,13 @@ function TiptapToolbar({
     }
     const normalizedUrl = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
     editor?.chain().focus().extendMarkRange("link").setLink({ href: normalizedUrl }).run();
+  }
+
+  function addImage() {
+    const url = window.prompt(isFrench ? "Entrez l'URL de l'image" : "Enter image URL", "https://");
+    if (!url) return;
+    const normalized = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
+    editor?.chain().focus().setImage({ src: normalized }).run();
   }
 
   return (
@@ -5154,6 +5208,83 @@ function TiptapToolbar({
       >
         <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2" y1="8" x2="14" y2="8" strokeLinecap="round"/></svg>
       </TiptapToolbarButton>
+
+      <div className="mx-1 h-4 w-px bg-line" />
+
+      <TiptapToolbarButton
+        onClick={() => colorInputRef.current?.click()}
+        disabled={disabled}
+        title={isFrench ? "Couleur du texte" : "Text color"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+          <path d="M8 1.5L3 13h2l1-2.5h4L11 13h2L8 1.5zm0 3l1.5 4h-3L8 4.5z"/>
+          <rect x="3" y="14" width="10" height="1.5" fill={editor.getAttributes("textStyle").color ?? "currentColor"}/>
+        </svg>
+      </TiptapToolbarButton>
+      <input
+        ref={colorInputRef}
+        type="color"
+        className="sr-only"
+        defaultValue="#000000"
+        onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
+      />
+
+      <TiptapToolbarButton
+        onClick={addImage}
+        disabled={disabled}
+        title={isFrench ? "Image" : "Image"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.2"/><circle cx="5.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><path d="M1.5 11l3.5-3.5 3 3 2-2 4 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </TiptapToolbarButton>
+
+      <TiptapToolbarButton
+        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+        disabled={disabled}
+        title={isFrench ? "Inserer un tableau" : "Insert table"}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="1.5" width="13" height="13" rx="1"/><line x1="1.5" y1="5.5" x2="14.5" y2="5.5"/><line x1="1.5" y1="9.5" x2="14.5" y2="9.5"/><line x1="5.5" y1="5.5" x2="5.5" y2="14.5"/><line x1="10.5" y1="5.5" x2="10.5" y2="14.5"/></svg>
+      </TiptapToolbarButton>
+
+      {editor.isActive("table") && (
+        <>
+          <div className="mx-1 h-4 w-px bg-line" />
+          <TiptapToolbarButton
+            onClick={() => editor.chain().focus().addRowAfter().run()}
+            disabled={disabled}
+            title={isFrench ? "Ajouter une ligne" : "Add row"}
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="1.5" width="13" height="7" rx="1"/><line x1="1.5" y1="5" x2="14.5" y2="5"/><line x1="8" y1="11" x2="8" y2="15"/><line x1="6" y1="13" x2="10" y2="13"/></svg>
+          </TiptapToolbarButton>
+          <TiptapToolbarButton
+            onClick={() => editor.chain().focus().addColumnAfter().run()}
+            disabled={disabled}
+            title={isFrench ? "Ajouter une colonne" : "Add column"}
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="1.5" width="7" height="13" rx="1"/><line x1="5" y1="1.5" x2="5" y2="14.5"/><line x1="11" y1="6" x2="15" y2="6"/><line x1="13" y1="4" x2="13" y2="8"/></svg>
+          </TiptapToolbarButton>
+          <TiptapToolbarButton
+            onClick={() => editor.chain().focus().deleteRow().run()}
+            disabled={disabled}
+            title={isFrench ? "Supprimer la ligne" : "Delete row"}
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="1.5" width="13" height="7" rx="1"/><line x1="1.5" y1="5" x2="14.5" y2="5"/><line x1="6" y1="13" x2="10" y2="13"/></svg>
+          </TiptapToolbarButton>
+          <TiptapToolbarButton
+            onClick={() => editor.chain().focus().deleteColumn().run()}
+            disabled={disabled}
+            title={isFrench ? "Supprimer la colonne" : "Delete column"}
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="1.5" width="7" height="13" rx="1"/><line x1="5" y1="1.5" x2="5" y2="14.5"/><line x1="6" y1="13" x2="10" y2="13"/></svg>
+          </TiptapToolbarButton>
+          <TiptapToolbarButton
+            onClick={() => editor.chain().focus().deleteTable().run()}
+            disabled={disabled}
+            title={isFrench ? "Supprimer le tableau" : "Delete table"}
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="1.5" width="13" height="13" rx="1"/><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+          </TiptapToolbarButton>
+        </>
+      )}
     </div>
   );
 }
@@ -5193,6 +5324,13 @@ function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorPro
       TaskItem.configure({
         nested: true,
       }),
+      TextStyle,
+      Color,
+      Image,
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableCell,
+      TableHeader,
     ],
     content: convertMarkdownToHtml(value),
     editable: !disabled,

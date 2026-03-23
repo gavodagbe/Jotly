@@ -223,3 +223,30 @@ body {
   color: #9ca3af;
   pointer-events: none;
 }
+
+.rich-text-render table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.875em;
+}
+
+.rich-text-render th,
+.rich-text-render td {
+  border: 1px solid #e5e7eb;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rich-text-render th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.rich-text-render img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 0.25rem 0;
+}
