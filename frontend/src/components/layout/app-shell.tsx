@@ -559,6 +559,10 @@ const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
 const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
 const DAY_AFFIRMATION_MAX_LENGTH = 5000;
+const DAY_AFFIRMATION_RICH_TEXT_OPTIONS = {
+  preserveTextColor: false,
+  recoverPlainText: true,
+};
 const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
 const DASHBOARD_LAYOUT_STORAGE_KEY = "jotly_dashboard_layout_v1";
 const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
@@ -1656,6 +1660,24 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'");
+}
+
+type RichTextSanitizationOptions = {
+  preserveTextColor?: boolean;
+};
+
+type RichTextRenderOptions = RichTextSanitizationOptions & {
+  recoverPlainText?: boolean;
+};
+
 const allowedRichTextTags = new Set([
   "a",
   "blockquote",
@@ -1702,13 +1724,14 @@ function sanitizeRichTextUrl(value: string): string | null {
   return /^https?:\/\//i.test(normalized) ? normalized : null;
 }
 
-function sanitizeRichTextTag(tag: string): string {
+function sanitizeRichTextTag(tag: string, options: RichTextSanitizationOptions = {}): string {
   const match = /^<\s*(\/?)\s*([a-z0-9-]+)([^>]*)>/i.exec(tag);
 
   if (!match) {
     return "";
   }
 
+  const preserveTextColor = options.preserveTextColor ?? true;
   const [, closingSlash, rawTagName, rawAttributes] = match;
   const tagName = rawTagName.toLowerCase();
 
@@ -1768,7 +1791,7 @@ function sanitizeRichTextTag(tag: string): string {
   }
 
   if (tagName === "span") {
-    const style = getHtmlAttributeValue(rawAttributes, "style");
+    const style = preserveTextColor ? getHtmlAttributeValue(rawAttributes, "style") : null;
     if (style) {
       const colorMatch = /color:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]+\)|[a-z]+)/i.exec(style);
       if (colorMatch) {
@@ -1790,8 +1813,8 @@ function sanitizeRichTextTag(tag: string): string {
   return `<${tagName}>`;
 }
 
-function sanitizeRichTextHtml(value: string): string {
-  return value.replace(/<[^>]+>/g, (tag) => sanitizeRichTextTag(tag));
+function sanitizeRichTextHtml(value: string, options: RichTextSanitizationOptions = {}): string {
+  return value.replace(/<[^>]+>/g, (tag) => sanitizeRichTextTag(tag, options));
 }
 
 function formatInlineMarkdown(value: string): string {
@@ -1811,18 +1834,35 @@ function isRichTextEmpty(html: string): boolean {
   return html.replace(/<[^>]*>/g, "").trim() === "";
 }
 
-function renderDescriptionHtml(markdown: string): string {
-  const trimmed = markdown.trim();
+function stripRichTextToPlainText(value: string): string {
+  const normalized = value
+    .replace(/<input\b[^>]*type=["']checkbox["'][^>]*checked[^>]*>/gi, "[x] ")
+    .replace(/<input\b[^>]*type=["']checkbox["'][^>]*>/gi, "[ ] ")
+    .replace(/<li\b[^>]*>/gi, "- ")
+    .replace(/<(?:br|hr)\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|blockquote|li|ul|ol)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+
+  return decodeHtmlEntities(normalized)
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function getRichTextCharacterCount(value: string): number {
+  const trimmed = value.trim();
 
   if (!trimmed) {
-    return "";
+    return 0;
   }
 
-  if (/<[a-z][\s\S]*>/i.test(trimmed)) {
-    return sanitizeRichTextHtml(trimmed);
-  }
+  return isHtmlContent(trimmed) ? stripRichTextToPlainText(trimmed).length : trimmed.length;
+}
 
-  const lines = trimmed.split(/\r?\n/);
+function renderPlainTextDescriptionHtml(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
   const htmlParts: string[] = [];
   let inList: "ul" | "ol" | null = null;
 
@@ -1886,6 +1926,49 @@ function renderDescriptionHtml(markdown: string): string {
   closeList();
 
   return htmlParts.join("");
+}
+
+function renderDescriptionHtml(markdown: string, options: RichTextRenderOptions = {}): string {
+  const trimmed = markdown.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (isHtmlContent(trimmed)) {
+    const sanitized = sanitizeRichTextHtml(trimmed, options);
+
+    if (!options.recoverPlainText || !isRichTextEmpty(sanitized)) {
+      return sanitized;
+    }
+
+    const plainText = stripRichTextToPlainText(trimmed);
+    return plainText ? renderPlainTextDescriptionHtml(plainText) : "";
+  }
+
+  return renderPlainTextDescriptionHtml(trimmed);
+}
+
+function normalizeAffirmationText(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (!isHtmlContent(trimmed)) {
+    return trimmed;
+  }
+
+  const sanitized = sanitizeRichTextHtml(trimmed, {
+    preserveTextColor: false,
+  });
+
+  if (!isRichTextEmpty(sanitized)) {
+    return sanitized;
+  }
+
+  return stripRichTextToPlainText(trimmed);
 }
 
 function getApiErrorMessage(statusCode: number, payload: ApiErrorPayload, fallback: string): string {
@@ -5016,6 +5099,8 @@ type RichTextEditorProps = {
   value: string;
   disabled: boolean;
   onChange: (nextValue: string) => void;
+  allowTextColor?: boolean;
+  renderOptions?: RichTextRenderOptions;
 };
 
 function RichTextContent({ value, className }: { value: string; className: string }) {
@@ -5063,10 +5148,12 @@ function TiptapToolbar({
   editor,
   disabled,
   locale,
+  allowTextColor,
 }: {
   editor: Editor | null;
   disabled: boolean;
   locale: UserLocale;
+  allowTextColor: boolean;
 }) {
   const colorInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -5215,25 +5302,29 @@ function TiptapToolbar({
         <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2" y1="8" x2="14" y2="8" strokeLinecap="round"/></svg>
       </TiptapToolbarButton>
 
-      <div className="mx-1 h-4 w-px bg-line" />
+      {allowTextColor ? (
+        <>
+          <div className="mx-1 h-4 w-px bg-line" />
 
-      <TiptapToolbarButton
-        onClick={() => colorInputRef.current?.click()}
-        disabled={disabled}
-        title={isFrench ? "Couleur du texte" : "Text color"}
-      >
-        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
-          <path d="M8 1.5L3 13h2l1-2.5h4L11 13h2L8 1.5zm0 3l1.5 4h-3L8 4.5z"/>
-          <rect x="3" y="14" width="10" height="1.5" fill={editor.getAttributes("textStyle").color ?? "currentColor"}/>
-        </svg>
-      </TiptapToolbarButton>
-      <input
-        ref={colorInputRef}
-        type="color"
-        className="sr-only"
-        defaultValue="#000000"
-        onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
-      />
+          <TiptapToolbarButton
+            onClick={() => colorInputRef.current?.click()}
+            disabled={disabled}
+            title={isFrench ? "Couleur du texte" : "Text color"}
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+              <path d="M8 1.5L3 13h2l1-2.5h4L11 13h2L8 1.5zm0 3l1.5 4h-3L8 4.5z"/>
+              <rect x="3" y="14" width="10" height="1.5" fill={editor.getAttributes("textStyle").color ?? "currentColor"}/>
+            </svg>
+          </TiptapToolbarButton>
+          <input
+            ref={colorInputRef}
+            type="color"
+            className="sr-only"
+            defaultValue="#000000"
+            onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
+          />
+        </>
+      ) : null}
 
       <TiptapToolbarButton
         onClick={() => imageInputRef.current?.click()}
@@ -5310,13 +5401,26 @@ function isHtmlContent(text: string): boolean {
   return /<[a-z][\s\S]*>/i.test(text);
 }
 
-function convertMarkdownToHtml(markdown: string): string {
+function convertMarkdownToHtml(markdown: string, options: RichTextRenderOptions = {}): string {
   if (!markdown.trim()) return "";
-  if (isHtmlContent(markdown)) return markdown;
-  return renderDescriptionHtml(markdown);
+  if (
+    isHtmlContent(markdown)
+    && options.preserveTextColor === undefined
+    && options.recoverPlainText === undefined
+  ) {
+    return markdown;
+  }
+  return renderDescriptionHtml(markdown, options);
 }
 
-function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorProps) {
+function RichTextEditor({
+  locale,
+  value,
+  disabled,
+  onChange,
+  allowTextColor = true,
+  renderOptions,
+}: RichTextEditorProps) {
   const isFrench = locale === "fr";
   const lastExternalValueRef = useRef(value);
   const editorRef = useRef<Editor | null>(null);
@@ -5359,7 +5463,7 @@ function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorPro
       TableCell,
       TableHeader,
     ],
-    content: convertMarkdownToHtml(value),
+    content: convertMarkdownToHtml(value, renderOptions),
     editable: !disabled,
     onUpdate: ({ editor: updatedEditor }) => {
       const html = updatedEditor.getHTML();
@@ -5409,13 +5513,13 @@ function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorPro
     if (!editor) return;
     if (value === lastExternalValueRef.current) return;
     lastExternalValueRef.current = value;
-    const htmlContent = convertMarkdownToHtml(value);
+    const htmlContent = convertMarkdownToHtml(value, renderOptions);
     editor.commands.setContent(htmlContent, { emitUpdate: false });
-  }, [editor, value]);
+  }, [editor, renderOptions, value]);
 
   return (
     <div className={`mt-1 overflow-hidden rounded-lg border border-line bg-surface transition-all duration-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 ${disabled ? "opacity-50" : ""}`}>
-      <TiptapToolbar editor={editor} disabled={disabled} locale={locale} />
+      <TiptapToolbar editor={editor} disabled={disabled} locale={locale} allowTextColor={allowTextColor} />
       <EditorContent editor={editor} />
     </div>
   );
@@ -6011,8 +6115,15 @@ export function AppShell() {
   }, []);
 
   const applyDayAffirmationState = useCallback((nextAffirmation: DayAffirmation | null) => {
-    setDayAffirmation(nextAffirmation);
-    updateDayAffirmationDraft(nextAffirmation?.text ?? "");
+    const normalizedAffirmation = nextAffirmation
+      ? {
+          ...nextAffirmation,
+          text: normalizeAffirmationText(nextAffirmation.text),
+        }
+      : null;
+
+    setDayAffirmation(normalizedAffirmation);
+    updateDayAffirmationDraft(normalizedAffirmation?.text ?? "");
   }, [updateDayAffirmationDraft]);
 
   function getCachedDayAffirmation(date: string): DayAffirmation | null | undefined {
@@ -7545,10 +7656,11 @@ export function AppShell() {
     }
 
     const nextTextCandidate = options?.text ?? dayAffirmationDraftRef.current;
-    const normalizedText = nextTextCandidate.trim();
+    const normalizedText = normalizeAffirmationText(nextTextCandidate);
+    const affirmationCharacterCount = getRichTextCharacterCount(normalizedText);
     const nextCompletion = options?.isCompleted ?? dayAffirmation?.isCompleted ?? false;
 
-    if (normalizedText.length === 0) {
+    if (affirmationCharacterCount === 0) {
       setDayAffirmationErrorMessage(
         isFrench
           ? "Veuillez saisir votre affirmation avant d'enregistrer."
@@ -7557,7 +7669,7 @@ export function AppShell() {
       return;
     }
 
-    if (normalizedText.length > DAY_AFFIRMATION_MAX_LENGTH) {
+    if (affirmationCharacterCount > DAY_AFFIRMATION_MAX_LENGTH) {
       setDayAffirmationErrorMessage(
         isFrench
           ? `L'affirmation est trop longue. Longueur maximale : ${DAY_AFFIRMATION_MAX_LENGTH} caracteres.`
@@ -9298,6 +9410,7 @@ export function AppShell() {
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
   const isAffirmationCompleted = dayAffirmation?.isCompleted ?? false;
+  const dayAffirmationCharacterCount = getRichTextCharacterCount(dayAffirmationDraft);
   const completionItemCount = tasks.length + 1;
   const completedItemCount = tasksByStatus.done.length + (isAffirmationCompleted ? 1 : 0);
   const completionRate =
@@ -10694,6 +10807,8 @@ export function AppShell() {
                     setDayAffirmationErrorMessage(null);
                   }}
                   disabled={isDayAffirmationLoading || isDayAffirmationSaving}
+                  allowTextColor={false}
+                  renderOptions={DAY_AFFIRMATION_RICH_TEXT_OPTIONS}
                 />
               </div>
               <div className="flex justify-end">
@@ -10719,7 +10834,7 @@ export function AppShell() {
 
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
               <p>
-                {dayAffirmationDraft.trim().length}/{DAY_AFFIRMATION_MAX_LENGTH}
+                {dayAffirmationCharacterCount}/{DAY_AFFIRMATION_MAX_LENGTH}
               </p>
               {dayAffirmation?.updatedAt ? (
                 <p>
