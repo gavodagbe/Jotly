@@ -1728,9 +1728,12 @@ function sanitizeRichTextTag(tag: string): string {
   if (tagName === "img") {
     const src = getHtmlAttributeValue(rawAttributes, "src");
     const alt = getHtmlAttributeValue(rawAttributes, "alt") ?? "";
-    const safeUrl = src ? sanitizeRichTextUrl(src) : null;
-    if (!safeUrl) return "";
-    return `<img src="${escapeHtml(safeUrl)}" alt="${escapeHtml(alt)}">`;
+    if (!src) return "";
+    const trimmed = src.trim();
+    const isSafeUrl = /^https?:\/\//i.test(trimmed);
+    const isSafeDataUri = /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/i.test(trimmed);
+    if (!isSafeUrl && !isSafeDataUri) return "";
+    return `<img src="${escapeHtml(trimmed)}" alt="${escapeHtml(alt)}">`;
   }
 
   if (tagName === "a") {
@@ -5066,6 +5069,7 @@ function TiptapToolbar({
   locale: UserLocale;
 }) {
   const colorInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   if (!editor) {
     return null;
@@ -5085,11 +5089,13 @@ function TiptapToolbar({
     editor?.chain().focus().extendMarkRange("link").setLink({ href: normalizedUrl }).run();
   }
 
-  function addImage() {
-    const url = window.prompt(isFrench ? "Entrez l'URL de l'image" : "Enter image URL", "https://");
-    if (!url) return;
-    const normalized = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
-    editor?.chain().focus().setImage({ src: normalized }).run();
+  function handleImageFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const src = e.target?.result as string;
+      if (src) editor?.chain().focus().setImage({ src }).run();
+    };
+    reader.readAsDataURL(file);
   }
 
   return (
@@ -5230,12 +5236,23 @@ function TiptapToolbar({
       />
 
       <TiptapToolbarButton
-        onClick={addImage}
+        onClick={() => imageInputRef.current?.click()}
         disabled={disabled}
         title={isFrench ? "Image" : "Image"}
       >
         <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.2"/><circle cx="5.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><path d="M1.5 11l3.5-3.5 3 3 2-2 4 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </TiptapToolbarButton>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleImageFile(file);
+          e.target.value = "";
+        }}
+      />
 
       <TiptapToolbarButton
         onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
@@ -5302,6 +5319,16 @@ function convertMarkdownToHtml(markdown: string): string {
 function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorProps) {
   const isFrench = locale === "fr";
   const lastExternalValueRef = useRef(value);
+  const editorRef = useRef<Editor | null>(null);
+
+  function insertImageFromFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const src = e.target?.result as string;
+      if (src) editorRef.current?.chain().focus().setImage({ src }).run();
+    };
+    reader.readAsDataURL(file);
+  }
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -5346,8 +5373,32 @@ function RichTextEditor({ locale, value, disabled, onChange }: RichTextEditorPro
         class:
           "rich-text-render rich-text-editor min-h-[100px] px-3 py-2.5 text-sm leading-6 text-foreground outline-none focus:outline-none",
       },
+      handleDrop: (_view, event) => {
+        const files = event.dataTransfer?.files;
+        if (!files?.length) return false;
+        const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+        if (!imageFiles.length) return false;
+        event.preventDefault();
+        imageFiles.forEach(insertImageFromFile);
+        return true;
+      },
+      handlePaste: (_view, event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        const imageItems = Array.from(items).filter((item) => item.type.startsWith("image/"));
+        if (!imageItems.length) return false;
+        imageItems.forEach((item) => {
+          const file = item.getAsFile();
+          if (file) insertImageFromFile(file);
+        });
+        return imageItems.length > 0;
+      },
     },
   });
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
