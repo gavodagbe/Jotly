@@ -10800,6 +10800,7 @@ export function AppShell() {
               <div className="block text-sm font-semibold text-foreground">
                 <span>{isFrench ? "Phrase du jour" : "Today statement"}</span>
                 <RichTextEditor
+                  key={dayAffirmation?.id ?? selectedDate}
                   locale={activeLocale}
                   value={dayAffirmationDraft}
                   onChange={(nextValue) => {
