@@ -95,6 +95,7 @@ model Task {
   dueDate                  DateTime?           @db.Date
   priority                 TaskPriority
   project                  String?
+  assignees                String?
   plannedTime              Int?
   recurrenceSourceTaskId   String?
   recurrenceOccurrenceDate DateTime?           @db.Date

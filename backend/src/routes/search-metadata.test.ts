@@ -17,6 +17,7 @@ test("task search metadata includes the task target date for comments and attach
     dueDate: null,
     priority: "medium",
     project: null,
+    assignees: null,
     plannedTime: null,
     recurrenceSourceTaskId: null,
     recurrenceOccurrenceDate: null,

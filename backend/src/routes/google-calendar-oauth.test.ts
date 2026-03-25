@@ -733,6 +733,7 @@ test("PATCH /api/google-calendar/connection/:connectionId/calendar rejects switc
       dueDate: null,
       priority: "medium",
       project: null,
+      assignees: null,
       plannedTime: null,
       rolledFromTaskId: null,
       recurrenceSourceTaskId: null,
