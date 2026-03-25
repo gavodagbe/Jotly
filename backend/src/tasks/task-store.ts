@@ -10,6 +10,7 @@ export type TaskCreateInput = {
   dueDate: Date | null;
   priority: TaskPriority;
   project: string | null;
+  assignees?: string | null;
   plannedTime: number | null;
   recurrenceSourceTaskId?: string | null;
   recurrenceOccurrenceDate?: Date | null;

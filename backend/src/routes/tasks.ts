@@ -40,6 +40,7 @@ const createTaskBodySchema = z.object({
   dueDate: targetDateSchema.optional(),
   priority: taskPrioritySchema.optional(),
   project: z.string().trim().optional().nullable(),
+  assignees: z.string().trim().optional().nullable(),
   plannedTime: z.number().int().nonnegative().optional().nullable(),
   calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
 });
@@ -53,6 +54,7 @@ const updateTaskBodySchema = z
     dueDate: targetDateSchema.optional(),
     priority: taskPrioritySchema.optional(),
     project: z.string().trim().optional().nullable(),
+    assignees: z.string().trim().optional().nullable(),
     plannedTime: z.number().int().nonnegative().optional().nullable(),
     calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
   })
@@ -116,6 +118,7 @@ function serializeTask(task: Task) {
     dueDate: task.dueDate ? formatDateOnly(task.dueDate) : null,
     priority: task.priority,
     project: task.project,
+    assignees: task.assignees,
     plannedTime: task.plannedTime,
     rolledFromTaskId: task.rolledFromTaskId ?? null,
     recurrenceSourceTaskId: task.recurrenceSourceTaskId ?? null,
@@ -549,6 +552,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         dueDate: parsedDueDate,
         priority: bodyResult.data.priority ?? "medium",
         project: normalizeNullableText(bodyResult.data.project) ?? null,
+        assignees: normalizeNullableText(bodyResult.data.assignees) ?? null,
         plannedTime: bodyResult.data.plannedTime ?? null,
         calendarEventId: linkedCalendarEvent.hasValue ? linkedCalendarEvent.value : null,
         ...getTimestampsForNewStatus(status, now)
@@ -786,6 +790,10 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       if (updateBody.project !== undefined) {
         updateInput.project = normalizeNullableText(updateBody.project) ?? null;
+      }
+
+      if (updateBody.assignees !== undefined) {
+        updateInput.assignees = normalizeNullableText(updateBody.assignees) ?? null;
       }
 
       if (updateBody.plannedTime !== undefined) {

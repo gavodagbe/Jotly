@@ -45,6 +45,7 @@ type Task = {
   dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
+  assignees: string | null;
   plannedTime: number | null;
   rolledFromTaskId: string | null;
   recurrenceSourceTaskId: string | null;
@@ -60,6 +61,7 @@ type TaskMutationInput = {
   dueDate: string;
   priority: TaskPriority;
   project: string | null;
+  assignees: string | null;
   plannedTime: number | null;
   calendarEventId?: string | null;
 };
@@ -471,6 +473,7 @@ type TaskFormValues = {
   dueDate: string;
   priority: TaskPriority;
   project: string;
+  assignees: string;
   plannedTime: string;
   calendarEventId: string | null;
 };
@@ -1988,6 +1991,7 @@ function getDefaultTaskFormValues(targetDate: string): TaskFormValues {
     dueDate: targetDate,
     priority: "medium",
     project: "",
+    assignees: "",
     plannedTime: "",
     calendarEventId: null,
   };
@@ -2097,6 +2101,7 @@ function getTaskFormValues(task: Task): TaskFormValues {
     dueDate: task.dueDate ?? task.targetDate,
     priority: task.priority,
     project: task.project ?? "",
+    assignees: task.assignees ?? "",
     plannedTime: typeof task.plannedTime === "number" ? String(task.plannedTime) : "",
     calendarEventId: task.calendarEventId,
   };
@@ -2161,6 +2166,7 @@ function buildTaskMutationInput(
       dueDate: values.dueDate,
       priority: values.priority,
       project: normalizeOptionalTextInput(values.project),
+      assignees: normalizeOptionalTextInput(values.assignees),
       plannedTime,
       calendarEventId: values.calendarEventId,
     },
@@ -12223,6 +12229,18 @@ export function AppShell() {
                   />
                 </label>
               </div>
+
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Assignes (optionnel)" : "Assignees (optional)"}
+                <input
+                  type="text"
+                  placeholder={isFrench ? "ex : Alice, Bob" : "e.g. Alice, Bob"}
+                  value={taskFormValues.assignees}
+                  onChange={(event) => updateTaskFormField("assignees", event.target.value)}
+                  className={textFieldClass}
+                  disabled={isSubmittingTask}
+                />
+              </label>
 
               {googleCalendarConnections.length > 0 ? (
                 <label className="block text-sm font-semibold text-foreground">
