@@ -3505,6 +3505,7 @@ type ProjectPlanningViewProps = {
   locale: UserLocale;
   tasks: Task[];
   isLoading: boolean;
+  isBusy: boolean;
   errorMessage: string | null;
   filters: { project: string; status: string; dateFrom: string; dateTo: string };
   sort: { column: string; dir: "asc" | "desc" };
@@ -3514,6 +3515,7 @@ type ProjectPlanningViewProps = {
   onSortChange: (column: string) => void;
   onViewModeChange: (mode: "table" | "gantt") => void;
   onClose: () => void;
+  onCreateTask: () => void;
   onEditTask: (task: Task) => void;
 };
 
@@ -3590,6 +3592,7 @@ function ProjectPlanningView({
   locale,
   tasks,
   isLoading,
+  isBusy,
   errorMessage,
   filters,
   sort,
@@ -3599,6 +3602,7 @@ function ProjectPlanningView({
   onSortChange,
   onViewModeChange,
   onClose,
+  onCreateTask,
   onEditTask,
 }: ProjectPlanningViewProps) {
   const isFrench = locale === "fr";
@@ -3801,6 +3805,15 @@ function ProjectPlanningView({
               <span className="hidden sm:inline">Gantt</span>
             </button>
           </div>
+          <button
+            type="button"
+            className={primaryButtonClass}
+            onClick={onCreateTask}
+            disabled={isBusy}
+          >
+            <PlusIcon />
+            {isFrench ? "Nouvelle tache" : "New Task"}
+          </button>
           <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
@@ -8555,6 +8568,10 @@ export function AppShell() {
       refreshTaskAlerts();
       await fetchCalendarEvents(selectedDate, true);
 
+      if (isProjectPlanningOpen) {
+        await fetchAllProjectTasks();
+      }
+
       if (!savedTask.recurrenceSourceTaskId) {
         if (recurrenceResult.data) {
           try {
@@ -9661,6 +9678,7 @@ export function AppShell() {
         locale={activeLocale}
         tasks={allProjectTasks}
         isLoading={isLoadingAllTasks}
+        isBusy={isMutationPending}
         errorMessage={allTasksErrorMessage}
         filters={projectPlanningFilters}
         sort={projectPlanningSort}
@@ -9670,6 +9688,14 @@ export function AppShell() {
         onSortChange={handleProjectPlanningSort}
         onViewModeChange={setProjectPlanningViewMode}
         onClose={closeProjectPlanning}
+        onCreateTask={() =>
+          openCreateTaskDialog(
+            isTaskStatus(projectPlanningFilters.status) ? projectPlanningFilters.status : "todo",
+            {
+              project: projectPlanningFilters.project,
+            }
+          )
+        }
         onEditTask={(task) => {
           closeProjectPlanning();
           handleDateChange(task.targetDate);
