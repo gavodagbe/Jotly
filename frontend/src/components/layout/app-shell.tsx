@@ -5120,6 +5120,7 @@ type RichTextEditorProps = {
   onChange: (nextValue: string) => void;
   allowTextColor?: boolean;
   renderOptions?: RichTextRenderOptions;
+  contentClassName?: string;
 };
 
 function RichTextContent({ value, className }: { value: string; className: string }) {
@@ -5439,6 +5440,7 @@ function RichTextEditor({
   onChange,
   allowTextColor = true,
   renderOptions,
+  contentClassName,
 }: RichTextEditorProps) {
   const isFrench = locale === "fr";
   const lastExternalValueRef = useRef(value);
@@ -5537,9 +5539,11 @@ function RichTextEditor({
   }, [editor, renderOptions, value]);
 
   return (
-    <div className={`mt-1 overflow-hidden rounded-lg border border-line bg-surface transition-all duration-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 ${disabled ? "opacity-50" : ""}`}>
+    <div className={`mt-1 overflow-x-hidden rounded-lg border border-line bg-surface transition-all duration-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 ${disabled ? "opacity-50" : ""}`}>
       <TiptapToolbar editor={editor} disabled={disabled} locale={locale} allowTextColor={allowTextColor} />
-      <EditorContent editor={editor} />
+      <div className={contentClassName ?? ""}>
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }
@@ -5659,7 +5663,7 @@ function TaskColumn({ status, children }: TaskColumnProps) {
   return (
     <div
       ref={setNodeRef}
-      className={`mt-4 flex-1 space-y-3 rounded-2xl p-1 transition ${
+      className={`mt-4 flex-1 space-y-3 overflow-y-auto rounded-2xl p-1 transition ${
         isOver ? statusDropClassByStatus[status] : "bg-transparent"
       }`}
     >
@@ -10008,7 +10012,7 @@ export function AppShell() {
                   return (
                     <section
                       key={column.status}
-                      className={`flex min-h-[340px] flex-col rounded-xl border-t-2 bg-surface-soft/50 px-3 py-3 ${statusColumnClassByStatus[column.status]}`}
+                      className={`flex h-[480px] flex-col rounded-xl border-t-2 bg-surface-soft/50 px-3 py-3 ${statusColumnClassByStatus[column.status]}`}
                     >
                       <header className="flex items-center justify-between gap-2 pb-2">
                         <div className="flex items-center gap-2">
@@ -10842,6 +10846,7 @@ export function AppShell() {
                   disabled={isDayAffirmationLoading || isDayAffirmationSaving}
                   allowTextColor={false}
                   renderOptions={DAY_AFFIRMATION_RICH_TEXT_OPTIONS}
+                  contentClassName="max-h-[200px] overflow-y-auto"
                 />
               </div>
               <div className="flex justify-end">
@@ -11182,6 +11187,7 @@ export function AppShell() {
                       value={dayBilanFormValues.wins}
                       onChange={(nextValue) => updateDayBilanField("wins", nextValue)}
                       disabled={isDayBilanSaving}
+                      contentClassName="max-h-[160px] overflow-y-auto"
                     />
                   </div>
                   <div className="block text-sm font-semibold text-foreground">
@@ -11191,6 +11197,7 @@ export function AppShell() {
                       value={dayBilanFormValues.blockers}
                       onChange={(nextValue) => updateDayBilanField("blockers", nextValue)}
                       disabled={isDayBilanSaving}
+                      contentClassName="max-h-[160px] overflow-y-auto"
                     />
                   </div>
                 </div>
@@ -11203,6 +11210,7 @@ export function AppShell() {
                       value={dayBilanFormValues.lessonsLearned}
                       onChange={(nextValue) => updateDayBilanField("lessonsLearned", nextValue)}
                       disabled={isDayBilanSaving}
+                      contentClassName="max-h-[160px] overflow-y-auto"
                     />
                   </div>
                   <div className="block text-sm font-semibold text-foreground">
@@ -11212,6 +11220,7 @@ export function AppShell() {
                       value={dayBilanFormValues.tomorrowTop3}
                       onChange={(nextValue) => updateDayBilanField("tomorrowTop3", nextValue)}
                       disabled={isDayBilanSaving}
+                      contentClassName="max-h-[160px] overflow-y-auto"
                     />
                   </div>
                 </div>
