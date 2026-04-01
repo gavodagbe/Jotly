@@ -45,6 +45,8 @@ model User {
   tasks        Task[]
   dayAffirmations DayAffirmation[]
   dayBilans    DayBilan[]
+  weeklyEntries WeeklyEntry[]
+  monthlyEntries MonthlyEntry[]
   assistantSearchDocuments AssistantSearchDocument[]
   gamingTrackChallengeClaims GamingTrackChallengeClaim[]
   gamingTrackStreakProtectionUsages GamingTrackStreakProtectionUsage[]
@@ -158,6 +160,36 @@ model DayBilan {
 
   @@unique([userId, targetDate])
   @@index([userId, targetDate])
+}
+
+model WeeklyEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  year      Int
+  isoWeek   Int
+  objective String?
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, isoWeek])
+  @@index([userId, year, isoWeek])
+}
+
+model MonthlyEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  year      Int
+  month     Int
+  objective String?
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month])
+  @@index([userId, year, month])
 }
 
 model TaskComment {

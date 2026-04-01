@@ -218,6 +218,26 @@ type DayBilan = {
   updatedAt: string;
 };
 
+type WeeklyEntry = {
+  id: string;
+  year: number;
+  isoWeek: number;
+  objective: string | null;
+  review: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type MonthlyEntry = {
+  id: string;
+  year: number;
+  month: number;
+  objective: string | null;
+  review: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type DayBilanFormValues = {
   mood: string;
   wins: string;
@@ -1120,6 +1140,31 @@ function shiftDate(value: string, offsetDays: number): string {
   const shifted = parseDateInput(value);
   shifted.setDate(shifted.getDate() + offsetDays);
   return toDateInputValue(shifted);
+}
+
+function getISOWeekYear(date: Date): { year: number; week: number } {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = d.getDay() === 0 ? 7 : d.getDay(); // Mon=1 ... Sun=7
+  d.setDate(d.getDate() + 4 - day); // nearest Thursday
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return { year: d.getFullYear(), week };
+}
+
+function isMonday(date: Date): boolean {
+  return date.getDay() === 1;
+}
+
+function isSunday(date: Date): boolean {
+  return date.getDay() === 0;
+}
+
+function isFirstDayOfMonth(date: Date): boolean {
+  return date.getDate() === 1;
+}
+
+function isLastDayOfMonth(date: Date): boolean {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getDate() === 1;
 }
 
 function getPreferredLocale(value: string | null | undefined): UserLocale {
@@ -3048,8 +3093,9 @@ async function loadPendingReminders(
   return payload?.data ?? [];
 }
 
-async function loadNotes(token: string, signal?: AbortSignal): Promise<Note[]> {
-  const response = await fetch("/backend-api/notes", {
+async function loadNotes(token: string, date?: string, signal?: AbortSignal): Promise<Note[]> {
+  const url = date ? `/backend-api/notes?date=${encodeURIComponent(date)}` : "/backend-api/notes";
+  const response = await fetch(url, {
     method: "GET",
     headers: createAuthHeaders(token, false),
     signal,
@@ -3471,6 +3517,96 @@ async function upsertDayBilan(input: DayBilanMutationInput, token: string): Prom
     throw new Error("Unable to save day bilan.");
   }
 
+  return payload.data;
+}
+
+async function loadWeeklyEntry(
+  year: number,
+  week: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<WeeklyEntry | null> {
+  const response = await fetch(
+    `/backend-api/weekly-entry?year=${year}&week=${week}`,
+    {
+      method: "GET",
+      headers: createAuthHeaders(token, false),
+      signal,
+      cache: "no-store",
+    }
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: WeeklyEntry | null; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load weekly entry"));
+  }
+  return payload?.data ?? null;
+}
+
+async function upsertWeeklyEntry(
+  input: { year: number; week: number; objective?: string | null; review?: string | null },
+  token: string
+): Promise<WeeklyEntry> {
+  const response = await fetch("/backend-api/weekly-entry", {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: WeeklyEntry; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save weekly entry"));
+  }
+  if (!payload?.data) {
+    throw new Error("Unable to save weekly entry.");
+  }
+  return payload.data;
+}
+
+async function loadMonthlyEntry(
+  year: number,
+  month: number,
+  token: string,
+  signal?: AbortSignal
+): Promise<MonthlyEntry | null> {
+  const response = await fetch(
+    `/backend-api/monthly-entry?year=${year}&month=${month}`,
+    {
+      method: "GET",
+      headers: createAuthHeaders(token, false),
+      signal,
+      cache: "no-store",
+    }
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: MonthlyEntry | null; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load monthly entry"));
+  }
+  return payload?.data ?? null;
+}
+
+async function upsertMonthlyEntry(
+  input: { year: number; month: number; objective?: string | null; review?: string | null },
+  token: string
+): Promise<MonthlyEntry> {
+  const response = await fetch("/backend-api/monthly-entry", {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: MonthlyEntry; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save monthly entry"));
+  }
+  if (!payload?.data) {
+    throw new Error("Unable to save monthly entry.");
+  }
   return payload.data;
 }
 
@@ -6057,6 +6193,15 @@ export function AppShell() {
   const [isDayBilanSaving, setIsDayBilanSaving] = useState(false);
   const [dayBilanErrorMessage, setDayBilanErrorMessage] = useState<string | null>(null);
   const [dayBilanSuccessMessage, setDayBilanSuccessMessage] = useState<string | null>(null);
+  const [weeklyEntry, setWeeklyEntry] = useState<WeeklyEntry | null>(null);
+  const [weeklyObjective, setWeeklyObjective] = useState<string>("");
+  const [weeklyReview, setWeeklyReview] = useState<string>("");
+  const [weeklyEntryErrorMessage, setWeeklyEntryErrorMessage] = useState<string | null>(null);
+  const [monthlyEntry, setMonthlyEntry] = useState<MonthlyEntry | null>(null);
+  const [monthlyObjective, setMonthlyObjective] = useState<string>("");
+  const [monthlyReview, setMonthlyReview] = useState<string>("");
+  const [monthlyEntryErrorMessage, setMonthlyEntryErrorMessage] = useState<string | null>(null);
+  const [navigationBlockers, setNavigationBlockers] = useState<string[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isLoadingReminders, setIsLoadingReminders] = useState(false);
   const [reminderDialogMode, setReminderDialogMode] = useState<"create" | "edit" | null>(null);
@@ -7374,8 +7519,48 @@ export function AppShell() {
     setDeleteErrorMessage(null);
   }
 
+  function getDateChangeBlockers(date: string): string[] {
+    const dateObj = parseDateInput(date);
+    const blockers: string[] = [];
+
+    if (!dayAffirmation?.isCompleted) {
+      blockers.push(isFrench ? "Affirmation du jour non complétée" : "Daily affirmation not completed");
+    }
+
+    const bilanFilled =
+      dayBilan &&
+      (dayBilan.mood !== null ||
+        (dayBilan.wins ? !isRichTextEmpty(dayBilan.wins) : false) ||
+        (dayBilan.blockers ? !isRichTextEmpty(dayBilan.blockers) : false) ||
+        (dayBilan.lessonsLearned ? !isRichTextEmpty(dayBilan.lessonsLearned) : false) ||
+        (dayBilan.tomorrowTop3 ? !isRichTextEmpty(dayBilan.tomorrowTop3) : false));
+    if (!bilanFilled) {
+      blockers.push(isFrench ? "Bilan du jour non renseigné" : "Daily review not filled");
+    }
+
+    if (isMonday(dateObj) && (!weeklyObjective || isRichTextEmpty(weeklyObjective))) {
+      blockers.push(isFrench ? "Objectif de la semaine non renseigné" : "Weekly objective not set");
+    }
+
+    if (isSunday(dateObj) && (!weeklyReview || isRichTextEmpty(weeklyReview))) {
+      blockers.push(isFrench ? "Bilan de la semaine non renseigné" : "Weekly review not filled");
+    }
+
+    if (isLastDayOfMonth(dateObj) && (!monthlyReview || isRichTextEmpty(monthlyReview))) {
+      blockers.push(isFrench ? "Bilan du mois non renseigné" : "Monthly review not filled");
+    }
+
+    return blockers;
+  }
+
   function handleDateChange(nextDate: string) {
     if (nextDate === selectedDate) {
+      return;
+    }
+
+    const blockers = getDateChangeBlockers(selectedDate);
+    if (blockers.length > 0) {
+      setNavigationBlockers(blockers);
       return;
     }
 
@@ -7391,6 +7576,15 @@ export function AppShell() {
     setDayBilanFormValues(getDefaultDayBilanFormValues());
     setDayBilanErrorMessage(null);
     setDayBilanSuccessMessage(null);
+    setWeeklyEntry(null);
+    setWeeklyObjective("");
+    setWeeklyReview("");
+    setWeeklyEntryErrorMessage(null);
+    setMonthlyEntry(null);
+    setMonthlyObjective("");
+    setMonthlyReview("");
+    setMonthlyEntryErrorMessage(null);
+    setNavigationBlockers([]);
     setGamingTrackErrorMessage(null);
     setAssistantErrorMessage(null);
     setActiveTaskId(null);
@@ -7773,6 +7967,68 @@ export function AppShell() {
       );
     } finally {
       setIsDayBilanSaving(false);
+    }
+  }
+
+  async function handleSaveWeeklyObjective() {
+    if (!authToken) return;
+    const dateObj = parseDateInput(selectedDate);
+    const { year, week } = getISOWeekYear(dateObj);
+    try {
+      const saved = await upsertWeeklyEntry({ year, week, objective: weeklyObjective }, authToken);
+      setWeeklyEntry(saved);
+      setWeeklyObjective(saved.objective ?? "");
+    } catch (error) {
+      setWeeklyEntryErrorMessage(
+        error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer l'objectif hebdomadaire." : "Unable to save weekly objective."
+      );
+    }
+  }
+
+  async function handleSaveWeeklyReview() {
+    if (!authToken) return;
+    const dateObj = parseDateInput(selectedDate);
+    const { year, week } = getISOWeekYear(dateObj);
+    try {
+      const saved = await upsertWeeklyEntry({ year, week, review: weeklyReview }, authToken);
+      setWeeklyEntry(saved);
+      setWeeklyReview(saved.review ?? "");
+    } catch (error) {
+      setWeeklyEntryErrorMessage(
+        error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer le bilan hebdomadaire." : "Unable to save weekly review."
+      );
+    }
+  }
+
+  async function handleSaveMonthlyObjective() {
+    if (!authToken) return;
+    const dateObj = parseDateInput(selectedDate);
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+    try {
+      const saved = await upsertMonthlyEntry({ year, month, objective: monthlyObjective }, authToken);
+      setMonthlyEntry(saved);
+      setMonthlyObjective(saved.objective ?? "");
+    } catch (error) {
+      setMonthlyEntryErrorMessage(
+        error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer l'objectif mensuel." : "Unable to save monthly objective."
+      );
+    }
+  }
+
+  async function handleSaveMonthlyReview() {
+    if (!authToken) return;
+    const dateObj = parseDateInput(selectedDate);
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+    try {
+      const saved = await upsertMonthlyEntry({ year, month, review: monthlyReview }, authToken);
+      setMonthlyEntry(saved);
+      setMonthlyReview(saved.review ?? "");
+    } catch (error) {
+      setMonthlyEntryErrorMessage(
+        error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer le bilan mensuel." : "Unable to save monthly review."
+      );
     }
   }
 
@@ -8991,7 +9247,7 @@ export function AppShell() {
     setIsLoadingNotes(true);
     const controller = new AbortController();
 
-    loadNotes(authToken, controller.signal)
+    loadNotes(authToken, selectedDate, controller.signal)
       .then((nextNotes) => {
         if (!controller.signal.aborted) setNotes(nextNotes);
       })
@@ -9003,7 +9259,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady]);
+  }, [authToken, authUser, isAuthReady, selectedDate]);
 
   // Poll for pending reminders every 30s
   useEffect(() => {
@@ -9288,6 +9544,61 @@ export function AppShell() {
         if (!controller.signal.aborted) {
           setIsDayBilanLoading(false);
         }
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+
+  useEffect(() => {
+    if (!authToken || !authUser || !isAuthReady) {
+      return;
+    }
+
+    const dateObj = parseDateInput(selectedDate);
+    const { year, week } = getISOWeekYear(dateObj);
+    const controller = new AbortController();
+
+    setWeeklyEntryErrorMessage(null);
+    loadWeeklyEntry(year, week, authToken, controller.signal)
+      .then((entry) => {
+        if (controller.signal.aborted) return;
+        setWeeklyEntry(entry);
+        setWeeklyObjective(entry?.objective ?? "");
+        setWeeklyReview(entry?.review ?? "");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setWeeklyEntryErrorMessage(
+          error instanceof Error ? error.message : isFrench ? "Impossible de charger l'entrée hebdomadaire." : "Unable to load weekly entry."
+        );
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+
+  useEffect(() => {
+    if (!authToken || !authUser || !isAuthReady) {
+      return;
+    }
+
+    const dateObj = parseDateInput(selectedDate);
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1;
+    const controller = new AbortController();
+
+    setMonthlyEntryErrorMessage(null);
+    loadMonthlyEntry(year, month, authToken, controller.signal)
+      .then((entry) => {
+        if (controller.signal.aborted) return;
+        setMonthlyEntry(entry);
+        setMonthlyObjective(entry?.objective ?? "");
+        setMonthlyReview(entry?.review ?? "");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setMonthlyEntryErrorMessage(
+          error instanceof Error ? error.message : isFrench ? "Impossible de charger l'entrée mensuelle." : "Unable to load monthly entry."
+        );
       });
 
     return () => controller.abort();
@@ -11249,6 +11560,209 @@ export function AppShell() {
         )}
       </section>
 
+      {(() => {
+        const selectedDateObj = parseDateInput(selectedDate);
+        const showMonthlyObjective = true;
+        const showMonthlyReview = isLastDayOfMonth(selectedDateObj);
+        const showWeeklyObjective = isMonday(selectedDateObj);
+        const showWeeklyReview = isSunday(selectedDateObj);
+        const monthNames = isFrench
+          ? ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
+          : ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        const monthLabel = monthNames[selectedDateObj.getMonth()];
+
+        return (
+          <>
+            {showMonthlyObjective ? (
+              <section className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 50 }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className={sectionHeaderClass}>
+                      {isFrench ? `Objectif de ${monthLabel}` : `${monthLabel} Objective`}
+                    </h2>
+                    <p className="text-sm text-muted">
+                      {isFrench
+                        ? `Definissez l'objectif principal pour le mois de ${monthLabel}.`
+                        : `Set the main goal for ${monthLabel}.`}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <RichTextEditor
+                    locale={activeLocale}
+                    value={monthlyObjective}
+                    onChange={setMonthlyObjective}
+                    disabled={false}
+                    contentClassName="max-h-[200px] overflow-y-auto"
+                  />
+                </div>
+                {monthlyEntry?.updatedAt ? (
+                  <p className="mt-2 text-xs text-muted">
+                    {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+                    {formatDateTime(monthlyEntry.updatedAt, activeLocale, activeTimeZone)}
+                  </p>
+                ) : null}
+                {monthlyEntryErrorMessage ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {monthlyEntryErrorMessage}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    className={primaryButtonClass}
+                    onClick={() => void handleSaveMonthlyObjective()}
+                  >
+                    {isFrench ? "Enregistrer" : "Save"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {showMonthlyReview ? (
+              <section className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 51 }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className={sectionHeaderClass}>
+                      {isFrench ? `Bilan de ${monthLabel}` : `${monthLabel} Review`}
+                    </h2>
+                    <p className="text-sm text-muted">
+                      {isFrench
+                        ? "Dernier jour du mois — faites le bilan avant de passer a la suite."
+                        : "Last day of the month — complete your review before moving on."}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                    {isFrench ? "Requis" : "Required"}
+                  </span>
+                </div>
+                <div className="mt-4">
+                  <RichTextEditor
+                    locale={activeLocale}
+                    value={monthlyReview}
+                    onChange={setMonthlyReview}
+                    disabled={false}
+                    contentClassName="max-h-[200px] overflow-y-auto"
+                  />
+                </div>
+                {monthlyEntryErrorMessage ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {monthlyEntryErrorMessage}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    className={primaryButtonClass}
+                    onClick={() => void handleSaveMonthlyReview()}
+                  >
+                    {isFrench ? "Enregistrer" : "Save"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {showWeeklyObjective ? (
+              <section className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 52 }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className={sectionHeaderClass}>
+                      {isFrench ? "Objectif de la semaine" : "Weekly Objective"}
+                    </h2>
+                    <p className="text-sm text-muted">
+                      {isFrench
+                        ? "Debut de semaine — definissez votre objectif avant de continuer."
+                        : "Start of week — set your objective before continuing."}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-800">
+                    {isFrench ? "Requis" : "Required"}
+                  </span>
+                </div>
+                <div className="mt-4">
+                  <RichTextEditor
+                    locale={activeLocale}
+                    value={weeklyObjective}
+                    onChange={setWeeklyObjective}
+                    disabled={false}
+                    contentClassName="max-h-[200px] overflow-y-auto"
+                  />
+                </div>
+                {weeklyEntry?.updatedAt ? (
+                  <p className="mt-2 text-xs text-muted">
+                    {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+                    {formatDateTime(weeklyEntry.updatedAt, activeLocale, activeTimeZone)}
+                  </p>
+                ) : null}
+                {weeklyEntryErrorMessage ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {weeklyEntryErrorMessage}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    className={primaryButtonClass}
+                    onClick={() => void handleSaveWeeklyObjective()}
+                  >
+                    {isFrench ? "Enregistrer" : "Save"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {showWeeklyReview ? (
+              <section className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 53 }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className={sectionHeaderClass}>
+                      {isFrench ? "Bilan de la semaine" : "Weekly Review"}
+                    </h2>
+                    <p className="text-sm text-muted">
+                      {isFrench
+                        ? "Fin de semaine — faites le bilan avant de passer a la semaine suivante."
+                        : "End of week — complete your review before moving to next week."}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-800">
+                    {isFrench ? "Requis" : "Required"}
+                  </span>
+                </div>
+                <div className="mt-4">
+                  <RichTextEditor
+                    locale={activeLocale}
+                    value={weeklyReview}
+                    onChange={setWeeklyReview}
+                    disabled={false}
+                    contentClassName="max-h-[200px] overflow-y-auto"
+                  />
+                </div>
+                {weeklyEntry?.updatedAt ? (
+                  <p className="mt-2 text-xs text-muted">
+                    {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
+                    {formatDateTime(weeklyEntry.updatedAt, activeLocale, activeTimeZone)}
+                  </p>
+                ) : null}
+                {weeklyEntryErrorMessage ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {weeklyEntryErrorMessage}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    className={primaryButtonClass}
+                    onClick={() => void handleSaveWeeklyReview()}
+                  >
+                    {isFrench ? "Enregistrer" : "Save"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+          </>
+        );
+      })()}
+
       <section
         id="notes"
         className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getDashboardDropClassName("notes")}`}
@@ -11269,7 +11783,7 @@ export function AppShell() {
             <button
               type="button"
               className={primaryButtonClass}
-              onClick={() => openCreateNoteDialog()}
+              onClick={() => openCreateNoteDialog({ targetDate: selectedDate })}
               disabled={isLoadingNotes}
             >
               <PlusIcon />
@@ -13201,6 +13715,43 @@ export function AppShell() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      ) : null}
+
+      {navigationBlockers.length > 0 ? (
+        <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={isFrench ? "Navigation bloquee" : "Navigation blocked"}
+            className="animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+          >
+            <h3 className="text-lg font-semibold text-foreground">
+              {isFrench ? "Compléter les champs requis" : "Complete required fields"}
+            </h3>
+            <p className="mt-2 text-sm text-muted">
+              {isFrench
+                ? "Vous devez remplir les éléments suivants avant de changer de date :"
+                : "You must complete the following before navigating to another date:"}
+            </p>
+            <ul className="mt-3 space-y-1">
+              {navigationBlockers.map((blocker) => (
+                <li key={blocker} className="flex items-center gap-2 text-sm text-foreground">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  {blocker}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                onClick={() => setNavigationBlockers([])}
+              >
+                {isFrench ? "Compris" : "Got it"}
+              </button>
+            </div>
           </section>
         </div>
       ) : null}

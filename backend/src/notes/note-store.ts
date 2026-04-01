@@ -1,4 +1,4 @@
-import { CalendarEvent, Note, PrismaClient } from "@prisma/client";
+import { CalendarEvent, Note, Prisma, PrismaClient } from "@prisma/client";
 
 export type StoredNoteCalendarEvent = Pick<
   CalendarEvent,
@@ -52,10 +52,15 @@ export type NoteStore = {
 export function createPrismaNoteStore(prisma = new PrismaClient()): NoteStore {
   return {
     async listByUser(userId, filters) {
-      const where: Record<string, unknown> = { userId };
+      const where: Prisma.NoteWhereInput = { userId };
 
       if (filters?.targetDate) {
-        where.targetDate = filters.targetDate;
+        const startOfDay = filters.targetDate;
+        const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+        where.OR = [
+          { targetDate: startOfDay },
+          { calendarEvent: { startTime: { gte: startOfDay, lt: endOfDay } } },
+        ];
       }
 
       return prisma.note.findMany({
