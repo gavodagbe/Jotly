@@ -1,4 +1,4 @@
-import { CalendarEvent, PrismaClient } from "@prisma/client";
+import { CalendarEvent, Prisma, PrismaClient } from "@prisma/client";
 
 export type CalendarEventUpsertInput = {
   userId: string;
@@ -316,7 +316,7 @@ export function createPrismaCalendarEventStore(
         .map((n) => n.calendarEventId)
         .filter((id): id is string => id !== null);
 
-      const baseWhere: Parameters<typeof prisma.calendarEvent.deleteMany>[0]["where"] =
+      const baseWhere: Prisma.CalendarEventWhereInput =
         activeGoogleEventIds.length > 0
           ? { connectionId, userId, googleEventId: { notIn: activeGoogleEventIds } }
           : { connectionId, userId };
