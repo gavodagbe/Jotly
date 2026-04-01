@@ -4479,6 +4479,8 @@ type AppNavbarProps = {
   isBusy?: boolean;
   isProjectPlanningOpen?: boolean;
   onOpenProjectPlanning?: () => void;
+  showMonthlyReview?: boolean;
+  showWeeklyReview?: boolean;
 };
 
 const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> = {
@@ -5026,6 +5028,8 @@ function AppNavbar({
   isBusy = false,
   isProjectPlanningOpen = false,
   onOpenProjectPlanning,
+  showMonthlyReview = false,
+  showWeeklyReview = false,
 }: AppNavbarProps) {
   const isLoggedIn = user !== null;
   const isFrench = locale === "fr";
@@ -5111,6 +5115,26 @@ function AppNavbar({
               <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
               {isFrench ? "Bilan du jour" : "Day Bilan"}
             </a>
+            <a href="#monthlyObjective" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12h6M7 15h4" strokeLinecap="round"/></svg>
+              {isFrench ? "Objectif du mois" : "Monthly Objective"}
+            </a>
+            {showMonthlyReview ? (
+              <a href="#monthlyReview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-amber-700 transition-colors duration-150 hover:bg-amber-50 hover:text-amber-800">
+                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {isFrench ? "Bilan du mois" : "Monthly Review"}
+              </a>
+            ) : null}
+            <a href="#weeklyObjective" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/></svg>
+              {isFrench ? "Objectif de la semaine" : "Weekly Objective"}
+            </a>
+            {showWeeklyReview ? (
+              <a href="#weeklyReview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-violet-700 transition-colors duration-150 hover:bg-violet-50 hover:text-violet-800">
+                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-violet-500" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/><path d="M14 12l2 2 3-3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {isFrench ? "Bilan de la semaine" : "Weekly Review"}
+              </a>
+            ) : null}
             <button
               type="button"
               className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ${
@@ -9992,6 +10016,8 @@ export function AppShell() {
         isBusy={isMutationPending || isLoading}
         isProjectPlanningOpen={isProjectPlanningOpen}
         onOpenProjectPlanning={openProjectPlanning}
+        showMonthlyReview={isLastDayOfMonth(parseDateInput(selectedDate))}
+        showWeeklyReview={isSunday(parseDateInput(selectedDate))}
       />
 
     {isProjectPlanningOpen ? (
@@ -11564,7 +11590,7 @@ export function AppShell() {
         const selectedDateObj = parseDateInput(selectedDate);
         const showMonthlyObjective = true;
         const showMonthlyReview = isLastDayOfMonth(selectedDateObj);
-        const showWeeklyObjective = isMonday(selectedDateObj);
+        const showWeeklyObjective = true;
         const showWeeklyReview = isSunday(selectedDateObj);
         const monthNames = isFrench
           ? ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
@@ -11574,7 +11600,7 @@ export function AppShell() {
         return (
           <>
             {showMonthlyObjective ? (
-              <section className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 50 }}>
+              <section id="monthlyObjective" className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 50 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11620,7 +11646,7 @@ export function AppShell() {
             ) : null}
 
             {showMonthlyReview ? (
-              <section className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 51 }}>
+              <section id="monthlyReview" className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 51 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11663,7 +11689,7 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyObjective ? (
-              <section className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 52 }}>
+              <section id="weeklyObjective" className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 52 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11712,7 +11738,7 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyReview ? (
-              <section className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 53 }}>
+              <section id="weeklyReview" className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 53 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
