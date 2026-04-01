@@ -37,6 +37,8 @@ import { createPrismaAuthStore, AuthStore } from "./auth/auth-store";
 import { createPrismaCommentStore, CommentStore } from "./comments/comment-store";
 import { createPrismaDayAffirmationStore, DayAffirmationStore } from "./day-affirmation/day-affirmation-store";
 import { createPrismaDayBilanStore, DayBilanStore } from "./day-bilan/day-bilan-store";
+import { createPrismaWeeklyEntryStore, WeeklyEntryStore } from "./weekly-entry/weekly-entry-store";
+import { createPrismaMonthlyEntryStore, MonthlyEntryStore } from "./monthly-entry/monthly-entry-store";
 import { createPrismaGamingTrackStore, GamingTrackStore } from "./gaming-track/gaming-track-store";
 import { createGamingTrackService, GamingTrackService } from "./gaming-track/gaming-track-service";
 import { createPrismaProfileStore, ProfileStore } from "./profile/profile-store";
@@ -47,6 +49,8 @@ import assistantRoutes from "./routes/assistant";
 import commentsRoutes from "./routes/comments";
 import dayAffirmationRoutes from "./routes/day-affirmation";
 import dayBilanRoutes from "./routes/day-bilan";
+import weeklyEntryRoutes from "./routes/weekly-entry";
+import monthlyEntryRoutes from "./routes/monthly-entry";
 import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
@@ -100,6 +104,8 @@ export type BuildAppOptions = {
   recurrenceStore?: RecurrenceStore;
   dayAffirmationStore?: DayAffirmationStore;
   dayBilanStore?: DayBilanStore;
+  weeklyEntryStore?: WeeklyEntryStore;
+  monthlyEntryStore?: MonthlyEntryStore;
   gamingTrackStore?: GamingTrackStore;
   gamingTrackService?: GamingTrackService;
   noteStore?: NoteStore;
@@ -194,6 +200,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const dayBilanStore =
     options.dayBilanStore ??
     (options.taskStore ? undefined : createPrismaDayBilanStore());
+  const weeklyEntryStore =
+    options.weeklyEntryStore ??
+    (options.taskStore ? undefined : createPrismaWeeklyEntryStore());
+  const monthlyEntryStore =
+    options.monthlyEntryStore ??
+    (options.taskStore ? undefined : createPrismaMonthlyEntryStore());
   const noteStore =
     options.noteStore ??
     (options.taskStore ? undefined : createPrismaNoteStore());
@@ -358,6 +370,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (dayBilanStore) {
     app.register(dayBilanRoutes, { dayBilanStore, authService });
   }
+  if (weeklyEntryStore) {
+    app.register(weeklyEntryRoutes, { weeklyEntryStore, authService });
+  }
+  if (monthlyEntryStore) {
+    app.register(monthlyEntryRoutes, { monthlyEntryStore, authService });
+  }
   if (noteStore) {
     app.register(noteRoutes, {
       noteStore,
@@ -467,6 +485,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (dayBilanStore?.close) {
       await dayBilanStore.close();
+    }
+
+    if (weeklyEntryStore?.close) {
+      await weeklyEntryStore.close();
+    }
+
+    if (monthlyEntryStore?.close) {
+      await monthlyEntryStore.close();
     }
 
     if (gamingTrackStore?.close) {

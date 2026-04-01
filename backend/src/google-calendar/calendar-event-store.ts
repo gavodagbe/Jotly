@@ -302,18 +302,30 @@ export function createPrismaCalendarEventStore(
     },
 
     async deleteMissingForConnection(connectionId, userId, activeGoogleEventIds) {
+      // Find internal IDs of events that have linked notes — these must be preserved
+      // even if they fall outside the current sync window, to avoid breaking note links.
+      const notesWithLinkedEvents = await prisma.note.findMany({
+        where: {
+          userId,
+          calendarEventId: { not: null },
+          calendarEvent: { connectionId },
+        },
+        select: { calendarEventId: true },
+      });
+      const preservedEventIds = notesWithLinkedEvents
+        .map((n) => n.calendarEventId)
+        .filter((id): id is string => id !== null);
+
+      const baseWhere: Parameters<typeof prisma.calendarEvent.deleteMany>[0]["where"] =
+        activeGoogleEventIds.length > 0
+          ? { connectionId, userId, googleEventId: { notIn: activeGoogleEventIds } }
+          : { connectionId, userId };
+
       await prisma.calendarEvent.deleteMany({
         where:
-          activeGoogleEventIds.length > 0
-            ? {
-                connectionId,
-                userId,
-                googleEventId: { notIn: activeGoogleEventIds },
-              }
-            : {
-                connectionId,
-                userId,
-              },
+          preservedEventIds.length > 0
+            ? { ...baseWhere, id: { notIn: preservedEventIds } }
+            : baseWhere,
       });
     },
 
