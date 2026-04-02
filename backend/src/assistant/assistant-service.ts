@@ -1610,6 +1610,11 @@ export function createAssistantService(options: AssistantServiceOptions): Assist
       ) {
         try {
           await options.assistantSearchSyncService?.syncUserWorkspace(userId);
+        } catch (syncError) {
+          console.warn("[assistant] syncUserWorkspace failed (non-fatal):", syncError);
+        }
+
+        try {
           const searchRetrieval = await options.assistantSearchRetriever.search({
             userId,
             question,
