@@ -629,7 +629,7 @@ function buildSearchMatchesBlock(matches: AssistantSearchResult[]): string {
   return matches
     .map((match) => {
       const title = match.title ? ` | ${clip(match.title, 80)}` : "";
-      return `${formatSearchSourceType(match.sourceType)}${title} | ${clip(stripRichTextToPlainText(match.snippet), 220)}`;
+      return `${formatSearchSourceType(match.sourceType)}${title} | ${clip(stripRichTextToPlainText(match.snippet), 800)}`;
     })
     .join("\n");
 }
