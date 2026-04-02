@@ -7587,15 +7587,20 @@ export function AppShell() {
       blockers.push(isFrench ? "Affirmation du jour non complétée" : "Daily affirmation not completed");
     }
 
-    const bilanFilled =
-      dayBilan &&
-      (dayBilan.mood !== null ||
-        (dayBilan.wins ? !isRichTextEmpty(dayBilan.wins) : false) ||
-        (dayBilan.blockers ? !isRichTextEmpty(dayBilan.blockers) : false) ||
-        (dayBilan.lessonsLearned ? !isRichTextEmpty(dayBilan.lessonsLearned) : false) ||
-        (dayBilan.tomorrowTop3 ? !isRichTextEmpty(dayBilan.tomorrowTop3) : false));
-    if (!bilanFilled) {
-      blockers.push(isFrench ? "Bilan du jour non renseigné" : "Daily review not filled");
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isPastDay = dateObj < today;
+    if (isPastDay) {
+      const bilanFilled =
+        dayBilan &&
+        (dayBilan.mood !== null ||
+          (dayBilan.wins ? !isRichTextEmpty(dayBilan.wins) : false) ||
+          (dayBilan.blockers ? !isRichTextEmpty(dayBilan.blockers) : false) ||
+          (dayBilan.lessonsLearned ? !isRichTextEmpty(dayBilan.lessonsLearned) : false) ||
+          (dayBilan.tomorrowTop3 ? !isRichTextEmpty(dayBilan.tomorrowTop3) : false));
+      if (!bilanFilled) {
+        blockers.push(isFrench ? "Bilan du jour non renseigné" : "Daily review not filled");
+      }
     }
 
     if (isMonday(dateObj) && (!weeklyObjective || isRichTextEmpty(weeklyObjective))) {
@@ -14076,7 +14081,7 @@ export function AppShell() {
       ) : null}
 
       {isAssistantPanelOpen ? (
-        <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[400px]">
+        <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[580px]">
           <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
             <div className="flex items-center gap-2.5">
               <div className="grid h-7 w-7 place-items-center rounded-lg bg-accent-soft text-accent">
@@ -14172,6 +14177,15 @@ export function AppShell() {
                     </article>
                   );
                 })}
+                {isAssistantLoading ? (
+                  <article className="max-w-[88%] rounded-2xl rounded-bl-md bg-surface-soft px-3.5 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "0ms" }} />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "150ms" }} />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </article>
+                ) : null}
                 <div ref={assistantMessagesEndRef} />
               </>
             )}

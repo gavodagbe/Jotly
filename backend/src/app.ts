@@ -296,6 +296,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       assistantContextStore,
       assistantSearchRetriever,
       assistantSearchSyncService,
+      weeklyEntryStore,
+      monthlyEntryStore,
     });
   const googleCalendarConnectionStore =
     options.googleCalendarConnectionStore ??

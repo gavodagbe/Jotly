@@ -8,6 +8,8 @@ import {
 import { AssistantSearchSyncService } from "./assistant-search-sync";
 import { CommentStore } from "../comments/comment-store";
 import { formatDateOnly, TaskStore } from "../tasks/task-store";
+import { WeeklyEntryStore } from "../weekly-entry/weekly-entry-store";
+import { MonthlyEntryStore } from "../monthly-entry/monthly-entry-store";
 
 export type AssistantDomain =
   | "tasks"
@@ -50,6 +52,20 @@ export type AssistantDayBilanContext = {
   blockers: string | null;
   lessonsLearned: string | null;
   tomorrowTop3: string | null;
+};
+
+export type AssistantWeeklyEntryContext = {
+  year: number;
+  isoWeek: number;
+  objective: string | null;
+  review: string | null;
+};
+
+export type AssistantMonthlyEntryContext = {
+  year: number;
+  month: number;
+  objective: string | null;
+  review: string | null;
 };
 
 export type AssistantReminderContext = {
@@ -127,6 +143,8 @@ export type AssistantServiceOptions = {
   assistantContextStore?: AssistantContextStore;
   assistantSearchRetriever?: AssistantSearchRetriever;
   assistantSearchSyncService?: AssistantSearchSyncService;
+  weeklyEntryStore?: WeeklyEntryStore;
+  monthlyEntryStore?: MonthlyEntryStore;
 };
 
 type OpenAiChatCompletionResponse = {
@@ -148,6 +166,8 @@ type RetrievedDomainData = {
     eventCount: number;
   } | null;
   searchMatches: AssistantSearchResult[];
+  weeklyEntries: AssistantWeeklyEntryContext[];
+  monthlyEntries: AssistantMonthlyEntryContext[];
 };
 
 function emptyDomainData(): RetrievedDomainData {
@@ -160,6 +180,8 @@ function emptyDomainData(): RetrievedDomainData {
     dayBilans: [],
     overviewCounts: null,
     searchMatches: [],
+    weeklyEntries: [],
+    monthlyEntries: [],
   };
 }
 
@@ -230,7 +252,7 @@ function isCalendarQuestion(question: string): boolean {
 }
 
 function isReflectionQuestion(question: string): boolean {
-  return /\b(affirmation|affirmations|bilan|bilans|mood|wins|blockers|lessons|reflection|reflections)\b/i.test(
+  return /\b(affirmation|affirmations|bilan|bilans|mood|wins|blockers|lessons|reflection|reflections|objectif|objectifs|objective|objectives|mensuel|mensuelle|hebdomadaire|semaine|revue|weekly|monthly)\b/i.test(
     question
   );
 }
@@ -270,10 +292,12 @@ async function retrieveByDomain(
     taskStore?: TaskStore;
     commentStore?: CommentStore;
     assistantContextStore?: AssistantContextStore;
+    weeklyEntryStore?: WeeklyEntryStore;
+    monthlyEntryStore?: MonthlyEntryStore;
   }
 ): Promise<RetrievedDomainData> {
   const data = emptyDomainData();
-  const { taskStore, commentStore, assistantContextStore } = stores;
+  const { taskStore, commentStore, assistantContextStore, weeklyEntryStore, monthlyEntryStore } = stores;
 
   const promises: Promise<void>[] = [];
 
@@ -389,6 +413,32 @@ async function retrieveByDomain(
                 blockers: bilan.blockers,
                 lessonsLearned: bilan.lessonsLearned,
                 tomorrowTop3: bilan.tomorrowTop3,
+              }));
+            })()
+          );
+        }
+        if (weeklyEntryStore) {
+          promises.push(
+            (async () => {
+              const entries = await weeklyEntryStore.listByUser(userId);
+              data.weeklyEntries = entries.map((e) => ({
+                year: e.year,
+                isoWeek: e.isoWeek,
+                objective: e.objective,
+                review: e.review,
+              }));
+            })()
+          );
+        }
+        if (monthlyEntryStore) {
+          promises.push(
+            (async () => {
+              const entries = await monthlyEntryStore.listByUser(userId);
+              data.monthlyEntries = entries.map((e) => ({
+                year: e.year,
+                month: e.month,
+                objective: e.objective,
+                review: e.review,
               }));
             })()
           );
@@ -514,6 +564,29 @@ async function retrieveByDomain(
               );
             }
 
+            if (weeklyEntryStore) {
+              overviewPromises.push(
+                (async () => {
+                  const entries = await weeklyEntryStore.listByUser(userId);
+                  data.weeklyEntries = entries
+                    .sort((a, b) => b.year - a.year || b.isoWeek - a.isoWeek)
+                    .slice(0, 3)
+                    .map((e) => ({ year: e.year, isoWeek: e.isoWeek, objective: e.objective, review: e.review }));
+                })()
+              );
+            }
+            if (monthlyEntryStore) {
+              overviewPromises.push(
+                (async () => {
+                  const entries = await monthlyEntryStore.listByUser(userId);
+                  data.monthlyEntries = entries
+                    .sort((a, b) => b.year - a.year || b.month - a.month)
+                    .slice(0, 3)
+                    .map((e) => ({ year: e.year, month: e.month, objective: e.objective, review: e.review }));
+                })()
+              );
+            }
+
             await Promise.all(overviewPromises);
           })()
         );
@@ -557,6 +630,28 @@ function buildSearchMatchesBlock(matches: AssistantSearchResult[]): string {
     .map((match) => {
       const title = match.title ? ` | ${clip(match.title, 80)}` : "";
       return `${formatSearchSourceType(match.sourceType)}${title} | ${clip(stripRichTextToPlainText(match.snippet), 220)}`;
+    })
+    .join("\n");
+}
+
+function buildWeeklyEntriesBlock(entries: AssistantWeeklyEntryContext[]): string {
+  return entries
+    .map((e) => {
+      const parts = [`W${e.isoWeek}/${e.year}`];
+      if (e.objective) parts.push(`objective: ${clip(stripRichTextToPlainText(e.objective), 200)}`);
+      if (e.review) parts.push(`review: ${clip(stripRichTextToPlainText(e.review), 200)}`);
+      return parts.join(" | ");
+    })
+    .join("\n");
+}
+
+function buildMonthlyEntriesBlock(entries: AssistantMonthlyEntryContext[]): string {
+  return entries
+    .map((e) => {
+      const parts = [`${e.month}/${e.year}`];
+      if (e.objective) parts.push(`objective: ${clip(stripRichTextToPlainText(e.objective), 200)}`);
+      if (e.review) parts.push(`review: ${clip(stripRichTextToPlainText(e.review), 200)}`);
+      return parts.join(" | ");
     })
     .join("\n");
 }
@@ -636,6 +731,24 @@ function buildContext(
     );
   }
 
+  if (retrieved.weeklyEntries.length > 0 && remaining.value > 0) {
+    addBlockWithinBudget(
+      blocks,
+      "Weekly objectives & reviews",
+      buildWeeklyEntriesBlock(retrieved.weeklyEntries),
+      remaining
+    );
+  }
+
+  if (retrieved.monthlyEntries.length > 0 && remaining.value > 0) {
+    addBlockWithinBudget(
+      blocks,
+      "Monthly objectives & reviews",
+      buildMonthlyEntriesBlock(retrieved.monthlyEntries),
+      remaining
+    );
+  }
+
   return blocks.join("\n\n");
 }
 
@@ -646,6 +759,8 @@ function countRecords(retrieved: RetrievedDomainData): number {
     retrieved.calendarEvents.length +
     retrieved.dayAffirmations.length +
     retrieved.dayBilans.length +
+    retrieved.weeklyEntries.length +
+    retrieved.monthlyEntries.length +
     (retrieved.profile ? 1 : 0);
 
   const searchCount = new Set(
@@ -1466,6 +1581,8 @@ export function createAssistantService(options: AssistantServiceOptions): Assist
     taskStore: options.taskStore,
     commentStore: options.commentStore,
     assistantContextStore: options.assistantContextStore,
+    weeklyEntryStore: options.weeklyEntryStore,
+    monthlyEntryStore: options.monthlyEntryStore,
   };
 
   return {
