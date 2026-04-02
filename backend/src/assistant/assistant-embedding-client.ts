@@ -30,36 +30,49 @@ export function createAssistantEmbeddingClient(
         return [];
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), options.requestTimeoutMs);
+      // Batch to avoid exceeding the API token limit (300k tokens per request).
+      // ~50 texts per batch is a safe conservative size for typical document content.
+      const BATCH_SIZE = 50;
+      const results: number[][] = [];
 
-      try {
-        const response = await fetch(`${options.baseUrl.replace(/\/$/, "")}/embeddings`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${options.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: options.model,
-            input: normalized,
-          }),
-          signal: controller.signal,
-        });
+      for (let i = 0; i < normalized.length; i += BATCH_SIZE) {
+        const batch = normalized.slice(i, i + BATCH_SIZE);
 
-        const payload = (await response.json().catch(() => null)) as OpenAiEmbeddingResponse | null;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), options.requestTimeoutMs);
 
-        if (!response.ok) {
-          const message = payload?.error?.message ?? `OpenAI embeddings request failed (HTTP ${response.status})`;
-          throw new Error(message);
+        try {
+          const response = await fetch(`${options.baseUrl.replace(/\/$/, "")}/embeddings`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${options.apiKey}`,
+            },
+            body: JSON.stringify({
+              model: options.model,
+              input: batch,
+            }),
+            signal: controller.signal,
+          });
+
+          const payload = (await response.json().catch(() => null)) as OpenAiEmbeddingResponse | null;
+
+          if (!response.ok) {
+            const message = payload?.error?.message ?? `OpenAI embeddings request failed (HTTP ${response.status})`;
+            throw new Error(message);
+          }
+
+          const batchEmbeddings = (payload?.data ?? [])
+            .map((item) => item.embedding ?? [])
+            .filter((embedding) => Array.isArray(embedding) && embedding.length > 0);
+
+          results.push(...batchEmbeddings);
+        } finally {
+          clearTimeout(timeout);
         }
-
-        return (payload?.data ?? [])
-          .map((item) => item.embedding ?? [])
-          .filter((embedding) => Array.isArray(embedding) && embedding.length > 0);
-      } finally {
-        clearTimeout(timeout);
       }
+
+      return results;
     },
   };
 }
