@@ -10,6 +10,7 @@ export type WeeklyEntryUpsertInput = {
 
 export type WeeklyEntryStore = {
   getByWeek(year: number, isoWeek: number, userId: string): Promise<WeeklyEntry | null>;
+  listByUser(userId: string): Promise<WeeklyEntry[]>;
   upsert(input: WeeklyEntryUpsertInput): Promise<WeeklyEntry>;
   close?: () => Promise<void>;
 };
@@ -20,6 +21,10 @@ export function createPrismaWeeklyEntryStore(prisma = new PrismaClient()): Weekl
       return prisma.weeklyEntry.findUnique({
         where: { userId_year_isoWeek: { userId, year, isoWeek } },
       });
+    },
+
+    async listByUser(userId) {
+      return prisma.weeklyEntry.findMany({ where: { userId } });
     },
 
     async upsert(input) {

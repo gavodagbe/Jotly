@@ -10,6 +10,7 @@ export type MonthlyEntryUpsertInput = {
 
 export type MonthlyEntryStore = {
   getByMonth(year: number, month: number, userId: string): Promise<MonthlyEntry | null>;
+  listByUser(userId: string): Promise<MonthlyEntry[]>;
   upsert(input: MonthlyEntryUpsertInput): Promise<MonthlyEntry>;
   close?: () => Promise<void>;
 };
@@ -20,6 +21,10 @@ export function createPrismaMonthlyEntryStore(prisma = new PrismaClient()): Mont
       return prisma.monthlyEntry.findUnique({
         where: { userId_year_month: { userId, year, month } },
       });
+    },
+
+    async listByUser(userId) {
+      return prisma.monthlyEntry.findMany({ where: { userId } });
     },
 
     async upsert(input) {
