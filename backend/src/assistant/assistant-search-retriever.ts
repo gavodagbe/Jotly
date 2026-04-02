@@ -69,12 +69,10 @@ export function shouldUseAssistantSearch(question: string, domains: AssistantDom
   );
 }
 
-function shouldUseVectorSearch(question: string): boolean {
-  const normalized = normalizeQuestion(question);
-
-  return /\b(theme|themes|pattern|patterns|trend|trends|similar|similarity|concept|conceptual|why|insight|insights|summarize|summary|resume|tendance|motif|motifs|insight)\b/i.test(
-    normalized
-  );
+function shouldUseVectorSearch(_question: string): boolean {
+  // Always use vector search when available — semantic retrieval is superior to
+  // keyword heuristics for any kind of natural-language lookup.
+  return true;
 }
 
 function buildFullTextQuery(question: string): string {
