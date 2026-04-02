@@ -27,6 +27,7 @@ import {
 import { createTaskSearchPlugin } from "./tasks/task-search-plugin";
 import { createAssistantContextSearchPlugin } from "./assistant/assistant-context-search-plugin";
 import { createNoteSearchPlugin } from "./notes/note-search-plugin";
+import { createPeriodicEntrySearchPlugin } from "./periodic-entry/periodic-entry-search-plugin";
 import {
   createAssistantService,
   AssistantService,
@@ -148,6 +149,8 @@ function buildSearchPlugins(options: {
   assistantContextStore?: AssistantContextStore;
   noteStore?: NoteStore;
   noteAttachmentStore?: NoteAttachmentStore;
+  weeklyEntryStore?: WeeklyEntryStore;
+  monthlyEntryStore?: MonthlyEntryStore;
 }): SearchIndexPlugin[] {
   const plugins: SearchIndexPlugin[] = [];
 
@@ -168,6 +171,15 @@ function buildSearchPlugins(options: {
       createNoteSearchPlugin({
         noteStore: options.noteStore,
         noteAttachmentStore: options.noteAttachmentStore,
+      })
+    );
+  }
+
+  if (options.weeklyEntryStore && options.monthlyEntryStore) {
+    plugins.push(
+      createPeriodicEntrySearchPlugin({
+        weeklyEntryStore: options.weeklyEntryStore,
+        monthlyEntryStore: options.monthlyEntryStore,
       })
     );
   }
@@ -254,6 +266,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
             assistantContextStore,
             noteStore,
             noteAttachmentStore,
+            weeklyEntryStore,
+            monthlyEntryStore,
           }),
           searchDocumentStore: assistantSearchDocumentStore,
           documentExtractor: assistantDocumentExtractor,

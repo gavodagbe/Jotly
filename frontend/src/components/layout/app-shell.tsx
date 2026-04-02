@@ -525,7 +525,11 @@ type SearchSourceType =
   | "calendarNote"
   | "attachment"
   | "note"
-  | "noteAttachment";
+  | "noteAttachment"
+  | "weeklyObjective"
+  | "weeklyReview"
+  | "monthlyObjective"
+  | "monthlyReview";
 
 type SearchResult = {
   sourceType: SearchSourceType;
@@ -4494,6 +4498,10 @@ const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> =
   attachment: { fr: "Pièce jointe", en: "Attachment" },
   note: { fr: "Note", en: "Note" },
   noteAttachment: { fr: "Doc note", en: "Note Doc" },
+  weeklyObjective: { fr: "Obj. semaine", en: "Weekly Obj." },
+  weeklyReview: { fr: "Bilan semaine", en: "Weekly Review" },
+  monthlyObjective: { fr: "Obj. mois", en: "Monthly Obj." },
+  monthlyReview: { fr: "Bilan mois", en: "Monthly Review" },
 };
 
 const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
@@ -4507,32 +4515,44 @@ const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
   "attachment",
   "note",
   "noteAttachment",
+  "weeklyObjective",
+  "weeklyReview",
+  "monthlyObjective",
+  "monthlyReview",
 ];
 
 const TYPE_BADGE: Record<SearchSourceType, string> = {
-  task:          "bg-indigo-50 text-indigo-500",
-  comment:       "bg-sky-50 text-sky-500",
-  affirmation:   "bg-amber-50 text-amber-500",
-  bilan:         "bg-emerald-50 text-emerald-500",
-  reminder:      "bg-rose-50 text-rose-500",
-  calendarEvent: "bg-purple-50 text-purple-500",
-  calendarNote:  "bg-violet-50 text-violet-500",
-  attachment:    "bg-slate-100 text-slate-500",
-  note:          "bg-teal-50 text-teal-500",
-  noteAttachment:"bg-cyan-50 text-cyan-500",
+  task:            "bg-indigo-50 text-indigo-500",
+  comment:         "bg-sky-50 text-sky-500",
+  affirmation:     "bg-amber-50 text-amber-500",
+  bilan:           "bg-emerald-50 text-emerald-500",
+  reminder:        "bg-rose-50 text-rose-500",
+  calendarEvent:   "bg-purple-50 text-purple-500",
+  calendarNote:    "bg-violet-50 text-violet-500",
+  attachment:      "bg-slate-100 text-slate-500",
+  note:            "bg-teal-50 text-teal-500",
+  noteAttachment:  "bg-cyan-50 text-cyan-500",
+  weeklyObjective: "bg-indigo-50 text-indigo-600",
+  weeklyReview:    "bg-violet-50 text-violet-600",
+  monthlyObjective:"bg-blue-50 text-blue-600",
+  monthlyReview:   "bg-amber-50 text-amber-600",
 };
 
 const TYPE_ICON_COLOR: Record<SearchSourceType, string> = {
-  task:          "text-indigo-400",
-  comment:       "text-sky-400",
-  affirmation:   "text-amber-400",
-  bilan:         "text-emerald-400",
-  reminder:      "text-rose-400",
-  calendarEvent: "text-purple-400",
-  calendarNote:  "text-violet-400",
-  attachment:    "text-slate-400",
-  note:          "text-teal-400",
-  noteAttachment:"text-cyan-400",
+  task:            "text-indigo-400",
+  comment:         "text-sky-400",
+  affirmation:     "text-amber-400",
+  bilan:           "text-emerald-400",
+  reminder:        "text-rose-400",
+  calendarEvent:   "text-purple-400",
+  calendarNote:    "text-violet-400",
+  attachment:      "text-slate-400",
+  note:            "text-teal-400",
+  noteAttachment:  "text-cyan-400",
+  weeklyObjective: "text-indigo-400",
+  weeklyReview:    "text-violet-400",
+  monthlyObjective:"text-blue-400",
+  monthlyReview:   "text-amber-400",
 };
 
 function SearchTypeIcon({ type }: { type: SearchSourceType }) {
@@ -4608,6 +4628,22 @@ function SearchTypeIcon({ type }: { type: SearchSourceType }) {
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeLinejoin="round" />
           <polyline points="14 2 14 8 20 8" />
           <path d="M10 17l2-2 2 2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "weeklyObjective":
+    case "weeklyReview":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M4 6h16M4 12h12M4 18h8" strokeLinecap="round" />
+        </svg>
+      );
+    case "monthlyObjective":
+    case "monthlyReview":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
+          <path d="M8 14h8M8 18h5" strokeLinecap="round" />
         </svg>
       );
   }
@@ -9985,6 +10021,30 @@ export function AppShell() {
         navigateToSearchDate(targetDate);
         if (noteId) setExpandedNoteId(noteId);
         setTimeout(() => document.getElementById("notes")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "weeklyObjective": {
+        const targetDate = meta?.targetDate as string | undefined;
+        navigateToSearchDate(targetDate);
+        setTimeout(() => document.getElementById("weeklyObjective")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "weeklyReview": {
+        const targetDate = meta?.targetDate as string | undefined;
+        navigateToSearchDate(targetDate);
+        setTimeout(() => document.getElementById("weeklyReview")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "monthlyObjective": {
+        const targetDate = meta?.targetDate as string | undefined;
+        navigateToSearchDate(targetDate);
+        setTimeout(() => document.getElementById("monthlyObjective")?.scrollIntoView({ behavior: "smooth" }), 300);
+        break;
+      }
+      case "monthlyReview": {
+        const targetDate = meta?.targetDate as string | undefined;
+        navigateToSearchDate(targetDate);
+        setTimeout(() => document.getElementById("monthlyReview")?.scrollIntoView({ behavior: "smooth" }), 300);
         break;
       }
     }

@@ -10,7 +10,11 @@ export type AssistantSearchSourceType =
   | "calendarNote"
   | "attachment"
   | "note"
-  | "noteAttachment";
+  | "noteAttachment"
+  | "weeklyObjective"
+  | "weeklyReview"
+  | "monthlyObjective"
+  | "monthlyReview";
 
 export type AssistantSearchDocumentRecord = {
   id: string;

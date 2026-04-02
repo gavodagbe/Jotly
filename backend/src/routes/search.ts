@@ -33,6 +33,10 @@ const VALID_SOURCE_TYPES: AssistantSearchSourceType[] = [
   "attachment",
   "note",
   "noteAttachment",
+  "weeklyObjective",
+  "weeklyReview",
+  "monthlyObjective",
+  "monthlyReview",
 ];
 
 const searchQuerySchema = z.object({
