@@ -142,6 +142,10 @@ function sourceTypesForDomains(domains: AssistantDomain[]): AssistantSearchSourc
       case "reflections":
         values.add("affirmation");
         values.add("bilan");
+        values.add("weeklyObjective");
+        values.add("weeklyReview");
+        values.add("monthlyObjective");
+        values.add("monthlyReview");
         break;
       case "overview":
         values.add("task");
@@ -154,6 +158,10 @@ function sourceTypesForDomains(domains: AssistantDomain[]): AssistantSearchSourc
         values.add("calendarNote");
         values.add("note");
         values.add("noteAttachment");
+        values.add("weeklyObjective");
+        values.add("weeklyReview");
+        values.add("monthlyObjective");
+        values.add("monthlyReview");
         break;
       case "profile":
         break;
