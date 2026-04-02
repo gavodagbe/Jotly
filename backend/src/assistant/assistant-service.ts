@@ -976,18 +976,29 @@ function buildCalendarEventsBlock(input: AssistantReplyInput): string {
     .join("\n");
 }
 
+function currentIsoWeek(): number {
+  const now = new Date();
+  const thursday = new Date(now);
+  thursday.setDate(now.getDate() + 4 - (now.getDay() || 7));
+  const yearStart = new Date(thursday.getFullYear(), 0, 1);
+  return Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
 function buildOpenAiPrompt(
   question: string,
   contextString: string,
   userDisplayName: string | null,
   preferredLocale?: "en" | "fr" | null
 ): string {
+  const now = new Date();
+  const isoWeek = currentIsoWeek();
+  const dateInfo = `Current date: ${now.toISOString().substring(0, 10)} (ISO week W${isoWeek}/${now.getFullYear()})\n`;
   const userName = userDisplayName ? `User display name: ${userDisplayName}\n` : "";
   const preferredLocaleLine = preferredLocale
     ? `Preferred locale: ${preferredLocale}\n`
     : "";
 
-  return `${userName}${preferredLocaleLine}User question: ${question}
+  return `${dateInfo}${userName}${preferredLocaleLine}User question: ${question}
 
 Workspace context:
 ${contextString}
@@ -1576,6 +1587,19 @@ function combineRetrievalMode(
   }
 }
 
+// Per-user sync cooldown: avoid re-indexing on every single query.
+const SYNC_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const lastSyncByUser = new Map<string, number>();
+
+function shouldRunSync(userId: string): boolean {
+  const last = lastSyncByUser.get(userId) ?? 0;
+  return Date.now() - last > SYNC_COOLDOWN_MS;
+}
+
+function markSyncDone(userId: string): void {
+  lastSyncByUser.set(userId, Date.now());
+}
+
 export function createAssistantService(options: AssistantServiceOptions): AssistantService {
   const stores = {
     taskStore: options.taskStore,
@@ -1608,10 +1632,13 @@ export function createAssistantService(options: AssistantServiceOptions): Assist
         options.assistantSearchRetriever &&
         shouldUseAssistantSearch(question, domains)
       ) {
-        try {
-          await options.assistantSearchSyncService?.syncUserWorkspace(userId);
-        } catch (syncError) {
-          console.warn("[assistant] syncUserWorkspace failed (non-fatal):", syncError);
+        if (shouldRunSync(userId)) {
+          try {
+            await options.assistantSearchSyncService?.syncUserWorkspace(userId);
+            markSyncDone(userId);
+          } catch (syncError) {
+            console.warn("[assistant] syncUserWorkspace failed (non-fatal):", syncError);
+          }
         }
 
         try {
