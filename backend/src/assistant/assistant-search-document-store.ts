@@ -603,7 +603,7 @@ export function createPrismaAssistantSearchDocumentStore(
             'simple',
             concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')),
             websearch_to_tsquery('simple', ${trimmedQuery}),
-            'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false, StartSel=[[, StopSel=]]'
+            'MaxWords=80, MinWords=20, ShortWord=2, HighlightAll=true, StartSel=[[, StopSel=]]'
           ) AS snippet
         FROM "AssistantSearchDocument"
         WHERE "userId" = ${userId}
@@ -682,7 +682,7 @@ export function createPrismaAssistantSearchDocumentStore(
               'simple',
               concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')),
               websearch_to_tsquery('simple', ${trimmedQuery}),
-              'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false, StartSel=[[, StopSel=]]'
+              'MaxWords=80, MinWords=20, ShortWord=2, HighlightAll=true, StartSel=[[, StopSel=]]'
             ) AS snippet
           FROM "AssistantSearchDocument"
           WHERE "userId" = ${userId}
@@ -774,7 +774,7 @@ export function createPrismaAssistantSearchDocumentStore(
             'simple',
             concat_ws(' ', COALESCE("title", ''), COALESCE("bodyText", '')),
             websearch_to_tsquery('simple', ${trimmedQuery}),
-            'MaxWords=26, MinWords=8, ShortWord=2, HighlightAll=false, StartSel=[[, StopSel=]]'
+            'MaxWords=80, MinWords=20, ShortWord=2, HighlightAll=true, StartSel=[[, StopSel=]]'
           ) AS snippet
         FROM "AssistantSearchDocument"
         WHERE "userId" = ${userId}
