@@ -598,7 +598,7 @@ async function retrieveByDomain(
   return data;
 }
 
-const DEFAULT_CONTEXT_BUDGET = 4000;
+const DEFAULT_CONTEXT_BUDGET = 8000;
 
 function addBlockWithinBudget(
   blocks: string[],
@@ -637,23 +637,23 @@ function buildSearchMatchesBlock(matches: AssistantSearchResult[]): string {
 function buildWeeklyEntriesBlock(entries: AssistantWeeklyEntryContext[]): string {
   return entries
     .map((e) => {
-      const parts = [`W${e.isoWeek}/${e.year}`];
-      if (e.objective) parts.push(`objective: ${clip(stripRichTextToPlainText(e.objective), 200)}`);
-      if (e.review) parts.push(`review: ${clip(stripRichTextToPlainText(e.review), 200)}`);
-      return parts.join(" | ");
+      const lines = [`W${e.isoWeek}/${e.year}`];
+      if (e.objective) lines.push(`Objective:\n${clip(stripRichTextToPlainText(e.objective), 1500)}`);
+      if (e.review) lines.push(`Review:\n${clip(stripRichTextToPlainText(e.review), 1500)}`);
+      return lines.join("\n");
     })
-    .join("\n");
+    .join("\n\n");
 }
 
 function buildMonthlyEntriesBlock(entries: AssistantMonthlyEntryContext[]): string {
   return entries
     .map((e) => {
-      const parts = [`${e.month}/${e.year}`];
-      if (e.objective) parts.push(`objective: ${clip(stripRichTextToPlainText(e.objective), 200)}`);
-      if (e.review) parts.push(`review: ${clip(stripRichTextToPlainText(e.review), 200)}`);
-      return parts.join(" | ");
+      const lines = [`${e.month}/${e.year}`];
+      if (e.objective) lines.push(`Objective:\n${clip(stripRichTextToPlainText(e.objective), 1500)}`);
+      if (e.review) lines.push(`Review:\n${clip(stripRichTextToPlainText(e.review), 1500)}`);
+      return lines.join("\n");
     })
-    .join("\n");
+    .join("\n\n");
 }
 
 function buildContext(

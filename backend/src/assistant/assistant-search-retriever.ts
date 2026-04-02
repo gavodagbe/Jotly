@@ -27,56 +27,26 @@ export type AssistantSearchRetrieverOptions = {
 const FULLTEXT_LIMIT = 5;
 const VECTOR_LIMIT = 5;
 const SEARCH_STOP_WORDS = new Set([
-  "a",
-  "about",
-  "an",
-  "and",
-  "are",
-  "au",
-  "aux",
-  "avec",
-  "can",
-  "comment",
-  "dans",
-  "de",
-  "des",
-  "do",
-  "does",
-  "du",
-  "est",
-  "et",
-  "for",
-  "i",
-  "in",
-  "is",
-  "je",
-  "la",
-  "le",
-  "les",
-  "me",
-  "mes",
-  "my",
-  "of",
-  "on",
-  "ou",
-  "où",
-  "pour",
-  "qu",
-  "que",
-  "quel",
-  "quelle",
-  "quels",
-  "quelles",
-  "say",
-  "sur",
-  "the",
-  "this",
-  "to",
-  "tu",
-  "un",
-  "une",
-  "what",
-  "where",
+  // English
+  "a", "about", "an", "and", "are", "can", "do", "does", "for", "i", "in",
+  "is", "me", "my", "of", "on", "say", "the", "this", "to", "what", "where",
+  "how", "has", "have", "had", "was", "were", "will", "would", "could",
+  "should", "shall", "been", "being", "get", "got", "its",
+  // French — articles, pronouns, prepositions, common verbs
+  "au", "aux", "avec", "ce", "cet", "cette", "ces", "ceux",
+  "dans", "de", "des", "du", "dont", "en", "est", "et",
+  "il", "ils", "je", "la", "le", "les", "leur", "leurs",
+  "lui", "ma", "mes", "moi", "mon", "ne", "nos", "notre",
+  "on", "ou", "où", "par", "pas", "pour", "qu", "que",
+  "quel", "quelle", "quels", "quelles", "qui", "quoi",
+  "se", "ses", "si", "soi", "son", "sur", "ta", "te",
+  "tes", "toi", "ton", "tu", "un", "une", "vos", "votre",
+  "vous", "y",
+  // Common question words and generic verbs that waste token slots
+  "rappelle", "rappeler", "cherche", "chercher", "trouver", "trouve",
+  "dire", "dit", "parle", "parler", "voir", "savoir", "connais",
+  "peux", "peut", "faire", "fait", "nom", "nom", "mot",
+  "commence", "commencer", "appelle", "appeler",
 ]);
 
 function normalizeQuestion(question: string): string {
@@ -117,7 +87,7 @@ function buildFullTextQuery(question: string): string {
         !SEARCH_STOP_WORDS.has(token)
     );
 
-  return [...new Set(tokens)].slice(0, 8).join(" OR ");
+  return [...new Set(tokens)].join(" OR ");
 }
 
 function sourceTypesForDomains(domains: AssistantDomain[]): AssistantSearchSourceType[] {
