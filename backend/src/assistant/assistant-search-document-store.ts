@@ -574,7 +574,7 @@ export function createPrismaAssistantSearchDocumentStore(
             },
           });
         }
-      });
+      }, { timeout: 60000 });
 
       for (const document of documents) {
         await applyEmbedding(document);
