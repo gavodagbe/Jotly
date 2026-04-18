@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "BRANCH=$(git branch --show-current); [ -n \"$BRANCH\" ] && [ \"$BRANCH\" != \"main\" ] && git push -u origin \"$BRANCH\" && (gh pr view --json number -q .number 2>/dev/null || gh pr create --base main --fill --body 'Auto-created by Claude Code\n\n🤖 Generated with [Claude Code](https://claude.ai/claude-code)') 2>/dev/null || true",
+            "timeout": 60,
+            "statusMessage": "Push et création PR en cours..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -82,8 +82,10 @@ const reformatBodySchema = z.object({
 });
 
 type OpenAiChatResponse = {
-  choices?: Array<{ message?: { content?: string | null } }>;
-  error?: { message?: string };
+  model?: string;
+  choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  error?: { message?: string; code?: string };
 };
 
 const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = async (app, options) => {
@@ -234,6 +236,16 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), visionTimeoutMs);
 
+    const imageMimeMatch = imageDataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
+    const imageMime = imageMimeMatch?.[1] ?? "unknown";
+    const imageBase64 = imageDataUrl.split(",")[1] ?? "";
+    const imageSizeKb = Math.round((imageBase64.length * 3) / 4 / 1024);
+
+    request.log.info(
+      { model: openAiModel, imageMime, imageSizeKb, locale },
+      "[vision] Starting image text extraction"
+    );
+
     try {
       const response = await fetch(`${openAiBaseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
@@ -263,13 +275,32 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
 
       const payload = (await response.json().catch(() => null)) as OpenAiChatResponse | null;
 
+      request.log.info(
+        {
+          httpStatus: response.status,
+          model: payload?.model,
+          finishReason: payload?.choices?.[0]?.finish_reason,
+          promptTokens: payload?.usage?.prompt_tokens,
+          completionTokens: payload?.usage?.completion_tokens,
+          errorCode: payload?.error?.code,
+          errorMessage: payload?.error?.message,
+        },
+        "[vision] OpenAI raw response"
+      );
+
       if (!response.ok) {
         const message = payload?.error?.message ?? `OpenAI request failed (HTTP ${response.status})`;
-        request.log.error({ status: response.status }, message);
+        request.log.error({ status: response.status, errorCode: payload?.error?.code }, message);
         return sendError(reply, 502, "AI_ERROR", "Vision extraction failed");
       }
 
       const content = payload?.choices?.[0]?.message?.content?.trim();
+
+      request.log.info(
+        { contentLength: content?.length ?? 0, preview: content?.slice(0, 200) },
+        "[vision] Model response content"
+      );
+
       if (!content) {
         return sendError(reply, 502, "AI_ERROR", "AI returned an empty response");
       }

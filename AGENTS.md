@@ -14,10 +14,17 @@ Use Atlassian MCP for Jira and Confluence context when needed.
   - `feat/JOT-6-task-crud-api`
   - `fix/JOT-8-status-dnd`
   - `chore/JOT-10-doc-alignment`
+- Do not rewrite Git history.
+
+### Tickets sensibles (par défaut)
 - Do not commit.
 - Do not push.
 - Do not open a pull request.
-- Do not rewrite Git history.
+
+### Tickets non-sensibles (explicitement demandé par l'utilisateur)
+- Commit autorisé une fois que l'utilisateur valide les changements.
+- Le hook Claude Code se charge automatiquement du push et de la création de la PR sur `main`.
+- Ne pas pousser manuellement ni créer la PR manuellement — le hook le fait.
 
 ## Execution rules
 - Work ticket by ticket.
