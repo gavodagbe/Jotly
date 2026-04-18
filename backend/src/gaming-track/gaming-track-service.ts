@@ -31,10 +31,16 @@ export type GamingTrackHistoricalPoint = {
   overallScore: number;
 };
 
+export type UserMandatoryPreferences = {
+  requireDailyAffirmation: boolean;
+  requireDailyBilan: boolean;
+};
+
 export type GamingTrackSummaryInput = {
   userId: string;
   period: GamingTrackPeriod;
   anchorDate: Date;
+  mandatoryPreferences?: UserMandatoryPreferences;
 };
 
 export type GamingTrackSummary = {
@@ -275,7 +281,7 @@ function getCompletedBilanDays(records: GamingTrackBilanRecord[]): Set<string> {
   return completedDays;
 }
 
-function computeWindowMetrics(window: GamingTrackWindowData, start: Date, endExclusive: Date): ComputedWindow {
+function computeWindowMetrics(window: GamingTrackWindowData, start: Date, endExclusive: Date, prefs?: UserMandatoryPreferences): ComputedWindow {
   const trackedDays = getTrackedDays(start, endExclusive);
   const doneTasksByDate = new Map<string, number>();
 
@@ -313,9 +319,15 @@ function computeWindowMetrics(window: GamingTrackWindowData, start: Date, endExc
 
   const dateKeys = getDateKeysInRange(start, endExclusive);
   const executionFlags = dateKeys.map((dateKey) => (doneTasksByDate.get(dateKey) ?? 0) > 0);
-  const reflectionFlags = dateKeys.map(
-    (dateKey) => completedAffirmationDays.has(dateKey) && completedBilanDays.has(dateKey)
-  );
+
+  const requireAffirmation = prefs?.requireDailyAffirmation ?? true;
+  const requireBilan = prefs?.requireDailyBilan ?? true;
+  const reflectionFlags = dateKeys.map((dateKey) => {
+    if (!requireAffirmation && !requireBilan) return false;
+    if (requireAffirmation && !requireBilan) return completedAffirmationDays.has(dateKey);
+    if (!requireAffirmation && requireBilan) return completedBilanDays.has(dateKey);
+    return completedAffirmationDays.has(dateKey) && completedBilanDays.has(dateKey);
+  });
 
   const executionBestStreak = getLongestTrueStreak(executionFlags);
   const executionActiveStreak = getActiveTrueStreak(executionFlags);
@@ -578,9 +590,10 @@ export function createGamingTrackService(store: GamingTrackStore): GamingTrackSe
         weeklyWindowPromise,
       ]);
 
-      const current = computeWindowMetrics(currentWindow, range.start, range.endExclusive);
-      const previous = computeWindowMetrics(previousWindow, previousStart, range.start);
-      const weekly = computeWindowMetrics(weeklyWindow, weeklyMissionRange.start, weeklyMissionRange.endExclusive);
+      const prefs = input.mandatoryPreferences;
+      const current = computeWindowMetrics(currentWindow, range.start, range.endExclusive, prefs);
+      const previous = computeWindowMetrics(previousWindow, previousStart, range.start, prefs);
+      const weekly = computeWindowMetrics(weeklyWindow, weeklyMissionRange.start, weeklyMissionRange.endExclusive, prefs);
       const personalBests = computePersonalBests(lifetimeWindow);
 
       const executionDelta = current.scores.execution - previous.scores.execution;

@@ -40,6 +40,10 @@ model User {
   displayName  String?
   preferredLocale String @default("en")
   preferredTimeZone String?
+  requireDailyAffirmation  Boolean @default(false)
+  requireDailyBilan        Boolean @default(false)
+  requireWeeklySynthesis   Boolean @default(false)
+  requireMonthlySynthesis  Boolean @default(false)
   sessions     Session[]
   passwordResetTokens PasswordResetToken[]
   tasks        Task[]

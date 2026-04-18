@@ -404,8 +404,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (reminderStore) {
     app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService, assistantSearchSyncService });
   }
-  if (gamingTrackService) {
-    app.register(gamingTrackRoutes, { gamingTrackService, authService });
+  if (gamingTrackService && profileStore) {
+    app.register(gamingTrackRoutes, { gamingTrackService, authService, profileStore });
   }
   if (googleCalendarOAuthService) {
     app.register(googleCalendarOAuthRoutes, {

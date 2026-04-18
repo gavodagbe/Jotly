@@ -21,12 +21,20 @@ const profileUpdateSchema = z
     displayName: z.string().trim().max(120, "displayName is too long").nullable().optional(),
     preferredLocale: z.enum(["en", "fr"]).optional(),
     preferredTimeZone: z.string().trim().max(120, "preferredTimeZone is too long").nullable().optional(),
+    requireDailyAffirmation: z.boolean().optional(),
+    requireDailyBilan: z.boolean().optional(),
+    requireWeeklySynthesis: z.boolean().optional(),
+    requireMonthlySynthesis: z.boolean().optional(),
   })
   .refine(
     (value) =>
       value.displayName !== undefined ||
       value.preferredLocale !== undefined ||
-      value.preferredTimeZone !== undefined,
+      value.preferredTimeZone !== undefined ||
+      value.requireDailyAffirmation !== undefined ||
+      value.requireDailyBilan !== undefined ||
+      value.requireWeeklySynthesis !== undefined ||
+      value.requireMonthlySynthesis !== undefined,
     {
       message: "At least one profile field is required",
       path: [],
@@ -112,6 +120,10 @@ const profileRoutes: FastifyPluginAsync<ProfileRouteOptions> = async (app, optio
           displayName: profile.displayName,
           preferredLocale: profile.preferredLocale,
           preferredTimeZone: profile.preferredTimeZone,
+          requireDailyAffirmation: profile.requireDailyAffirmation,
+          requireDailyBilan: profile.requireDailyBilan,
+          requireWeeklySynthesis: profile.requireWeeklySynthesis,
+          requireMonthlySynthesis: profile.requireMonthlySynthesis,
           createdAt: profile.createdAt.toISOString(),
           updatedAt: profile.updatedAt.toISOString(),
         },
@@ -152,6 +164,10 @@ const profileRoutes: FastifyPluginAsync<ProfileRouteOptions> = async (app, optio
         displayName: normalizeDisplayName(bodyResult.data.displayName),
         preferredLocale: bodyResult.data.preferredLocale,
         preferredTimeZone,
+        requireDailyAffirmation: bodyResult.data.requireDailyAffirmation,
+        requireDailyBilan: bodyResult.data.requireDailyBilan,
+        requireWeeklySynthesis: bodyResult.data.requireWeeklySynthesis,
+        requireMonthlySynthesis: bodyResult.data.requireMonthlySynthesis,
       });
 
       if (!updatedProfile) {
@@ -165,6 +181,10 @@ const profileRoutes: FastifyPluginAsync<ProfileRouteOptions> = async (app, optio
           displayName: updatedProfile.displayName,
           preferredLocale: updatedProfile.preferredLocale,
           preferredTimeZone: updatedProfile.preferredTimeZone,
+          requireDailyAffirmation: updatedProfile.requireDailyAffirmation,
+          requireDailyBilan: updatedProfile.requireDailyBilan,
+          requireWeeklySynthesis: updatedProfile.requireWeeklySynthesis,
+          requireMonthlySynthesis: updatedProfile.requireMonthlySynthesis,
           createdAt: updatedProfile.createdAt.toISOString(),
           updatedAt: updatedProfile.updatedAt.toISOString(),
         },
