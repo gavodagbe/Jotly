@@ -49,6 +49,10 @@ class InMemoryAuthStore implements AuthStore {
       displayName: input.displayName,
       preferredLocale: "en",
       preferredTimeZone: null,
+      requireDailyAffirmation: false,
+      requireDailyBilan: false,
+      requireWeeklySynthesis: false,
+      requireMonthlySynthesis: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -145,10 +149,10 @@ class InMemoryProfileStore implements ProfileStore {
       displayName: user.displayName,
       preferredLocale: user.preferredLocale === "fr" ? "fr" : "en",
       preferredTimeZone: user.preferredTimeZone ?? null,
-      requireDailyAffirmation: false,
-      requireDailyBilan: false,
-      requireWeeklySynthesis: false,
-      requireMonthlySynthesis: false,
+      requireDailyAffirmation: user.requireDailyAffirmation ?? false,
+      requireDailyBilan: user.requireDailyBilan ?? false,
+      requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
+      requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -159,6 +163,10 @@ class InMemoryProfileStore implements ProfileStore {
       ...(input.displayName !== undefined ? { displayName: input.displayName ?? null } : {}),
       ...(input.preferredLocale !== undefined ? { preferredLocale: input.preferredLocale ?? "en" } : {}),
       ...(input.preferredTimeZone !== undefined ? { preferredTimeZone: input.preferredTimeZone ?? null } : {}),
+      ...(input.requireDailyAffirmation !== undefined ? { requireDailyAffirmation: input.requireDailyAffirmation } : {}),
+      ...(input.requireDailyBilan !== undefined ? { requireDailyBilan: input.requireDailyBilan } : {}),
+      ...(input.requireWeeklySynthesis !== undefined ? { requireWeeklySynthesis: input.requireWeeklySynthesis } : {}),
+      ...(input.requireMonthlySynthesis !== undefined ? { requireMonthlySynthesis: input.requireMonthlySynthesis } : {}),
     });
 
     if (!user) {
@@ -171,10 +179,10 @@ class InMemoryProfileStore implements ProfileStore {
       displayName: user.displayName,
       preferredLocale: user.preferredLocale === "fr" ? "fr" : "en",
       preferredTimeZone: user.preferredTimeZone ?? null,
-      requireDailyAffirmation: input.requireDailyAffirmation ?? false,
-      requireDailyBilan: input.requireDailyBilan ?? false,
-      requireWeeklySynthesis: input.requireWeeklySynthesis ?? false,
-      requireMonthlySynthesis: input.requireMonthlySynthesis ?? false,
+      requireDailyAffirmation: user.requireDailyAffirmation ?? false,
+      requireDailyBilan: user.requireDailyBilan ?? false,
+      requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
+      requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

@@ -13854,6 +13854,38 @@ export function AppShell() {
               </button>
 
               <div className="border-t border-line pt-3">
+                <h4 className="mb-2 text-sm font-semibold text-foreground">
+                  {isFrench ? "Sections obligatoires" : "Mandatory sections"}
+                </h4>
+                <p className="mb-3 text-xs text-muted">
+                  {isFrench
+                    ? "Bloquer le changement de date tant que ces sections ne sont pas complétées."
+                    : "Block date navigation until these sections are completed."}
+                </p>
+                <div className="space-y-2">
+                  {(
+                    [
+                      { field: "requireDailyAffirmation", labelFr: "Affirmation du jour", labelEn: "Daily affirmation" },
+                      { field: "requireDailyBilan", labelFr: "Bilan du jour", labelEn: "Daily review" },
+                      { field: "requireWeeklySynthesis", labelFr: "Synthèse hebdomadaire (lundi & dimanche)", labelEn: "Weekly synthesis (Monday & Sunday)" },
+                      { field: "requireMonthlySynthesis", labelFr: "Synthèse mensuelle (dernier jour)", labelEn: "Monthly synthesis (last day)" },
+                    ] as const
+                  ).map(({ field, labelFr, labelEn }) => (
+                    <label key={field} className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={profileFormValues[field]}
+                        onChange={(e) => handleProfileFieldChange(field, e.target.checked)}
+                        disabled={isProfileSaving}
+                        className="h-4 w-4 rounded border-line accent-accent"
+                      />
+                      {isFrench ? labelFr : labelEn}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-line pt-3">
                 <h4 className="text-sm font-semibold text-foreground">
                   Google Calendar
                 </h4>
