@@ -603,7 +603,7 @@ const DAY_AFFIRMATION_RICH_TEXT_OPTIONS = {
   recoverPlainText: true,
 };
 const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
-const DASHBOARD_LAYOUT_STORAGE_KEY = "jotly_dashboard_layout_v1";
+const DASHBOARD_LAYOUT_STORAGE_KEY = "jotly_dashboard_layout_v2";
 const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
   query: "",
   status: "all",
@@ -612,11 +612,11 @@ const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
 };
 const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "overview",
-  "board",
   "dailyControls",
   "affirmation",
   "reminders",
   "bilan",
+  "board",
   "notes",
   "gamingTrack",
 ];
@@ -5206,6 +5206,10 @@ function AppNavbar({
               <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
               {!isSidebarCollapsed && (isFrench ? "Vue d'ensemble" : "Overview")}
             </a>
+            <a href="#dailyControls" title={isSidebarCollapsed ? (isFrench ? "Pilotage du jour" : "Day Controls") : undefined} className={navItem("dailyControls", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Pilotage du jour" : "Day Controls")}
+            </a>
             <a href="#affirmation" title={isSidebarCollapsed ? "Affirmation" : undefined} className={navItem("affirmation", isSidebarCollapsed)}>
               <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
               {!isSidebarCollapsed && "Affirmation"}
@@ -5248,10 +5252,6 @@ function AppNavbar({
 
             {/* ── WORKSPACE ── */}
             {groupHeader("Workspace", "Workspace")}
-            <a href="#dailyControls" title={isSidebarCollapsed ? (isFrench ? "Pilotage du jour" : "Day Controls") : undefined} className={navItem("dailyControls", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Pilotage du jour" : "Day Controls")}
-            </a>
             <a href="#board" title={isSidebarCollapsed ? (isFrench ? "Tableau Kanban" : "Kanban Board") : undefined} className={navItem("board", isSidebarCollapsed)}>
               <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
               {!isSidebarCollapsed && (isFrench ? "Tableau Kanban" : "Kanban Board")}
@@ -11848,7 +11848,7 @@ export function AppShell() {
         return (
           <>
             {showMonthlyObjective ? (
-              <section id="monthlyObjective" className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 50 }}>
+              <section id="monthlyObjective" className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 43 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11894,7 +11894,7 @@ export function AppShell() {
             ) : null}
 
             {showMonthlyReview ? (
-              <section id="monthlyReview" className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 51 }}>
+              <section id="monthlyReview" className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 44 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11937,7 +11937,7 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyObjective ? (
-              <section id="weeklyObjective" className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 52 }}>
+              <section id="weeklyObjective" className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 41 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11986,7 +11986,7 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyReview ? (
-              <section id="weeklyReview" className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 53 }}>
+              <section id="weeklyReview" className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 42 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
