@@ -6344,6 +6344,11 @@ export function AppShell() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [guestLocale, setGuestLocale] = useState<UserLocale>("en");
   const [activeSectionId, setActiveSectionId] = useState<string>("overview");
+  const lastManualSectionIdChangeTimeRef = useRef<number>(0);
+  const handleManualSectionIdChange = useCallback((id: string) => {
+    lastManualSectionIdChangeTimeRef.current = Date.now();
+    setActiveSectionId(id);
+  }, []);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("jotly-sidebar-collapsed") === "true"; } catch { return false; }
   });
@@ -9254,6 +9259,11 @@ export function AppShell() {
     ];
     const observer = new IntersectionObserver(
       (entries) => {
+        // Skip updates if a manual scroll/selection happened recently (within 1.2s)
+        if (Date.now() - lastManualSectionIdChangeTimeRef.current < 1200) {
+          return;
+        }
+
         // Find the entry with the highest intersection ratio that is actually intersecting
         const mostVisible = entries
           .filter(e => e.isIntersecting)
@@ -10291,7 +10301,7 @@ export function AppShell() {
         showMonthlyReview={isLastDayOfMonth(parseDateInput(selectedDate))}
         showWeeklyReview={isSunday(parseDateInput(selectedDate))}
         activeSectionId={activeSectionId}
-        onSectionChange={setActiveSectionId}
+        onSectionChange={handleManualSectionIdChange}
         isProfileDialogOpen={isProfileDialogOpen}
         isAssistantPanelOpen={isAssistantPanelOpen}
         isSidebarCollapsed={isSidebarCollapsed}
