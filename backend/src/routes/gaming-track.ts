@@ -6,6 +6,7 @@ import {
   GamingTrackService,
   GamingTrackSummary,
 } from "../gaming-track/gaming-track-service";
+import { ProfileStore } from "../profile/profile-store";
 import { formatDateOnly, parseDateOnly } from "../tasks/task-store";
 import {
   getBearerToken,
@@ -18,6 +19,7 @@ import {
 type GamingTrackRoutesOptions = {
   authService: AuthService;
   gamingTrackService: GamingTrackService;
+  profileStore: ProfileStore;
 };
 
 const summaryQuerySchema = z.object({
@@ -85,7 +87,7 @@ function serializeSummary(summary: GamingTrackSummary) {
 }
 
 const gamingTrackRoutes: FastifyPluginAsync<GamingTrackRoutesOptions> = async (app, options) => {
-  const { authService, gamingTrackService } = options;
+  const { authService, gamingTrackService, profileStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -124,10 +126,17 @@ const gamingTrackRoutes: FastifyPluginAsync<GamingTrackRoutesOptions> = async (a
     }
 
     try {
+      const profile = await profileStore.getByUserId(authUserId);
       const summary = await gamingTrackService.getSummary({
         userId: authUserId,
         period: queryResult.data.period as GamingTrackPeriod,
         anchorDate,
+        mandatoryPreferences: profile
+          ? {
+              requireDailyAffirmation: profile.requireDailyAffirmation,
+              requireDailyBilan: profile.requireDailyBilan,
+            }
+          : undefined,
       });
 
       return reply.send({

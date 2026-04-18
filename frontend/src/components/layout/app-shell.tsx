@@ -461,6 +461,10 @@ type AuthUser = {
   displayName: string | null;
   preferredLocale: UserLocale;
   preferredTimeZone: string | null;
+  requireDailyAffirmation: boolean;
+  requireDailyBilan: boolean;
+  requireWeeklySynthesis: boolean;
+  requireMonthlySynthesis: boolean;
   createdAt: string;
 };
 
@@ -477,12 +481,20 @@ type ProfileFormValues = {
   displayName: string;
   preferredLocale: UserLocale;
   preferredTimeZone: string;
+  requireDailyAffirmation: boolean;
+  requireDailyBilan: boolean;
+  requireWeeklySynthesis: boolean;
+  requireMonthlySynthesis: boolean;
 };
 
 type ProfileMutationInput = {
   displayName: string | null;
   preferredLocale: UserLocale;
   preferredTimeZone: string | null;
+  requireDailyAffirmation: boolean;
+  requireDailyBilan: boolean;
+  requireWeeklySynthesis: boolean;
+  requireMonthlySynthesis: boolean;
 };
 
 type TaskFormValues = {
@@ -2304,6 +2316,10 @@ function getDefaultProfileFormValues(): ProfileFormValues {
     displayName: "",
     preferredLocale: "en",
     preferredTimeZone: getBrowserTimeZone(),
+    requireDailyAffirmation: false,
+    requireDailyBilan: false,
+    requireWeeklySynthesis: false,
+    requireMonthlySynthesis: false,
   };
 }
 
@@ -2316,6 +2332,10 @@ function getProfileFormValues(user: AuthUser | null): ProfileFormValues {
     displayName: user.displayName ?? "",
     preferredLocale: getPreferredLocale(user.preferredLocale),
     preferredTimeZone: user.preferredTimeZone ?? getBrowserTimeZone(),
+    requireDailyAffirmation: user.requireDailyAffirmation ?? false,
+    requireDailyBilan: user.requireDailyBilan ?? false,
+    requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
+    requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
   };
 }
 
@@ -7450,6 +7470,10 @@ export function AppShell() {
           displayName: profileFormValues.displayName.trim() || null,
           preferredLocale: getPreferredLocale(profileFormValues.preferredLocale),
           preferredTimeZone: preferredTimeZone || null,
+          requireDailyAffirmation: profileFormValues.requireDailyAffirmation,
+          requireDailyBilan: profileFormValues.requireDailyBilan,
+          requireWeeklySynthesis: profileFormValues.requireWeeklySynthesis,
+          requireMonthlySynthesis: profileFormValues.requireMonthlySynthesis,
         },
         authToken
       );
@@ -13793,6 +13817,56 @@ export function AppShell() {
                     {googleCalendarError}
                   </p>
                 ) : null}
+              </div>
+
+              <div className="border-t border-line pt-3">
+                <h4 className="text-sm font-semibold text-foreground">
+                  {isFrench ? "Sections obligatoires" : "Required Sections"}
+                </h4>
+                <p className="mt-1 text-xs text-muted">
+                  {isFrench
+                    ? "Les sections activees doivent etre completes chaque jour pour valider votre journee."
+                    : "Enabled sections must be completed each day to validate your day."}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {(
+                    [
+                      {
+                        key: "requireDailyAffirmation" as const,
+                        labelFr: "Affirmation du jour",
+                        labelEn: "Daily Affirmation",
+                      },
+                      {
+                        key: "requireDailyBilan" as const,
+                        labelFr: "Bilan du jour",
+                        labelEn: "Daily Review (Bilan)",
+                      },
+                      {
+                        key: "requireWeeklySynthesis" as const,
+                        labelFr: "Synthese hebdomadaire (dimanche)",
+                        labelEn: "Weekly Synthesis (Sunday)",
+                      },
+                      {
+                        key: "requireMonthlySynthesis" as const,
+                        labelFr: "Synthese mensuelle",
+                        labelEn: "Monthly Synthesis",
+                      },
+                    ] as const
+                  ).map(({ key, labelFr, labelEn }) => (
+                    <label key={key} className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={profileFormValues[key]}
+                        onChange={(e) => handleProfileFieldChange(key, e.target.checked)}
+                        disabled={isProfileSaving}
+                        className="h-4 w-4 rounded border-line accent-accent"
+                      />
+                      <span className="text-sm text-foreground">
+                        {isFrench ? labelFr : labelEn}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               {profileErrorMessage ? (

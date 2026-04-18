@@ -145,6 +145,10 @@ class InMemoryProfileStore implements ProfileStore {
       displayName: user.displayName,
       preferredLocale: user.preferredLocale === "fr" ? "fr" : "en",
       preferredTimeZone: user.preferredTimeZone ?? null,
+      requireDailyAffirmation: false,
+      requireDailyBilan: false,
+      requireWeeklySynthesis: false,
+      requireMonthlySynthesis: false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -167,6 +171,10 @@ class InMemoryProfileStore implements ProfileStore {
       displayName: user.displayName,
       preferredLocale: user.preferredLocale === "fr" ? "fr" : "en",
       preferredTimeZone: user.preferredTimeZone ?? null,
+      requireDailyAffirmation: input.requireDailyAffirmation ?? false,
+      requireDailyBilan: input.requireDailyBilan ?? false,
+      requireWeeklySynthesis: input.requireWeeklySynthesis ?? false,
+      requireMonthlySynthesis: input.requireMonthlySynthesis ?? false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
