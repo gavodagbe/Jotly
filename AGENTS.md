@@ -23,8 +23,9 @@ Use Atlassian MCP for Jira and Confluence context when needed.
 
 ### Tickets non-sensibles (explicitement demandé par l'utilisateur)
 - Commit autorisé une fois que l'utilisateur valide les changements.
-- Le hook Claude Code se charge automatiquement du push et de la création de la PR sur `main`.
-- Ne pas pousser manuellement ni créer la PR manuellement — le hook le fait.
+- Push autorisé une fois que l'utilisateur demande explicitement le push.
+- Création de PR autorisée une fois que l'utilisateur demande explicitement la PR.
+- Le mécanisme d'automatisation éventuel doit rester agnostique au LLM : hook repo-local, script versionné, ou workflow CI utilisable depuis Claude, Gemini, Codex, ou en manuel.
 
 ## Execution rules
 - Work ticket by ticket.
