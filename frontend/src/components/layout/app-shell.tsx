@@ -7629,14 +7629,14 @@ export function AppShell() {
     const dateObj = parseDateInput(date);
     const blockers: string[] = [];
 
-    if (!dayAffirmation?.isCompleted) {
+    if (authUser?.requireDailyAffirmation && !dayAffirmation?.isCompleted) {
       blockers.push(isFrench ? "Affirmation du jour non complétée" : "Daily affirmation not completed");
     }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const isPastDay = dateObj < today;
-    if (isPastDay) {
+    if (authUser?.requireDailyBilan && isPastDay) {
       const bilanFilled =
         dayBilan &&
         (dayBilan.mood !== null ||
@@ -7649,15 +7649,15 @@ export function AppShell() {
       }
     }
 
-    if (isMonday(dateObj) && (!weeklyObjective || isRichTextEmpty(weeklyObjective))) {
+    if (authUser?.requireWeeklySynthesis && isMonday(dateObj) && (!weeklyObjective || isRichTextEmpty(weeklyObjective))) {
       blockers.push(isFrench ? "Objectif de la semaine non renseigné" : "Weekly objective not set");
     }
 
-    if (isSunday(dateObj) && (!weeklyReview || isRichTextEmpty(weeklyReview))) {
+    if (authUser?.requireWeeklySynthesis && isSunday(dateObj) && (!weeklyReview || isRichTextEmpty(weeklyReview))) {
       blockers.push(isFrench ? "Bilan de la semaine non renseigné" : "Weekly review not filled");
     }
 
-    if (isLastDayOfMonth(dateObj) && (!monthlyReview || isRichTextEmpty(monthlyReview))) {
+    if (authUser?.requireMonthlySynthesis && isLastDayOfMonth(dateObj) && (!monthlyReview || isRichTextEmpty(monthlyReview))) {
       blockers.push(isFrench ? "Bilan du mois non renseigné" : "Monthly review not filled");
     }
 
