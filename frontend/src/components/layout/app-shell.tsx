@@ -600,11 +600,11 @@ const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
 };
 const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "overview",
-  "board",
-  "dailyControls",
   "affirmation",
   "reminders",
   "bilan",
+  "dailyControls",
+  "board",
   "notes",
   "gamingTrack",
 ];
@@ -11824,7 +11824,7 @@ export function AppShell() {
         return (
           <>
             {showMonthlyObjective ? (
-              <section id="monthlyObjective" className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 50 }}>
+              <section id="monthlyObjective" className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 33 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11870,7 +11870,7 @@ export function AppShell() {
             ) : null}
 
             {showMonthlyReview ? (
-              <section id="monthlyReview" className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 51 }}>
+              <section id="monthlyReview" className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 34 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11913,7 +11913,7 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyObjective ? (
-              <section id="weeklyObjective" className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 52 }}>
+              <section id="weeklyObjective" className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 31 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11962,7 +11962,7 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyReview ? (
-              <section id="weeklyReview" className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 53 }}>
+              <section id="weeklyReview" className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 32 }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
