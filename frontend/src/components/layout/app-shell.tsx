@@ -4528,6 +4528,8 @@ type AppNavbarProps = {
   showMonthlyReview?: boolean;
   showWeeklyReview?: boolean;
   activeSectionId?: string;
+  isProfileDialogOpen?: boolean;
+  isAssistantPanelOpen?: boolean;
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
 };
@@ -5112,6 +5114,8 @@ function AppNavbar({
   showMonthlyReview = false,
   showWeeklyReview = false,
   activeSectionId = "",
+  isProfileDialogOpen = false,
+  isAssistantPanelOpen = false,
   isSidebarCollapsed = false,
   onToggleSidebar,
 }: AppNavbarProps) {
@@ -5123,11 +5127,27 @@ function AppNavbar({
   const taskAlertsLabel = isFrench ? "Alertes" : "Alerts";
 
   const activeMobileTab =
+    isProfileDialogOpen ? "profil" :
+    isAssistantPanelOpen ? "assistant" :
     ["overview", "dailyControls", "reminders"].includes(activeSectionId) ? "jour" :
     activeSectionId === "board" ? "kanban" :
     activeSectionId === "affirmation" ? "affirmation" :
     ["bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview"].includes(activeSectionId) ? "bilan" :
     ["notes", "gaming"].includes(activeSectionId) ? "espace" : "";
+
+  function handleTabClick(event: React.MouseEvent<HTMLAnchorElement>, targetId: string) {
+    // Let the native anchor scroll happen, but also manually set active state 
+    // to provide immediate feedback if IntersectionObserver is slow/misses.
+    const elementId = targetId.replace("#", "");
+    const element = document.getElementById(elementId);
+    if (element) {
+      // We don't preventDefault so the URL fragment updates, 
+      // but we do a manual scroll to ensure the offset is respected.
+      event.preventDefault();
+      window.history.pushState(null, "", targetId);
+      element.scrollIntoView({ behavior: "smooth" });
+    }
+  }
 
   function navItem(ids: string | string[], collapsed: boolean) {
     const idList = Array.isArray(ids) ? ids : [ids];
@@ -5425,6 +5445,7 @@ function AppNavbar({
             <a
               key={tab.id}
               href={tab.href}
+              onClick={(e) => handleTabClick(e, tab.href)}
               className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
                 activeMobileTab === tab.id ? "text-accent" : "text-muted hover:text-foreground"
               }`}
@@ -5435,11 +5456,15 @@ function AppNavbar({
           ))}
           <button
             type="button"
-            className="flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-muted transition-colors hover:text-foreground"
+            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
+              activeMobileTab === "profil" ? "text-accent" : "text-muted hover:text-foreground"
+            }`}
             onClick={onOpenProfile}
             disabled={isBusy || !onOpenProfile}
           >
-            <span className="grid h-5 w-5 place-items-center rounded-full bg-accent-soft text-[9px] font-semibold text-accent">
+            <span className={`grid h-5 w-5 place-items-center rounded-full text-[9px] font-semibold ${
+              activeMobileTab === "profil" ? "bg-accent text-white" : "bg-accent-soft text-accent"
+            }`}>
               {initials}
             </span>
             {isFrench ? "Profil" : "Profile"}
@@ -10257,6 +10282,8 @@ export function AppShell() {
         showMonthlyReview={isLastDayOfMonth(parseDateInput(selectedDate))}
         showWeeklyReview={isSunday(parseDateInput(selectedDate))}
         activeSectionId={activeSectionId}
+        isProfileDialogOpen={isProfileDialogOpen}
+        isAssistantPanelOpen={isAssistantPanelOpen}
         isSidebarCollapsed={isSidebarCollapsed}
         onToggleSidebar={() => {
           setIsSidebarCollapsed((prev) => {
