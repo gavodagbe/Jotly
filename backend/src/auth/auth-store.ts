@@ -7,6 +7,10 @@ export type AuthUser = {
   displayName: string | null;
   preferredLocale?: string | null;
   preferredTimeZone?: string | null;
+  requireDailyAffirmation?: boolean;
+  requireDailyBilan?: boolean;
+  requireWeeklySynthesis?: boolean;
+  requireMonthlySynthesis?: boolean;
   createdAt: Date;
   updatedAt: Date;
 };

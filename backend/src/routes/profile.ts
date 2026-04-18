@@ -80,6 +80,34 @@ function normalizePreferredTimeZone(value: string | null | undefined): string | 
   return normalized === "" ? null : normalized;
 }
 
+function serializeProfile(profile: {
+  id: string;
+  email: string;
+  displayName: string | null;
+  preferredLocale: string;
+  preferredTimeZone: string | null;
+  requireDailyAffirmation: boolean;
+  requireDailyBilan: boolean;
+  requireWeeklySynthesis: boolean;
+  requireMonthlySynthesis: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: profile.id,
+    email: profile.email,
+    displayName: profile.displayName,
+    preferredLocale: profile.preferredLocale,
+    preferredTimeZone: profile.preferredTimeZone,
+    requireDailyAffirmation: profile.requireDailyAffirmation,
+    requireDailyBilan: profile.requireDailyBilan,
+    requireWeeklySynthesis: profile.requireWeeklySynthesis,
+    requireMonthlySynthesis: profile.requireMonthlySynthesis,
+    createdAt: profile.createdAt.toISOString(),
+    updatedAt: profile.updatedAt.toISOString(),
+  };
+}
+
 const profileRoutes: FastifyPluginAsync<ProfileRouteOptions> = async (app, options) => {
   const { authService, profileStore } = options;
 
@@ -113,21 +141,7 @@ const profileRoutes: FastifyPluginAsync<ProfileRouteOptions> = async (app, optio
         return sendError(reply, 404, "NOT_FOUND", "Profile not found");
       }
 
-      return reply.send({
-        data: {
-          id: profile.id,
-          email: profile.email,
-          displayName: profile.displayName,
-          preferredLocale: profile.preferredLocale,
-          preferredTimeZone: profile.preferredTimeZone,
-          requireDailyAffirmation: profile.requireDailyAffirmation,
-          requireDailyBilan: profile.requireDailyBilan,
-          requireWeeklySynthesis: profile.requireWeeklySynthesis,
-          requireMonthlySynthesis: profile.requireMonthlySynthesis,
-          createdAt: profile.createdAt.toISOString(),
-          updatedAt: profile.updatedAt.toISOString(),
-        },
-      });
+      return reply.send({ data: serializeProfile(profile) });
     } catch (error) {
       if (isStorageNotInitializedPrismaError(error)) {
         request.log.warn(error, "Profile storage dependency is missing");
@@ -174,21 +188,7 @@ const profileRoutes: FastifyPluginAsync<ProfileRouteOptions> = async (app, optio
         return sendError(reply, 404, "NOT_FOUND", "Profile not found");
       }
 
-      return reply.send({
-        data: {
-          id: updatedProfile.id,
-          email: updatedProfile.email,
-          displayName: updatedProfile.displayName,
-          preferredLocale: updatedProfile.preferredLocale,
-          preferredTimeZone: updatedProfile.preferredTimeZone,
-          requireDailyAffirmation: updatedProfile.requireDailyAffirmation,
-          requireDailyBilan: updatedProfile.requireDailyBilan,
-          requireWeeklySynthesis: updatedProfile.requireWeeklySynthesis,
-          requireMonthlySynthesis: updatedProfile.requireMonthlySynthesis,
-          createdAt: updatedProfile.createdAt.toISOString(),
-          updatedAt: updatedProfile.updatedAt.toISOString(),
-        },
-      });
+      return reply.send({ data: serializeProfile(updatedProfile) });
     } catch (error) {
       if (isProfileNotFoundError(error)) {
         return sendError(reply, 404, "NOT_FOUND", "Profile not found");
