@@ -893,6 +893,180 @@ const iconButtonClass =
   "inline-flex h-8 min-w-8 items-center justify-center rounded-lg text-muted transition-all duration-200 hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
 const controlIconButtonClass = `${controlButtonClass} h-9 w-9 px-0`;
 
+type MainContentSectionId =
+  | "overview"
+  | "board"
+  | "dailyControls"
+  | "affirmation"
+  | "reminders"
+  | "bilan"
+  | "weeklyObjective"
+  | "weeklyReview"
+  | "monthlyObjective"
+  | "monthlyReview"
+  | "notes"
+  | "gaming";
+
+const MAIN_CONTENT_SECTION_META: Record<
+  MainContentSectionId,
+  {
+    group: { fr: string; en: string };
+    label: { fr: string; en: string };
+    chipClass: string;
+    activeRingClass: string;
+  }
+> = {
+  overview: {
+    group: { fr: "Aujourd'hui", en: "Today" },
+    label: { fr: "Vue d'ensemble", en: "Overview" },
+    chipClass: "border-sky-200 bg-sky-50 text-sky-700",
+    activeRingClass: "ring-sky-200",
+  },
+  board: {
+    group: { fr: "Aujourd'hui", en: "Today" },
+    label: { fr: "Tableau Kanban", en: "Kanban Board" },
+    chipClass: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    activeRingClass: "ring-indigo-200",
+  },
+  dailyControls: {
+    group: { fr: "Aujourd'hui", en: "Today" },
+    label: { fr: "Pilotage du jour", en: "Day Controls" },
+    chipClass: "border-sky-200 bg-sky-50 text-sky-700",
+    activeRingClass: "ring-sky-200",
+  },
+  affirmation: {
+    group: { fr: "Affirmation", en: "Affirmation" },
+    label: { fr: "Affirmation du jour", en: "Day Affirmation" },
+    chipClass: "border-violet-200 bg-violet-50 text-violet-700",
+    activeRingClass: "ring-violet-200",
+  },
+  reminders: {
+    group: { fr: "Aujourd'hui", en: "Today" },
+    label: { fr: "Rappels", en: "Reminders" },
+    chipClass: "border-rose-200 bg-rose-50 text-rose-700",
+    activeRingClass: "ring-rose-200",
+  },
+  bilan: {
+    group: { fr: "Bilan", en: "Reflection" },
+    label: { fr: "Bilan du jour", en: "Day Bilan" },
+    chipClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    activeRingClass: "ring-emerald-200",
+  },
+  weeklyObjective: {
+    group: { fr: "Semaine", en: "Week" },
+    label: { fr: "Objectif de la semaine", en: "Weekly Objective" },
+    chipClass: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    activeRingClass: "ring-indigo-200",
+  },
+  weeklyReview: {
+    group: { fr: "Semaine", en: "Week" },
+    label: { fr: "Bilan de la semaine", en: "Weekly Review" },
+    chipClass: "border-violet-200 bg-violet-50 text-violet-700",
+    activeRingClass: "ring-violet-200",
+  },
+  monthlyObjective: {
+    group: { fr: "Mois", en: "Month" },
+    label: { fr: "Objectif du mois", en: "Monthly Objective" },
+    chipClass: "border-blue-200 bg-blue-50 text-blue-700",
+    activeRingClass: "ring-blue-200",
+  },
+  monthlyReview: {
+    group: { fr: "Mois", en: "Month" },
+    label: { fr: "Bilan du mois", en: "Monthly Review" },
+    chipClass: "border-amber-200 bg-amber-50 text-amber-700",
+    activeRingClass: "ring-amber-200",
+  },
+  notes: {
+    group: { fr: "Espace", en: "Space" },
+    label: { fr: "Notes", en: "Notes" },
+    chipClass: "border-teal-200 bg-teal-50 text-teal-700",
+    activeRingClass: "ring-teal-200",
+  },
+  gaming: {
+    group: { fr: "Espace", en: "Space" },
+    label: { fr: "Gaming Track", en: "Gaming Track" },
+    chipClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+    activeRingClass: "ring-fuchsia-200",
+  },
+};
+
+function isMainContentSectionId(value: string): value is MainContentSectionId {
+  return Object.prototype.hasOwnProperty.call(MAIN_CONTENT_SECTION_META, value);
+}
+
+function getMainContentSectionClass(sectionId: MainContentSectionId, activeSectionId: string): string {
+  return [
+    "relative scroll-mt-24 transition-all duration-300 lg:scroll-mt-8",
+    activeSectionId === sectionId
+      ? `-translate-y-0.5 ring-2 ring-offset-2 ring-offset-background shadow-xl shadow-black/5 ${MAIN_CONTENT_SECTION_META[sectionId].activeRingClass}`
+      : "",
+  ].join(" ");
+}
+
+function SectionIdentityPills({
+  sectionId,
+  locale,
+  isActive,
+}: {
+  sectionId: MainContentSectionId;
+  locale: UserLocale;
+  isActive: boolean;
+}) {
+  const isFrench = locale === "fr";
+  const meta = MAIN_CONTENT_SECTION_META[sectionId];
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <span
+        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${meta.chipClass}`}
+      >
+        {isFrench ? meta.group.fr : meta.group.en}
+      </span>
+      {isActive ? (
+        <span className="inline-flex items-center rounded-full border border-accent/20 bg-accent-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
+          {isFrench ? "Section active" : "Active section"}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ActiveSectionIndicator({
+  activeSectionId,
+  locale,
+}: {
+  activeSectionId: string;
+  locale: UserLocale;
+}) {
+  if (!isMainContentSectionId(activeSectionId)) {
+    return null;
+  }
+
+  const isFrench = locale === "fr";
+  const meta = MAIN_CONTENT_SECTION_META[activeSectionId];
+
+  return (
+    <div className="sticky top-[4.75rem] z-20 lg:top-4">
+      <div className="rounded-2xl border border-line bg-white/90 px-4 py-3 shadow-sm backdrop-blur-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${meta.chipClass}`}
+          >
+            {isFrench ? meta.group.fr : meta.group.en}
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+            {isFrench ? "Repère principal" : "Main context"}
+          </span>
+        </div>
+        <p className="mt-2 text-sm font-semibold text-foreground">
+          {isFrench ? "Section active : " : "Active section: "}
+          {isFrench ? meta.label.fr : meta.label.en}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale): string {
   const isFrench = locale === "fr";
 
@@ -10349,15 +10523,18 @@ export function AppShell() {
         </button>
       </div>
 
+      <ActiveSectionIndicator activeSectionId={activeSectionId} locale={activeLocale} />
+
       <header
         id="overview"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("overview")}`}
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("overview", activeSectionId)} ${getDashboardDropClassName("overview")}`}
         style={{ order: getDashboardBlockVisualOrder("overview") }}
         onDragOver={(event) => handleDashboardBlockDragOver("overview", event)}
         onDrop={(event) => handleDashboardBlockDrop("overview", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
+            <SectionIdentityPills sectionId="overview" locale={activeLocale} isActive={activeSectionId === "overview"} />
             <h1 className="text-xl font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</h1>
             <p className="mt-0.5 text-sm text-muted">{APP_TAGLINE}</p>
           </div>
@@ -10423,13 +10600,16 @@ export function AppShell() {
 
       <section
         id="board"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("board")}`}
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("board", activeSectionId)} ${getDashboardDropClassName("board")}`}
         style={{ order: getDashboardBlockVisualOrder("board"), animationDelay: "0.2s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("board", event)}
         onDrop={(event) => handleDashboardBlockDrop("board", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
+          <div>
+            <SectionIdentityPills sectionId="board" locale={activeLocale} isActive={activeSectionId === "board"} />
+            <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
+          </div>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -10701,15 +10881,18 @@ export function AppShell() {
       </section>
 
       <section id="dailyControls"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("dailyControls")}`}
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("dailyControls", activeSectionId)} ${getDashboardDropClassName("dailyControls")}`}
         style={{ order: getDashboardBlockVisualOrder("dailyControls"), animationDelay: "0.1s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("dailyControls", event)}
         onDrop={(event) => handleDashboardBlockDrop("dailyControls", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={sectionHeaderClass}>
-            {isFrench ? "Pilotage du jour" : "Day Controls"}
-          </h2>
+          <div>
+            <SectionIdentityPills sectionId="dailyControls" locale={activeLocale} isActive={activeSectionId === "dailyControls"} />
+            <h2 className={sectionHeaderClass}>
+              {isFrench ? "Pilotage du jour" : "Day Controls"}
+            </h2>
+          </div>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -11056,13 +11239,14 @@ export function AppShell() {
 
       <section
         id="affirmation"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getDashboardDropClassName("affirmation")}`}
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getMainContentSectionClass("affirmation", activeSectionId)} ${getDashboardDropClassName("affirmation")}`}
         style={{ order: getDashboardBlockVisualOrder("affirmation"), animationDelay: "0.15s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("affirmation", event)}
         onDrop={(event) => handleDashboardBlockDrop("affirmation", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
+            <SectionIdentityPills sectionId="affirmation" locale={activeLocale} isActive={activeSectionId === "affirmation"} />
             <h2 className={sectionHeaderClass}>
               {isFrench ? "Affirmation du jour" : "Day Affirmation"}
             </h2>
@@ -11515,13 +11699,14 @@ export function AppShell() {
 
       <section
         id="reminders"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-amber-50/40 via-surface to-orange-50/30 p-6 shadow-sm ${getDashboardDropClassName("reminders")}`}
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-amber-50/40 via-surface to-orange-50/30 p-6 shadow-sm ${getMainContentSectionClass("reminders", activeSectionId)} ${getDashboardDropClassName("reminders")}`}
         style={{ order: getDashboardBlockVisualOrder("reminders"), animationDelay: "0.18s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("reminders", event)}
         onDrop={(event) => handleDashboardBlockDrop("reminders", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
+            <SectionIdentityPills sectionId="reminders" locale={activeLocale} isActive={activeSectionId === "reminders"} />
             <h2 className={sectionHeaderClass}>
               {isFrench ? "Rappels" : "Reminders"}
             </h2>
@@ -11669,13 +11854,14 @@ export function AppShell() {
 
       <section
         id="bilan"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("bilan")}`}
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("bilan", activeSectionId)} ${getDashboardDropClassName("bilan")}`}
         style={{ order: getDashboardBlockVisualOrder("bilan"), animationDelay: "0.25s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("bilan", event)}
         onDrop={(event) => handleDashboardBlockDrop("bilan", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
+            <SectionIdentityPills sectionId="bilan" locale={activeLocale} isActive={activeSectionId === "bilan"} />
             <h2 className={sectionHeaderClass}>
               {isFrench ? "Bilan du jour" : "Day Bilan"}
             </h2>
@@ -11885,9 +12071,14 @@ export function AppShell() {
         return (
           <>
             {showMonthlyObjective ? (
-              <section id="monthlyObjective" className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 43 }}>
+              <section
+                id="monthlyObjective"
+                className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("monthlyObjective", activeSectionId)}`}
+                style={{ order: 43 }}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
+                    <SectionIdentityPills sectionId="monthlyObjective" locale={activeLocale} isActive={activeSectionId === "monthlyObjective"} />
                     <h2 className={sectionHeaderClass}>
                       {isFrench ? `Objectif de ${monthLabel}` : `${monthLabel} Objective`}
                     </h2>
@@ -11931,9 +12122,14 @@ export function AppShell() {
             ) : null}
 
             {showMonthlyReview ? (
-              <section id="monthlyReview" className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 44 }}>
+              <section
+                id="monthlyReview"
+                className={`animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm ${getMainContentSectionClass("monthlyReview", activeSectionId)}`}
+                style={{ order: 44 }}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
+                    <SectionIdentityPills sectionId="monthlyReview" locale={activeLocale} isActive={activeSectionId === "monthlyReview"} />
                     <h2 className={sectionHeaderClass}>
                       {isFrench ? `Bilan de ${monthLabel}` : `${monthLabel} Review`}
                     </h2>
@@ -11974,9 +12170,14 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyObjective ? (
-              <section id="weeklyObjective" className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 41 }}>
+              <section
+                id="weeklyObjective"
+                className={`animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm ${getMainContentSectionClass("weeklyObjective", activeSectionId)}`}
+                style={{ order: 41 }}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
+                    <SectionIdentityPills sectionId="weeklyObjective" locale={activeLocale} isActive={activeSectionId === "weeklyObjective"} />
                     <h2 className={sectionHeaderClass}>
                       {isFrench ? "Objectif de la semaine" : "Weekly Objective"}
                     </h2>
@@ -12023,9 +12224,14 @@ export function AppShell() {
             ) : null}
 
             {showWeeklyReview ? (
-              <section id="weeklyReview" className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 42 }}>
+              <section
+                id="weeklyReview"
+                className={`animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm ${getMainContentSectionClass("weeklyReview", activeSectionId)}`}
+                style={{ order: 42 }}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
+                    <SectionIdentityPills sectionId="weeklyReview" locale={activeLocale} isActive={activeSectionId === "weeklyReview"} />
                     <h2 className={sectionHeaderClass}>
                       {isFrench ? "Bilan de la semaine" : "Weekly Review"}
                     </h2>
@@ -12076,13 +12282,14 @@ export function AppShell() {
 
       <section
         id="notes"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getDashboardDropClassName("notes")}`}
+        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getMainContentSectionClass("notes", activeSectionId)} ${getDashboardDropClassName("notes")}`}
         style={{ order: getDashboardBlockVisualOrder("notes"), animationDelay: "0.19s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("notes", event)}
         onDrop={(event) => handleDashboardBlockDrop("notes", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
+            <SectionIdentityPills sectionId="notes" locale={activeLocale} isActive={activeSectionId === "notes"} />
             <h2 className={sectionHeaderClass}>
               {isFrench ? "Notes" : "Notes"}
             </h2>
@@ -12403,13 +12610,14 @@ export function AppShell() {
 
       <section
         id="gaming"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("gamingTrack")}`}
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("gaming", activeSectionId)} ${getDashboardDropClassName("gamingTrack")}`}
         style={{ order: getDashboardBlockVisualOrder("gamingTrack"), animationDelay: "0.05s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("gamingTrack", event)}
         onDrop={(event) => handleDashboardBlockDrop("gamingTrack", event)}
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
+            <SectionIdentityPills sectionId="gaming" locale={activeLocale} isActive={activeSectionId === "gaming"} />
             <h2 className={sectionHeaderClass}>Gaming Track</h2>
             <p className="text-sm text-muted">
               {gamingTrackRangeLabel
