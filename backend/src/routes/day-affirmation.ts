@@ -225,12 +225,12 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
     const isFrench = locale === "fr";
 
     const systemPrompt = isFrench
-      ? "Tu es un assistant spécialisé dans la transcription fidèle et intégrale de textes imprimés ou manuscrits visibles sur des photos."
-      : "You are an assistant specialized in faithful and complete transcription of printed or handwritten text visible in photos.";
+      ? "Tu es un assistant capable de lire et d'extraire le contenu textuel visible sur des photos de documents, pages ou notes."
+      : "You are an assistant that reads and extracts text content visible in photos of documents, pages, or notes.";
 
     const userPrompt = isFrench
-      ? "Retranscris intégralement tout le texte visible sur cette image, mot pour mot, de haut en bas. Inclus absolument tout : les titres, sous-titres, textes en encadré ou en grisé, paragraphes du corps du texte, citations en italique, attributions d'auteurs, numéros de page. N'omets, ne résume, ne reformule, ne saute aucun mot. Reproduis chaque mot exactement tel qu'il est écrit, dans l'ordre d'apparition."
-      : "Transcribe all text visible in this image, word for word, from top to bottom. Include everything: titles, subtitles, boxed or shaded text, body paragraphs, italic quotes, author attributions, page numbers. Do not omit, summarize, rephrase, or skip any word. Reproduce each word exactly as written, in order of appearance.";
+      ? "Lis cette image et extrais tout le texte que tu peux y voir : titres, sous-titres, paragraphes, citations, encadrés, attributions d'auteurs. Présente le contenu dans l'ordre de lecture, en conservant la structure du document."
+      : "Read this image and extract all the text you can see: titles, subtitles, paragraphs, quotes, boxes, author attributions. Present the content in reading order, preserving the document structure.";
 
     const visionTimeoutMs = Math.max(requestTimeoutMs ?? 60000, 60000);
     const controller = new AbortController();
