@@ -2347,6 +2347,28 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+async function compressImageDataUrl(
+  dataUrl: string,
+  maxDimension = 1024,
+  quality = 0.75
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 async function registerUser(values: AuthFormValues): Promise<{ user: AuthUser; token: string }> {
   const response = await fetch("/backend-api/auth/register", {
     method: "POST",
@@ -11031,7 +11053,8 @@ export function AppShell() {
                           setAffirmationOcrError(null);
                           setAffirmationOcrReformattedText("");
                           try {
-                            const result = await extractAffirmationTextFromImage(affirmationOcrImagePreview, activeLocale, selectedDate, authToken);
+                            const compressedImage = await compressImageDataUrl(affirmationOcrImagePreview);
+                            const result = await extractAffirmationTextFromImage(compressedImage, activeLocale, selectedDate, authToken);
                             if (result.status === "empty" || result.text.trim().length === 0) {
                               setAffirmationOcrError(
                                 isFrench
