@@ -15,6 +15,10 @@ export type AuthenticatedUser = {
   displayName: string | null;
   preferredLocale: "en" | "fr";
   preferredTimeZone: string | null;
+  requireDailyAffirmation: boolean;
+  requireDailyBilan: boolean;
+  requireWeeklySynthesis: boolean;
+  requireMonthlySynthesis: boolean;
   createdAt: string;
 };
 
@@ -141,6 +145,10 @@ function toAuthenticatedUser(user: AuthUser): AuthenticatedUser {
     displayName: user.displayName,
     preferredLocale,
     preferredTimeZone: user.preferredTimeZone ?? null,
+    requireDailyAffirmation: user.requireDailyAffirmation ?? false,
+    requireDailyBilan: user.requireDailyBilan ?? false,
+    requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
+    requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
     createdAt: user.createdAt.toISOString(),
   };
 }

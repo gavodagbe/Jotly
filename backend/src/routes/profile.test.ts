@@ -295,6 +295,51 @@ test("PATCH /api/profile updates display name and preferences", async (t) => {
   assert.equal(data.preferredTimeZone, "Europe/Paris");
 });
 
+test("PATCH /api/profile keeps required-section flags visible through GET /api/auth/me", async (t) => {
+  const app = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const patchResponse = await app.inject({
+    method: "PATCH",
+    url: "/api/profile",
+    headers: authHeaders(token),
+    payload: {
+      requireDailyAffirmation: true,
+      requireDailyBilan: true,
+      requireWeeklySynthesis: true,
+      requireMonthlySynthesis: true,
+    },
+  });
+
+  assert.equal(patchResponse.statusCode, 200);
+
+  const meResponse = await app.inject({
+    method: "GET",
+    url: "/api/auth/me",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(meResponse.statusCode, 200);
+  const body = parsePayload(meResponse.payload);
+  const data = body.data as {
+    user: {
+      requireDailyAffirmation: boolean;
+      requireDailyBilan: boolean;
+      requireWeeklySynthesis: boolean;
+      requireMonthlySynthesis: boolean;
+    };
+  };
+
+  assert.equal(data.user.requireDailyAffirmation, true);
+  assert.equal(data.user.requireDailyBilan, true);
+  assert.equal(data.user.requireWeeklySynthesis, true);
+  assert.equal(data.user.requireMonthlySynthesis, true);
+});
+
 test("PATCH /api/profile validates timezone", async (t) => {
   const app = createAppForTest();
 

@@ -57,6 +57,12 @@ class InMemoryAuthStore implements AuthStore {
       email: input.email,
       passwordHash: input.passwordHash,
       displayName: input.displayName,
+      preferredLocale: "en",
+      preferredTimeZone: null,
+      requireDailyAffirmation: false,
+      requireDailyBilan: false,
+      requireWeeklySynthesis: false,
+      requireMonthlySynthesis: false,
       createdAt: now,
       updatedAt: now
     };
@@ -198,6 +204,24 @@ class InMemoryAuthStore implements AuthStore {
       this.passwordResetTokens.delete(resetTokenId);
       this.passwordResetTokensByHash.delete(resetToken.tokenHash);
     }
+  }
+
+  writeUser(userId: string, patch: Partial<AuthUser>): AuthUser | null {
+    const existing = this.users.get(userId);
+
+    if (!existing) {
+      return null;
+    }
+
+    const updated: AuthUser = {
+      ...existing,
+      ...patch,
+      updatedAt: new Date()
+    };
+
+    this.users.set(userId, updated);
+    this.usersByEmail.set(updated.email, updated);
+    return updated;
   }
 }
 
@@ -532,6 +556,63 @@ test("GET /api/auth/me returns the authenticated user", async (t) => {
   const data = body.data as { user: { email: string } };
 
   assert.equal(data.user.email, "user@example.com");
+});
+
+test("GET /api/auth/me returns required profile-section flags", async (t) => {
+  const authStore = new InMemoryAuthStore();
+  const app = buildApp({
+    logLevel: "silent",
+    taskStore: new NoopTaskStore(),
+    authStore,
+    authSessionTtlHours: 24
+  });
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const registerResponse = await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: {
+      email: "flags@example.com",
+      password: "password123",
+      displayName: "Flags User"
+    }
+  });
+
+  assert.equal(registerResponse.statusCode, 201);
+  const registerBody = parsePayload(registerResponse.payload);
+  const registerData = registerBody.data as { user: { id: string }; token: string };
+
+  authStore.writeUser(registerData.user.id, {
+    requireDailyAffirmation: true,
+    requireDailyBilan: true,
+    requireWeeklySynthesis: true,
+    requireMonthlySynthesis: true
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/auth/me",
+    headers: authHeaders(registerData.token)
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as {
+    user: {
+      requireDailyAffirmation: boolean;
+      requireDailyBilan: boolean;
+      requireWeeklySynthesis: boolean;
+      requireMonthlySynthesis: boolean;
+    };
+  };
+
+  assert.equal(data.user.requireDailyAffirmation, true);
+  assert.equal(data.user.requireDailyBilan, true);
+  assert.equal(data.user.requireWeeklySynthesis, true);
+  assert.equal(data.user.requireMonthlySynthesis, true);
 });
 
 test("POST /api/auth/logout revokes current token", async (t) => {
