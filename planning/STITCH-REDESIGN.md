@@ -11,9 +11,16 @@ Use it to avoid restarting discovery from zero on the next iteration, and update
 - Design system asset: `assets/7b1753dc1a0341f9ad7a326799cd4191`
 - Design system name: `Jotly Gamified Pro`
 - Mode: `LIGHT`
+- Active redesign branch: `chore/NOJIRA-stitch-redesign-context`
 - Last confirmed: `2026-04-18`
 
 If the user selects another Stitch project or design system, update this section first.
+
+## Branch policy for this redesign track
+- The current Stitch redesign track lives on `chore/NOJIRA-stitch-redesign-context`.
+- Use this branch for all redesign documentation, Stitch prompt preparation, and future redesign implementation work tied to this active visual direction.
+- Do not continue this redesign track on `main`.
+- If a new agent/session resumes this work from another branch, switch to `chore/NOJIRA-stitch-redesign-context` before making changes.
 
 ## Collaboration contract with Stitch
 When working with Stitch, describe the product problem and functional requirements only.

@@ -17,6 +17,12 @@ Use Atlassian MCP for Jira and Confluence context when needed.
   - `chore/JOT-10-doc-alignment`
 - Do not rewrite Git history.
 
+### Active redesign branch
+- All Stitch-driven redesign work for the current mobile/desktop UX overhaul must happen on `chore/NOJIRA-stitch-redesign-context`.
+- Do not use `main` for redesign documentation, Stitch handoff prompts, or redesign implementation tied to this active design track.
+- If an agent starts on another branch while continuing this redesign track, switch to `chore/NOJIRA-stitch-redesign-context` before making changes.
+- Treat `main` as the stable baseline until the user explicitly decides to merge or publish redesign work.
+
 ### Tickets sensibles (par défaut)
 - Do not commit.
 - Do not push.

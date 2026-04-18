@@ -17,9 +17,14 @@ For Stitch MCP design work, the current default project context is:
 - design system asset: `assets/7b1753dc1a0341f9ad7a326799cd4191`
 - design system name: `Jotly Gamified Pro`
 - mode: `LIGHT`
+- active redesign branch: `chore/NOJIRA-stitch-redesign-context`
 
 Unless the user explicitly selects another Stitch project or design system, use this context for future design operations.
 Detailed redesign inventory, prompting rules, and screen coverage live in `planning/STITCH-REDESIGN.md`.
+
+Branch rule for this redesign track:
+- keep all Stitch redesign documentation and future redesign-related code changes on `chore/NOJIRA-stitch-redesign-context`
+- do not continue this redesign track on `main`
 
 ## Repository architecture
 Monorepo structure:
