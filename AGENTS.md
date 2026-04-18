@@ -3,8 +3,9 @@
 Read sources in this order:
 1. current Jira ticket
 2. planning/AGENT.md
-3. planning/PLAN.md
-4. planning/REVIEW.md
+3. planning/STITCH-REDESIGN.md
+4. planning/PLAN.md
+5. planning/REVIEW.md
 
 Use Atlassian MCP for Jira and Confluence context when needed.
 

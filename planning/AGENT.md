@@ -10,6 +10,17 @@ The MVP allows a user to:
 - create, edit, delete, and move tasks
 - persist task data in PostgreSQL
 
+## Current Stitch design context
+For Stitch MCP design work, the current default project context is:
+- project: `projects/7204916176936281922`
+- project title: `Jotly Productivity Interface System`
+- design system asset: `assets/7b1753dc1a0341f9ad7a326799cd4191`
+- design system name: `Jotly Gamified Pro`
+- mode: `LIGHT`
+
+Unless the user explicitly selects another Stitch project or design system, use this context for future design operations.
+Detailed redesign inventory, prompting rules, and screen coverage live in `planning/STITCH-REDESIGN.md`.
+
 ## Repository architecture
 Monorepo structure:
 - `frontend/` -> Next.js web app
