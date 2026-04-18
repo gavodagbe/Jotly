@@ -2353,7 +2353,7 @@ async function compressImageDataUrl(
   quality = 0.75
 ): Promise<string> {
   return new Promise((resolve) => {
-    const img = new Image();
+    const img = new window.Image();
     img.onload = () => {
       const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
       const canvas = document.createElement("canvas");
