@@ -4527,6 +4527,9 @@ type AppNavbarProps = {
   onOpenProjectPlanning?: () => void;
   showMonthlyReview?: boolean;
   showWeeklyReview?: boolean;
+  activeSectionId?: string;
+  isSidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
 };
 
 const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> = {
@@ -5108,6 +5111,9 @@ function AppNavbar({
   onOpenProjectPlanning,
   showMonthlyReview = false,
   showWeeklyReview = false,
+  activeSectionId = "",
+  isSidebarCollapsed = false,
+  onToggleSidebar,
 }: AppNavbarProps) {
   const isLoggedIn = user !== null;
   const isFrench = locale === "fr";
@@ -5116,20 +5122,67 @@ function AppNavbar({
   const taskAlertsCount = alertsSummary?.count ?? 0;
   const taskAlertsLabel = isFrench ? "Alertes" : "Alerts";
 
+  const activeMobileTab =
+    ["overview", "dailyControls", "reminders"].includes(activeSectionId) ? "jour" :
+    activeSectionId === "board" ? "kanban" :
+    activeSectionId === "affirmation" ? "affirmation" :
+    ["bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview"].includes(activeSectionId) ? "bilan" :
+    ["notes", "gaming"].includes(activeSectionId) ? "espace" : "";
+
+  function navItem(ids: string | string[], collapsed: boolean) {
+    const idList = Array.isArray(ids) ? ids : [ids];
+    const isActive = idList.includes(activeSectionId);
+    if (collapsed) {
+      return `flex h-9 w-9 mx-auto items-center justify-center rounded-lg text-sm transition-colors duration-150 ${
+        isActive ? "bg-accent-soft text-accent border-l-2 border-accent" : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
+      }`;
+    }
+    return `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150 ${
+      isActive ? "bg-accent-soft text-accent border-l-2 border-accent" : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
+    }`;
+  }
+
+  function groupHeader(fr: string, en: string) {
+    if (isSidebarCollapsed) return <div className="my-2 mx-2 border-t border-line" />;
+    return (
+      <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+        {isFrench ? fr : en}
+      </p>
+    );
+  }
+
   return (
     <>
-      {/* Desktop Sidebar */}
-      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-[260px] flex-col border-r border-line bg-surface lg:flex">
-        <div className="flex items-center gap-3 px-5 py-6">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-sm font-bold text-white">J</div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
-            <p className="text-[11px] text-muted">{isFrench ? "Planification quotidienne" : "Daily planner"}</p>
-          </div>
+      {/* ── Desktop Sidebar ─────────────────────────────────────────────── */}
+      <aside
+        className={`fixed left-0 top-0 z-30 hidden h-screen flex-col border-r border-line bg-surface transition-[width] duration-200 lg:flex ${
+          isSidebarCollapsed ? "w-[56px]" : "w-[260px]"
+        }`}
+      >
+        {/* Logo */}
+        <div className={`flex items-center gap-3 py-5 ${isSidebarCollapsed ? "justify-center px-0" : "px-5"}`}>
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-sm font-bold text-white">J</div>
+          {!isSidebarCollapsed && (
+            <div className="overflow-hidden">
+              <p className="truncate text-sm font-semibold text-foreground">{APP_NAME}</p>
+              <p className="text-[11px] text-muted">{isFrench ? "Planification quotidienne" : "Daily planner"}</p>
+            </div>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3">
-          <div className="pt-3">
+        {/* Search */}
+        <div className={`pb-2 ${isSidebarCollapsed ? "flex justify-center px-2" : "px-3"}`}>
+          {isSidebarCollapsed ? (
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              disabled={!onOpenSearch}
+              title={isFrench ? "Rechercher" : "Search"}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-surface-soft text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
+            >
+              <SearchIcon />
+            </button>
+          ) : (
             <button
               type="button"
               onClick={onOpenSearch}
@@ -5138,206 +5191,187 @@ function AppNavbar({
             >
               <SearchIcon />
               <span className="flex-1 text-left">{isFrench ? "Rechercher..." : "Search..."}</span>
-              <kbd className="hidden rounded border border-line px-1.5 py-0.5 text-[10px] text-muted lg:block">⌘K</kbd>
+              <kbd className="rounded border border-line px-1.5 py-0.5 text-[10px] text-muted">⌘K</kbd>
             </button>
-          </div>
+          )}
+        </div>
+
+        {/* Nav */}
+        <div className="flex-1 overflow-y-auto px-3">
           <nav className="space-y-0.5">
 
-            {/* ── ESPACE DE TRAVAIL ── */}
-            <p className="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-              {isFrench ? "Espace de travail" : "Workspace"}
-            </p>
-            <a href="#overview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
-              {isFrench ? "Vue d'ensemble" : "Overview"}
+            {/* ── AUJOURD'HUI ── */}
+            {groupHeader("Aujourd'hui", "Today")}
+            <a href="#overview" title={isSidebarCollapsed ? (isFrench ? "Vue d'ensemble" : "Overview") : undefined} className={navItem("overview", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Vue d'ensemble" : "Overview")}
             </a>
-            <a href="#board" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
-              {isFrench ? "Tableau Kanban" : "Kanban Board"}
+            <a href="#affirmation" title={isSidebarCollapsed ? "Affirmation" : undefined} className={navItem("affirmation", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
+              {!isSidebarCollapsed && "Affirmation"}
+            </a>
+            <a href="#reminders" title={isSidebarCollapsed ? (isFrench ? "Rappels" : "Reminders") : undefined} className={navItem("reminders", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 4a5 5 0 00-5 5v3l-1 2h12l-1-2V9a5 5 0 00-5-5zM8.5 16a1.5 1.5 0 003 0" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Rappels" : "Reminders")}
+            </a>
+            <a href="#bilan" title={isSidebarCollapsed ? (isFrench ? "Bilan du jour" : "Day Bilan") : undefined} className={navItem("bilan", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Bilan du jour" : "Day Bilan")}
+            </a>
+
+            {/* ── SEMAINE & MOIS ── */}
+            {groupHeader("Semaine & Mois", "Week & Month")}
+            <a href="#weeklyObjective" title={isSidebarCollapsed ? (isFrench ? "Objectif semaine" : "Weekly Objective") : undefined} className={navItem(["weeklyObjective", "weeklyReview"], isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Objectif de la semaine" : "Weekly Objective")}
+            </a>
+            {showWeeklyReview && (
+              <a href="#weeklyReview" title={isSidebarCollapsed ? (isFrench ? "Bilan semaine" : "Weekly Review") : undefined}
+                className={`${navItem("weeklyReview", isSidebarCollapsed)} ${activeSectionId !== "weeklyReview" ? "text-violet-700 hover:bg-violet-50 hover:text-violet-800" : ""}`}
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-violet-500" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/><path d="M14 12l2 2 3-3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {!isSidebarCollapsed && (isFrench ? "Bilan de la semaine" : "Weekly Review")}
+              </a>
+            )}
+            <a href="#monthlyObjective" title={isSidebarCollapsed ? (isFrench ? "Objectif du mois" : "Monthly Objective") : undefined} className={navItem(["monthlyObjective", "monthlyReview"], isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12h6M7 15h4" strokeLinecap="round"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Objectif du mois" : "Monthly Objective")}
+            </a>
+            {showMonthlyReview && (
+              <a href="#monthlyReview" title={isSidebarCollapsed ? (isFrench ? "Bilan du mois" : "Monthly Review") : undefined}
+                className={`${navItem("monthlyReview", isSidebarCollapsed)} ${activeSectionId !== "monthlyReview" ? "text-amber-700 hover:bg-amber-50 hover:text-amber-800" : ""}`}
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {!isSidebarCollapsed && (isFrench ? "Bilan du mois" : "Monthly Review")}
+              </a>
+            )}
+
+            {/* ── WORKSPACE ── */}
+            {groupHeader("Workspace", "Workspace")}
+            <a href="#dailyControls" title={isSidebarCollapsed ? (isFrench ? "Pilotage du jour" : "Day Controls") : undefined} className={navItem("dailyControls", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Pilotage du jour" : "Day Controls")}
+            </a>
+            <a href="#board" title={isSidebarCollapsed ? (isFrench ? "Tableau Kanban" : "Kanban Board") : undefined} className={navItem("board", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Tableau Kanban" : "Kanban Board")}
             </a>
             <button
               type="button"
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ${
-                isProjectPlanningOpen
-                  ? "bg-accent-soft text-accent"
-                  : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
-              }`}
+              title={isSidebarCollapsed ? (isFrench ? "Planification projet" : "Project Planning") : undefined}
+              className={`${navItem("", isSidebarCollapsed)} ${isProjectPlanningOpen ? "bg-accent-soft text-accent" : ""}`}
               onClick={onOpenProjectPlanning}
               disabled={isBusy || !onOpenProjectPlanning}
             >
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7">
                 <rect x="2" y="4" width="16" height="2.5" rx="1"/>
                 <rect x="2" y="8.75" width="11" height="2.5" rx="1"/>
                 <rect x="2" y="13.5" width="14" height="2.5" rx="1"/>
               </svg>
-              <span className="flex-1">{isFrench ? "Planification projet" : "Project Planning"}</span>
+              {!isSidebarCollapsed && <span className="flex-1 text-left">{isFrench ? "Planification projet" : "Project Planning"}</span>}
             </button>
 
-            {/* ── MA JOURNÉE ── */}
-            <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-              {isFrench ? "Ma journée" : "My Day"}
-            </p>
-            <a href="#dailyControls" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>
-              {isFrench ? "Pilotage du jour" : "Day Controls"}
+            {/* ── MON SUIVI ── */}
+            {groupHeader("Mon suivi", "My Track")}
+            <a href="#notes" title={isSidebarCollapsed ? "Notes" : undefined} className={navItem("notes", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>
+              {!isSidebarCollapsed && "Notes"}
             </a>
-            <a href="#affirmation" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
-              {isFrench ? "Affirmation" : "Affirmation"}
-            </a>
-            <a href="#reminders" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 4a5 5 0 00-5 5v3l-1 2h12l-1-2V9a5 5 0 00-5-5zM8.5 16a1.5 1.5 0 003 0" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              {isFrench ? "Rappels" : "Reminders"}
-            </a>
-            <a href="#bilan" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
-              {isFrench ? "Bilan du jour" : "Day Bilan"}
-            </a>
-            <a href="#monthlyObjective" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12h6M7 15h4" strokeLinecap="round"/></svg>
-              {isFrench ? "Objectif du mois" : "Monthly Objective"}
-            </a>
-            {showMonthlyReview ? (
-              <a href="#monthlyReview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-amber-700 transition-colors duration-150 hover:bg-amber-50 hover:text-amber-800">
-                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                {isFrench ? "Bilan du mois" : "Monthly Review"}
-              </a>
-            ) : null}
-            <a href="#weeklyObjective" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/></svg>
-              {isFrench ? "Objectif de la semaine" : "Weekly Objective"}
-            </a>
-            {showWeeklyReview ? (
-              <a href="#weeklyReview" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-violet-700 transition-colors duration-150 hover:bg-violet-50 hover:text-violet-800">
-                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-violet-500" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/><path d="M14 12l2 2 3-3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                {isFrench ? "Bilan de la semaine" : "Weekly Review"}
-              </a>
-            ) : null}
-            <button
-              type="button"
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ${
-                isTaskAlertsPanelOpen
-                  ? "bg-rose-50 text-rose-600"
-                  : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
-              }`}
-              onClick={onOpenTaskAlerts}
-              disabled={isBusy || !onOpenTaskAlerts}
-            >
-              <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted">
-                <BellIcon />
-                {taskAlertsCount > 0 ? (
-                  <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
-                    {taskAlertsCount > 9 ? "9+" : taskAlertsCount}
-                  </span>
-                ) : null}
-              </span>
-              <span className="flex-1">{taskAlertsLabel}</span>
-            </button>
-
-            {/* ── MON ESPACE ── */}
-            <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-              {isFrench ? "Mon espace" : "My Space"}
-            </p>
-            <a href="#notes" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>
-              {isFrench ? "Notes" : "Notes"}
-            </a>
-            <a href="#gaming" className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground/80 transition-colors duration-150 hover:bg-surface-soft hover:text-foreground">
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <a href="#gaming" title="Gaming Track" className={navItem("gaming", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7">
                 <path d="M5 3h10l-1.5 7a3.5 3.5 0 01-7 0L5 3z" strokeLinejoin="round"/>
                 <path d="M10 13.5V16" strokeLinecap="round"/>
                 <path d="M7 16h6" strokeLinecap="round"/>
                 <path d="M3 3h2M15 3h2" strokeLinecap="round"/>
               </svg>
-              Gaming Track
+              {!isSidebarCollapsed && "Gaming Track"}
             </a>
+            <button
+              type="button"
+              title={isSidebarCollapsed ? taskAlertsLabel : undefined}
+              className={`${navItem("", isSidebarCollapsed)} ${isTaskAlertsPanelOpen ? "bg-rose-50 text-rose-600" : ""}`}
+              onClick={onOpenTaskAlerts}
+              disabled={isBusy || !onOpenTaskAlerts}
+            >
+              <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
+                <BellIcon />
+                {taskAlertsCount > 0 && (
+                  <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
+                    {taskAlertsCount > 9 ? "9+" : taskAlertsCount}
+                  </span>
+                )}
+              </span>
+              {!isSidebarCollapsed && <span className="flex-1 text-left">{taskAlertsLabel}</span>}
+            </button>
           </nav>
         </div>
 
-        {isLoggedIn ? (
-          <div className="border-t border-line px-3 py-4">
-            <div className="flex items-center gap-3 rounded-lg px-2.5 py-2">
-              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
+        {/* Footer: user + collapse toggle */}
+        <div className="border-t border-line px-3 py-4">
+          {isLoggedIn && !isSidebarCollapsed && (
+            <>
+              <div className="flex items-center gap-3 rounded-lg px-2.5 py-2">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">{initials}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{profileLabel}</p>
+                </div>
+              </div>
+              <div className="mt-1 flex items-center gap-1 px-1">
+                <button type="button" className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenProfile} disabled={isBusy || !onOpenProfile}>
+                  {isFrench ? "Profil" : "Settings"}
+                </button>
+                <button type="button" className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-red-50 hover:text-red-500" onClick={onLogout} disabled={isBusy || !onLogout}>
+                  {isFrench ? "Deconnexion" : "Logout"}
+                </button>
+              </div>
+            </>
+          )}
+          {isLoggedIn && isSidebarCollapsed && (
+            <div className="mb-2 flex justify-center">
+              <button type="button" title={profileLabel} className="grid h-8 w-8 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent" onClick={onOpenProfile} disabled={isBusy || !onOpenProfile}>
                 {initials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{profileLabel}</p>
-              </div>
-            </div>
-            <div className="mt-1 flex items-center gap-1 px-1">
-              <button
-                type="button"
-                className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                onClick={onOpenProfile}
-                disabled={isBusy || !onOpenProfile}
-              >
-                {isFrench ? "Profil" : "Settings"}
-              </button>
-              <button
-                type="button"
-                className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-red-50 hover:text-red-500"
-                onClick={onLogout}
-                disabled={isBusy || !onLogout}
-              >
-                {isFrench ? "Deconnexion" : "Logout"}
               </button>
             </div>
-          </div>
-        ) : null}
+          )}
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            title={isSidebarCollapsed ? (isFrench ? "Développer" : "Expand") : (isFrench ? "Réduire" : "Collapse")}
+            className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground ${isSidebarCollapsed ? "mx-auto h-8 w-8 justify-center" : "w-full"}`}
+          >
+            <svg viewBox="0 0 20 20" className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isSidebarCollapsed ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="M12 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {!isSidebarCollapsed && <span>{isFrench ? "Réduire" : "Collapse"}</span>}
+          </button>
+        </div>
       </aside>
 
-      {/* Mobile Navbar */}
+      {/* ── Mobile Top Bar ─────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-3 backdrop-blur-sm lg:hidden">
         <div className="flex items-center gap-2.5">
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-xs font-bold text-white">J</div>
           <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
         </div>
-
         <div className="flex items-center gap-2">
           {isLoggedIn ? (
             <>
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                onClick={onOpenSearch}
-                disabled={!onOpenSearch}
-                aria-label={isFrench ? "Rechercher" : "Search"}
-              >
+              <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenSearch} disabled={!onOpenSearch} aria-label={isFrench ? "Rechercher" : "Search"}>
                 <SearchIcon />
               </button>
               <button
                 type="button"
-                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                  isTaskAlertsPanelOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-soft hover:text-foreground"
-                }`}
+                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${isTaskAlertsPanelOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-soft hover:text-foreground"}`}
                 onClick={onOpenTaskAlerts}
                 disabled={isBusy || !onOpenTaskAlerts}
                 aria-label={taskAlertsLabel}
               >
                 <BellIcon />
-                {taskAlertsCount > 0 ? (
+                {taskAlertsCount > 0 && (
                   <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
                     {taskAlertsCount > 9 ? "9+" : taskAlertsCount}
                   </span>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                onClick={onOpenProfile}
-                disabled={isBusy || !onOpenProfile}
-                aria-label={isFrench ? "Profil" : "Profile"}
-              >
-                <ProfileGlyph isLoggedIn />
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                onClick={onLogout}
-                disabled={isBusy || !onLogout}
-                aria-label={isFrench ? "Deconnexion" : "Logout"}
-              >
-                <ArrowRightIcon />
+                )}
               </button>
             </>
           ) : (
@@ -5347,6 +5381,71 @@ function AppNavbar({
           )}
         </div>
       </nav>
+
+      {/* ── Mobile Bottom Navigation ────────────────────────────────────── */}
+      {isLoggedIn && (
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-line bg-surface/95 backdrop-blur-sm lg:hidden"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          {(
+            [
+              {
+                id: "jour",
+                href: "#overview",
+                label: isFrench ? "Jour" : "Day",
+                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>,
+              },
+              {
+                id: "kanban",
+                href: "#board",
+                label: isFrench ? "Tâches" : "Tasks",
+                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>,
+              },
+              {
+                id: "affirmation",
+                href: "#affirmation",
+                label: isFrench ? "Affirm." : "Affirm.",
+                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>,
+              },
+              {
+                id: "bilan",
+                href: "#bilan",
+                label: "Bilan",
+                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>,
+              },
+              {
+                id: "espace",
+                href: "#notes",
+                label: isFrench ? "Espace" : "Space",
+                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>,
+              },
+            ] as const
+          ).map((tab) => (
+            <a
+              key={tab.id}
+              href={tab.href}
+              className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
+                activeMobileTab === tab.id ? "text-accent" : "text-muted hover:text-foreground"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </a>
+          ))}
+          <button
+            type="button"
+            className="flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-muted transition-colors hover:text-foreground"
+            onClick={onOpenProfile}
+            disabled={isBusy || !onOpenProfile}
+          >
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-accent-soft text-[9px] font-semibold text-accent">
+              {initials}
+            </span>
+            {isFrench ? "Profil" : "Profile"}
+          </button>
+        </nav>
+      )}
     </>
   );
 }
@@ -6212,6 +6311,10 @@ export function AppShell() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [guestLocale, setGuestLocale] = useState<UserLocale>("en");
+  const [activeSectionId, setActiveSectionId] = useState<string>("overview");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem("jotly-sidebar-collapsed") === "true"; } catch { return false; }
+  });
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authFormValues, setAuthFormValues] = useState<AuthFormValues>({
@@ -9112,6 +9215,30 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
+    const sectionIds = [
+      "overview", "board", "dailyControls", "affirmation", "reminders",
+      "bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview",
+      "notes", "gaming",
+    ];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSectionId(entry.target.id);
+            break;
+          }
+        }
+      },
+      { threshold: 0.15, rootMargin: "-80px 0px -55% 0px" }
+    );
+    for (const id of sectionIds) {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [authUser]);
+
+  useEffect(() => {
     const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     const storedProjectOptions = parseStoredProjectOptions(
       window.localStorage.getItem(PROJECT_OPTIONS_STORAGE_KEY)
@@ -10129,6 +10256,15 @@ export function AppShell() {
         onOpenProjectPlanning={openProjectPlanning}
         showMonthlyReview={isLastDayOfMonth(parseDateInput(selectedDate))}
         showWeeklyReview={isSunday(parseDateInput(selectedDate))}
+        activeSectionId={activeSectionId}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onToggleSidebar={() => {
+          setIsSidebarCollapsed((prev) => {
+            const next = !prev;
+            try { localStorage.setItem("jotly-sidebar-collapsed", String(next)); } catch {}
+            return next;
+          });
+        }}
       />
 
     {isProjectPlanningOpen ? (
@@ -10162,7 +10298,7 @@ export function AppShell() {
       />
     ) : null}
 
-    <div className="flex min-h-screen flex-col gap-6 px-4 py-6 sm:px-8 lg:ml-[260px] lg:px-10 lg:py-8">
+    <div className={`flex min-h-screen flex-col gap-6 px-4 py-6 pb-24 sm:px-8 lg:pb-8 lg:px-10 lg:py-8 ${isSidebarCollapsed ? "lg:ml-[56px]" : "lg:ml-[260px]"} transition-[margin] duration-200`}>
       <div className="flex items-center justify-between">
         <div />
         <button
