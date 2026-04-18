@@ -4528,6 +4528,7 @@ type AppNavbarProps = {
   showMonthlyReview?: boolean;
   showWeeklyReview?: boolean;
   activeSectionId?: string;
+  onSectionChange?: (id: string) => void;
   isProfileDialogOpen?: boolean;
   isAssistantPanelOpen?: boolean;
   isSidebarCollapsed?: boolean;
@@ -5114,6 +5115,7 @@ function AppNavbar({
   showMonthlyReview = false,
   showWeeklyReview = false,
   activeSectionId = "",
+  onSectionChange,
   isProfileDialogOpen = false,
   isAssistantPanelOpen = false,
   isSidebarCollapsed = false,
@@ -5146,6 +5148,11 @@ function AppNavbar({
       event.preventDefault();
       window.history.pushState(null, "", targetId);
       element.scrollIntoView({ behavior: "smooth" });
+      
+      // Forced immediate active state for mobile bottom nav
+      if (onSectionChange) {
+        onSectionChange(elementId);
+      }
     }
   }
 
@@ -9247,14 +9254,16 @@ export function AppShell() {
     ];
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveSectionId(entry.target.id);
-            break;
-          }
+        // Find the entry with the highest intersection ratio that is actually intersecting
+        const mostVisible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        
+        if (mostVisible) {
+          setActiveSectionId(mostVisible.target.id);
         }
       },
-      { threshold: 0.15, rootMargin: "-80px 0px -55% 0px" }
+      { threshold: [0.1, 0.25, 0.5, 0.75, 0.9], rootMargin: "-80px 0px -20% 0px" }
     );
     for (const id of sectionIds) {
       const el = document.getElementById(id);
@@ -10282,6 +10291,7 @@ export function AppShell() {
         showMonthlyReview={isLastDayOfMonth(parseDateInput(selectedDate))}
         showWeeklyReview={isSunday(parseDateInput(selectedDate))}
         activeSectionId={activeSectionId}
+        onSectionChange={setActiveSectionId}
         isProfileDialogOpen={isProfileDialogOpen}
         isAssistantPanelOpen={isAssistantPanelOpen}
         isSidebarCollapsed={isSidebarCollapsed}
