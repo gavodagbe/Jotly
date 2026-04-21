@@ -3604,6 +3604,22 @@ async function loadReminderAttachments(reminderId: string, token: string): Promi
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
+async function loadRemoteAssignees(token: string): Promise<string[]> {
+  try {
+    const response = await fetch("/backend-api/assignees", {
+      method: "GET",
+      headers: createAuthHeaders(token, false),
+      cache: "no-store",
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { data?: string[] }
+      | null;
+    return Array.isArray(payload?.data) ? payload.data : [];
+  } catch {
+    return [];
+  }
+}
+
 async function createReminderAttachmentApi(
   reminderId: string,
   input: { name: string; file: File },
@@ -7065,6 +7081,16 @@ export function AppShell() {
     [normalizedSelectedProject, normalizedReminderProject, projectOptions]
   );
 
+  const selectedTaskAssignees = useMemo(
+    () => parseAssignees(taskFormValues.assignees),
+    [taskFormValues.assignees]
+  );
+
+  const selectedReminderAssignees = useMemo(
+    () => parseAssignees(reminderFormValues.assignees),
+    [reminderFormValues.assignees]
+  );
+
   const taskDialogHeightClass = taskDialogMode === "edit" ? "max-h-[76vh]" : "max-h-[82vh]";
   const noteDialogHeightClass = noteDialogMode === "edit" ? "max-h-[82vh]" : "max-h-[76vh]";
 
@@ -7080,7 +7106,11 @@ export function AppShell() {
       a.localeCompare(b)
     );
     setAssigneeOptions(nextOptions);
-    window.localStorage.setItem(ASSIGNEE_OPTIONS_STORAGE_KEY, JSON.stringify(nextOptions));
+    try {
+      window.localStorage.setItem(ASSIGNEE_OPTIONS_STORAGE_KEY, JSON.stringify(nextOptions));
+    } catch {
+      // localStorage quota exceeded — in-memory state still updated
+    }
     return nextOptions;
   }, []);
 
@@ -9055,9 +9085,8 @@ export function AppShell() {
     if (!assigneeOptions.includes(normalized)) {
       saveAssigneeOptions([...assigneeOptions, normalized]);
     }
-    const current = parseAssignees(taskFormValues.assignees);
-    if (!current.includes(normalized)) {
-      updateTaskFormField("assignees", formatAssignees([...current, normalized]));
+    if (!selectedTaskAssignees.includes(normalized)) {
+      updateTaskFormField("assignees", formatAssignees([...selectedTaskAssignees, normalized]));
     }
     setNewAssigneeDraft("");
   }
@@ -9068,11 +9097,10 @@ export function AppShell() {
     if (!assigneeOptions.includes(normalized)) {
       saveAssigneeOptions([...assigneeOptions, normalized]);
     }
-    const current = parseAssignees(reminderFormValues.assignees);
-    if (!current.includes(normalized)) {
+    if (!selectedReminderAssignees.includes(normalized)) {
       setReminderFormValues((v) => ({
         ...v,
-        assignees: formatAssignees([...current, normalized]),
+        assignees: formatAssignees([...selectedReminderAssignees, normalized]),
       }));
     }
     setNewAssigneeDraft("");
@@ -9528,16 +9556,29 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || !authToken) return;
     const label = (authUser.displayName || authUser.email).trim();
+
+    // Ensure current user is always in the list
     if (label) {
       setAssigneeOptions((current) => {
         if (current.includes(label)) return current;
         const next = [...new Set([...current, label])].sort((a, b) => a.localeCompare(b));
-        window.localStorage.setItem(ASSIGNEE_OPTIONS_STORAGE_KEY, JSON.stringify(next));
+        try { window.localStorage.setItem(ASSIGNEE_OPTIONS_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
         return next;
       });
     }
+
+    // Seed from existing tasks & reminders in the database
+    void loadRemoteAssignees(authToken).then((serverAssignees) => {
+      if (serverAssignees.length === 0) return;
+      setAssigneeOptions((current) => {
+        const merged = [...new Set([...current, ...serverAssignees])].sort((a, b) => a.localeCompare(b));
+        if (merged.length === current.length && merged.every((v, i) => v === current[i])) return current;
+        try { window.localStorage.setItem(ASSIGNEE_OPTIONS_STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+        return merged;
+      });
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.id]);
 
@@ -13360,9 +13401,9 @@ export function AppShell() {
                 <p className="text-sm font-semibold text-foreground">
                   {isFrench ? "Assignes" : "Assignees"}
                 </p>
-                {parseAssignees(taskFormValues.assignees).length > 0 && (
+                {selectedTaskAssignees.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {parseAssignees(taskFormValues.assignees).map((name) => (
+                    {selectedTaskAssignees.map((name) => (
                       <span
                         key={name}
                         className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent"
@@ -13370,11 +13411,9 @@ export function AppShell() {
                         {name}
                         <button
                           type="button"
+                          aria-label={isFrench ? `Retirer ${name}` : `Remove ${name}`}
                           onClick={() => {
-                            const next = parseAssignees(taskFormValues.assignees).filter(
-                              (n) => n !== name
-                            );
-                            updateTaskFormField("assignees", formatAssignees(next));
+                            updateTaskFormField("assignees", formatAssignees(selectedTaskAssignees.filter((n) => n !== name)));
                           }}
                           disabled={isSubmittingTask}
                           className="ml-0.5 rounded-full text-accent/70 hover:text-accent disabled:cursor-not-allowed"
@@ -13389,11 +13428,10 @@ export function AppShell() {
                   value=""
                   onChange={(event) => {
                     if (!event.target.value) return;
-                    const current = parseAssignees(taskFormValues.assignees);
-                    if (!current.includes(event.target.value)) {
+                    if (!selectedTaskAssignees.includes(event.target.value)) {
                       updateTaskFormField(
                         "assignees",
-                        formatAssignees([...current, event.target.value])
+                        formatAssignees([...selectedTaskAssignees, event.target.value])
                       );
                     }
                     event.target.value = "";
@@ -13405,7 +13443,7 @@ export function AppShell() {
                     {isFrench ? "— Ajouter une personne —" : "— Add a person —"}
                   </option>
                   {assigneeOptions
-                    .filter((name) => !parseAssignees(taskFormValues.assignees).includes(name))
+                    .filter((name) => !selectedTaskAssignees.includes(name))
                     .map((name) => (
                       <option key={name} value={name}>
                         {name}
@@ -14038,9 +14076,9 @@ export function AppShell() {
                 <p className="text-sm font-semibold text-foreground">
                   {isFrench ? "Assignes" : "Assignees"}
                 </p>
-                {parseAssignees(reminderFormValues.assignees).length > 0 && (
+                {selectedReminderAssignees.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {parseAssignees(reminderFormValues.assignees).map((name) => (
+                    {selectedReminderAssignees.map((name) => (
                       <span
                         key={name}
                         className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent"
@@ -14048,13 +14086,11 @@ export function AppShell() {
                         {name}
                         <button
                           type="button"
+                          aria-label={isFrench ? `Retirer ${name}` : `Remove ${name}`}
                           onClick={() => {
-                            const next = parseAssignees(reminderFormValues.assignees).filter(
-                              (n) => n !== name
-                            );
                             setReminderFormValues((v) => ({
                               ...v,
-                              assignees: formatAssignees(next),
+                              assignees: formatAssignees(selectedReminderAssignees.filter((n) => n !== name)),
                             }));
                           }}
                           disabled={isSubmittingReminder}
@@ -14070,11 +14106,10 @@ export function AppShell() {
                   value=""
                   onChange={(event) => {
                     if (!event.target.value) return;
-                    const current = parseAssignees(reminderFormValues.assignees);
-                    if (!current.includes(event.target.value)) {
+                    if (!selectedReminderAssignees.includes(event.target.value)) {
                       setReminderFormValues((v) => ({
                         ...v,
-                        assignees: formatAssignees([...current, event.target.value]),
+                        assignees: formatAssignees([...selectedReminderAssignees, event.target.value]),
                       }));
                     }
                     event.target.value = "";
@@ -14086,7 +14121,7 @@ export function AppShell() {
                     {isFrench ? "— Ajouter une personne —" : "— Add a person —"}
                   </option>
                   {assigneeOptions
-                    .filter((name) => !parseAssignees(reminderFormValues.assignees).includes(name))
+                    .filter((name) => !selectedReminderAssignees.includes(name))
                     .map((name) => (
                       <option key={name} value={name}>
                         {name}

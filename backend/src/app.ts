@@ -56,6 +56,7 @@ import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
 import noteRoutes from "./routes/notes";
+import assigneesRoutes from "./routes/assignees";
 import reminderRoutes from "./routes/reminders";
 import searchRoutes from "./routes/search";
 import tasksRoutes from "./routes/tasks";
@@ -403,6 +404,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }
   if (reminderStore) {
     app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService, assistantSearchSyncService });
+  }
+  if (taskStore && reminderStore) {
+    app.register(assigneesRoutes, { authService, taskStore, reminderStore });
   }
   if (gamingTrackService && profileStore) {
     app.register(gamingTrackRoutes, { gamingTrackService, authService, profileStore });
