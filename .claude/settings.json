@@ -13,6 +13,21 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "branch=$(git branch --show-current 2>/dev/null); [ -z \"$branch\" ] || [ \"$branch\" = \"main\" ] || [ \"$branch\" = \"master\" ] && exit 0; sentinel=\"/tmp/.jotly_review_${branch//\\//_}\"; [ -f \"$sentinel\" ] && exit 0; pr=$(gh pr view --json number,title -q '\"PR #\\(.number): \\(.title)\"' 2>/dev/null); [ -z \"$pr\" ] && exit 0; touch \"$sentinel\"; echo \"$pr\"; exit 2",
+            "asyncRewake": true,
+            "rewakeMessage": "Une PR est ouverte sur cette branche. Lance le skill /review pour faire la revue de code.",
+            "rewakeSummary": "PR détectée — revue de code automatique",
+            "timeout": 15,
+            "statusMessage": "Vérification PR en cours..."
+          }
+        ]
+      }
     ]
   }
 }
