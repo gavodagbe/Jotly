@@ -4,3 +4,10 @@
 [context]
 ticket_source = "jira"
 documentation_source = "confluence"
+
+[mcp_servers.stitch]
+url = "https://stitch.googleapis.com/mcp"
+env_http_headers = { "X-Goog-Api-Key" = "STITCH_API_KEY" }
+
+[mcp_servers.stitch.tools.edit_screens]
+approval_mode = "approve"

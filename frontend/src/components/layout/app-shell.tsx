@@ -12,7 +12,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { type DragEvent as ReactDragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -28,13 +28,74 @@ import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
-import { APP_NAME, APP_TAGLINE } from "@/lib/app-meta";
+import { AppNavbar } from "./app-navbar";
+import { AuthPanel } from "./auth-panel";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  BellIcon,
+  CalendarIcon,
+  ChatIcon,
+  CloseIcon,
+  CollapseChevronIcon,
+  CopyIcon,
+  LightningIcon,
+  PencilIcon,
+  PlusIcon,
+  SaveIcon,
+  SearchIcon,
+  SendIcon,
+  TimeZoneIcon,
+  TrashIcon,
+} from "./app-shell.icons";
+import { GlobalSearchModal } from "./global-search-modal";
+import {
+  alertSourceChipClassByType,
+  alertUrgencyChipClassByUrgency,
+  boardFilterFieldClass,
+  controlButtonClass,
+  controlIconButtonClass,
+  dangerButtonClass,
+  dashboardEmptyStateClass,
+  dashboardInsetPanelClass,
+  dashboardMetricCardClass,
+  dashboardSectionClass,
+  dialogOverlayClass,
+  dialogSectionClass,
+  dialogShellClass,
+  floatingPanelClass,
+  iconButtonClass,
+  kanbanColumnShellClass,
+  primaryButtonClass,
+  priorityChipClassByPriority,
+  reflectionBadgeClass,
+  reflectionMetaCardClass,
+  reflectionPanelClass,
+  reminderStatusChipClassByStatus,
+  sectionHeaderClass,
+  segmentedControlClass,
+  statusColumnClassByStatus,
+  statusDropClassByStatus,
+  textFieldClass,
+  toolbarSurfaceClass,
+  workspaceHeaderClass,
+  workspaceShellClass,
+  workspaceStatCardClass,
+} from "./app-shell.styles";
+import type {
+  AlertUrgency,
+  AuthFormValues,
+  AuthMode,
+  GlobalSearchState,
+  ReminderStatus,
+  SearchResult,
+  SearchSourceType,
+  TaskPriority,
+  TaskStatus,
+  UserLocale,
+} from "./app-shell.types";
 
-type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
-type TaskPriority = "low" | "medium" | "high";
 type RecurrenceFrequency = "daily" | "weekly" | "monthly";
-type ReminderStatus = "pending" | "fired" | "completed" | "cancelled";
-type AlertUrgency = "overdue" | "today" | "tomorrow";
 
 type Task = {
   id: string;
@@ -93,16 +154,6 @@ type CalendarEventLinkedNote = {
   calendarEventId: string | null;
   createdAt: string;
   updatedAt: string;
-};
-
-type CalendarEventNoteAttachment = {
-  id: string;
-  calendarEventNoteId: string;
-  name: string;
-  url: string;
-  contentType: string | null;
-  sizeBytes: number | null;
-  createdAt: string;
 };
 
 type CalendarEventSummary = {
@@ -453,8 +504,6 @@ type CarryOverYesterdayPayload = {
   tasks: Task[];
 };
 
-type UserLocale = "en" | "fr";
-
 type AuthUser = {
   id: string;
   email: string;
@@ -466,15 +515,6 @@ type AuthUser = {
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
   createdAt: string;
-};
-
-type AuthMode = "login" | "register" | "forgot_password" | "reset_password";
-
-type AuthFormValues = {
-  email: string;
-  password: string;
-  displayName: string;
-  resetToken: string;
 };
 
 type ProfileFormValues = {
@@ -527,54 +567,8 @@ type TaskFilterValues = {
   priority: TaskFilterPriority;
   project: string;
 };
-type SearchSourceType =
-  | "task"
-  | "comment"
-  | "affirmation"
-  | "bilan"
-  | "reminder"
-  | "calendarEvent"
-  | "calendarNote"
-  | "attachment"
-  | "note"
-  | "noteAttachment"
-  | "weeklyObjective"
-  | "weeklyReview"
-  | "monthlyObjective"
-  | "monthlyReview";
-
-type SearchResult = {
-  sourceType: SearchSourceType;
-  sourceId: string;
-  title: string | null;
-  snippet: string;
-  score: number;
-  matchedBy: "fulltext" | "vector";
-  metadataJson: Record<string, unknown> | null;
-  updatedAt: string;
-};
-
-type GlobalSearchState = {
-  query: string;
-  results: SearchResult[];
-  totalCount: number;
-  page: number;
-  hasMore: boolean;
-  isLoading: boolean;
-  errorMessage: string | null;
-  typeFilter: SearchSourceType | "all";
-  from: string;
-  to: string;
-  recentResults: SearchResult[];
-  isLoadingRecent: boolean;
-};
 
 type ApiErrorPayload = { error?: { code?: string; message?: string } } | null;
-type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders" | "notes";
-type DashboardLayoutConfig = {
-  order: DashboardBlockId[];
-  collapsed: Record<DashboardBlockId, boolean>;
-};
 
 class ApiRequestError extends Error {
   constructor(
@@ -602,120 +596,22 @@ const DAY_AFFIRMATION_RICH_TEXT_OPTIONS = {
   preserveTextColor: false,
   recoverPlainText: true,
 };
-const DAY_BILAN_FIELD_MAX_LENGTH = 10000;
-const DASHBOARD_LAYOUT_STORAGE_KEY = "jotly_dashboard_layout_v2";
 const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
   query: "",
   status: "all",
   priority: "all",
   project: "",
 };
-const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
-  "overview",
-  "dailyControls",
-  "affirmation",
-  "reminders",
-  "bilan",
-  "board",
-  "notes",
-  "gamingTrack",
-];
-const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
+const VISIBLE_DASHBOARD_BLOCKS = {
   overview: false,
-  gamingTrack: true,
+  gamingTrack: false,
   dailyControls: false,
-  affirmation: true,
+  affirmation: false,
   reminders: false,
-  notes: true,
+  notes: false,
   board: false,
-  bilan: true,
-};
-
-function getDefaultDashboardBlockOrder(): DashboardBlockId[] {
-  return [...DASHBOARD_BLOCK_IDS];
-}
-
-function getDefaultDashboardBlockCollapsedState(): Record<DashboardBlockId, boolean> {
-  return { ...DEFAULT_DASHBOARD_BLOCK_COLLAPSED };
-}
-
-function isDashboardBlockId(value: string): value is DashboardBlockId {
-  return DASHBOARD_BLOCK_IDS.includes(value as DashboardBlockId);
-}
-
-function getNormalizedDashboardBlockOrder(value: unknown): DashboardBlockId[] {
-  const fallbackOrder = getDefaultDashboardBlockOrder();
-
-  if (!Array.isArray(value)) {
-    return fallbackOrder;
-  }
-
-  const uniqueIds: DashboardBlockId[] = [];
-  for (const candidate of value) {
-    if (typeof candidate !== "string" || !isDashboardBlockId(candidate) || uniqueIds.includes(candidate)) {
-      continue;
-    }
-    uniqueIds.push(candidate);
-  }
-
-  for (const requiredId of DASHBOARD_BLOCK_IDS) {
-    if (!uniqueIds.includes(requiredId)) {
-      uniqueIds.push(requiredId);
-    }
-  }
-
-  return uniqueIds;
-}
-
-function getNormalizedDashboardCollapsedState(value: unknown): Record<DashboardBlockId, boolean> {
-  const normalized = getDefaultDashboardBlockCollapsedState();
-
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return normalized;
-  }
-
-  for (const blockId of DASHBOARD_BLOCK_IDS) {
-    const candidate = (value as Record<string, unknown>)[blockId];
-    if (typeof candidate === "boolean") {
-      normalized[blockId] = candidate;
-    }
-  }
-
-  return normalized;
-}
-
-function parseStoredDashboardLayout(rawValue: string | null): DashboardLayoutConfig | null {
-  if (!rawValue) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as { order?: unknown; collapsed?: unknown };
-    if (!parsed || typeof parsed !== "object") {
-      return null;
-    }
-
-    return {
-      order: getNormalizedDashboardBlockOrder(parsed.order),
-      collapsed: getNormalizedDashboardCollapsedState(parsed.collapsed),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function getInitialDashboardLayoutConfig(): DashboardLayoutConfig {
-  const fallbackConfig: DashboardLayoutConfig = {
-    order: getDefaultDashboardBlockOrder(),
-    collapsed: getDefaultDashboardBlockCollapsedState(),
-  };
-
-  if (typeof window === "undefined") {
-    return fallbackConfig;
-  }
-
-  return parseStoredDashboardLayout(window.localStorage.getItem(DASHBOARD_LAYOUT_STORAGE_KEY)) ?? fallbackConfig;
-}
+  bilan: false,
+} as const;
 const USER_LOCALE_OPTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<{ value: UserLocale; label: string }>> = {
   en: [
     { value: "en", label: "English" },
@@ -834,278 +730,6 @@ const BOARD_COLUMN_STATUSES = new Set<TaskStatus>(["todo", "in_progress", "done"
 const PRIORITY_VALUES = new Set<TaskPriority>(["low", "medium", "high"]);
 const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>(["daily", "weekly", "monthly"]);
 
-const statusChipClassByStatus: Record<TaskStatus, string> = {
-  todo: "border-sky-200 bg-sky-50 text-sky-700",
-  in_progress: "border-amber-200 bg-amber-50 text-amber-700",
-  done: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  cancelled: "border-slate-300 bg-slate-100 text-slate-600",
-};
-
-const statusColumnClassByStatus: Record<TaskStatus, string> = {
-  todo: "border-t-sky-400",
-  in_progress: "border-t-amber-400",
-  done: "border-t-emerald-400",
-  cancelled: "border-t-slate-400",
-};
-
-const statusDropClassByStatus: Record<TaskStatus, string> = {
-  todo: "bg-sky-100/70",
-  in_progress: "bg-amber-100/70",
-  done: "bg-emerald-100/70",
-  cancelled: "bg-slate-200/70",
-};
-
-const priorityChipClassByPriority: Record<TaskPriority, string> = {
-  low: "border border-slate-300 bg-slate-100 text-slate-700",
-  medium: "border border-indigo-200 bg-indigo-50 text-indigo-700",
-  high: "border border-rose-200 bg-rose-50 text-rose-700",
-};
-
-const reminderStatusChipClassByStatus: Record<ReminderStatus, string> = {
-  pending: "border border-sky-200 bg-sky-50 text-sky-700",
-  fired: "border border-amber-200 bg-amber-50 text-amber-700",
-  completed: "border border-emerald-200 bg-emerald-50 text-emerald-700",
-  cancelled: "border border-slate-300 bg-slate-100 text-slate-600",
-};
-
-const alertUrgencyChipClassByUrgency: Record<AlertUrgency, string> = {
-  overdue: "border border-rose-200 bg-rose-50 text-rose-700",
-  today: "border border-amber-200 bg-amber-50 text-amber-700",
-  tomorrow: "border border-sky-200 bg-sky-50 text-sky-700",
-};
-
-const alertSourceChipClassByType: Record<AlertPanelItem["sourceType"], string> = {
-  task: "border border-indigo-200 bg-indigo-50 text-indigo-700",
-  reminder: "border border-teal-200 bg-teal-50 text-teal-700",
-};
-
-const controlButtonClass =
-  "inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent px-3.5 py-2 text-sm font-medium text-foreground/80 transition-all duration-200 hover:border-line hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
-const primaryButtonClass =
-  "inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-accent to-accent-strong px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:brightness-110 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50";
-const dangerButtonClass =
-  "inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-semibold text-red-600 transition-all duration-200 hover:border-red-300 hover:bg-red-100 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-not-allowed disabled:opacity-50";
-const textFieldClass =
-  "mt-1 w-full rounded-lg border border-line bg-surface px-3 py-3 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15 focus:shadow-sm disabled:cursor-not-allowed disabled:opacity-50";
-const boardFilterFieldClass = `${textFieldClass} h-11 py-0`;
-const sectionHeaderClass = "text-base font-semibold text-foreground pl-3 border-l-[3px] border-accent";
-const iconButtonClass =
-  "inline-flex h-8 min-w-8 items-center justify-center rounded-lg text-muted transition-all duration-200 hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50";
-const controlIconButtonClass = `${controlButtonClass} h-9 w-9 px-0`;
-
-function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale): string {
-  const isFrench = locale === "fr";
-
-  if (blockId === "overview") {
-    return isFrench ? "Vue d'ensemble" : "Overview";
-  }
-
-  if (blockId === "gamingTrack") {
-    return "Gaming Track";
-  }
-
-  if (blockId === "dailyControls") {
-    return isFrench ? "Pilotage du jour" : "Day controls";
-  }
-
-  if (blockId === "affirmation") {
-    return isFrench ? "Affirmation du jour" : "Day affirmation";
-  }
-
-  if (blockId === "reminders") {
-    return isFrench ? "Rappels" : "Reminders";
-  }
-
-  if (blockId === "notes") {
-    return isFrench ? "Notes" : "Notes";
-  }
-
-  if (blockId === "board") {
-    return isFrench ? "Tableau Kanban" : "Kanban board";
-  }
-
-  return isFrench ? "Bilan du jour" : "Day bilan";
-}
-
-function CollapseChevronIcon({ isCollapsed }: { isCollapsed: boolean }) {
-  return isCollapsed ? (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-      <path
-        d="M5.75 7.75L10 12.25L14.25 7.75"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.75"
-      />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-      <path
-        d="M5.75 12.25L10 7.75L14.25 12.25"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.75"
-      />
-    </svg>
-  );
-}
-
-function DragHandleIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-      <circle cx="7" cy="6" r="1.1" fill="currentColor" />
-      <circle cx="13" cy="6" r="1.1" fill="currentColor" />
-      <circle cx="7" cy="10" r="1.1" fill="currentColor" />
-      <circle cx="13" cy="10" r="1.1" fill="currentColor" />
-      <circle cx="7" cy="14" r="1.1" fill="currentColor" />
-      <circle cx="13" cy="14" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
-
-function ArrowLeftIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
-      <path d="M11.75 4.75L6.5 10L11.75 15.25" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7 10h8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ArrowRightIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
-      <path d="M8.25 4.75L13.5 10L8.25 15.25" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5 10h8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <rect x="3.5" y="4.5" width="13" height="12" rx="2.2" />
-      <path d="M6.5 3v3M13.5 3v3M3.5 8.25h13" strokeLinecap="round" />
-      <circle cx="10" cy="11.75" r="1.2" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <rect x="6.2" y="6" width="9" height="10" rx="1.8" />
-      <path d="M4.8 13V5.8A1.8 1.8 0 016.6 4h6.9" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <circle cx="8.75" cy="8.75" r="4.75" />
-      <path d="M12.25 12.25L16 16" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <path d="M10 3.5a3.2 3.2 0 00-3.2 3.2v1.1c0 .8-.2 1.6-.6 2.3l-.8 1.5a1 1 0 00.9 1.5h7.4a1 1 0 00.9-1.5l-.8-1.5a4.7 4.7 0 01-.6-2.3V6.7A3.2 3.2 0 0010 3.5z" />
-      <path d="M8.2 15a1.9 1.9 0 003.6 0" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
-      <path d="M10 4.5v11M4.5 10h11" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SaveIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <path d="M4.5 4.5h9.5l1.5 1.5v9.5H4.5z" />
-      <path d="M7 4.5v4h6v-4M7 15h6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <path d="M4.75 13.75l-.5 2 2-.5 8-8-1.5-1.5z" strokeLinejoin="round" />
-      <path d="M11.75 5.75l1.5 1.5M13 4.5l1.5 1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <path d="M4.75 6h10.5M8 6V4.8h4V6M6.5 6l.7 9h5.6l.7-9" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8.7 8.2v5.3M11.3 8.2v5.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
-      <path d="M5.25 5.25l9.5 9.5M14.75 5.25l-9.5 9.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-
-function SendIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M3.5 10l13-6-3.9 12L9.8 11z" strokeLinejoin="round" />
-      <path d="M9.8 11L16.5 4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ChatIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <path d="M4 4.8h12v8.4H9.2L6 15.8v-2.6H4z" strokeLinejoin="round" />
-      <path d="M7 8.3h6M7 10.8h4.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TimeZoneIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <circle cx="10" cy="10" r="6.5" />
-      <path d="M10 6.2v4.1l2.6 1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function LayoutToggleIcon({ collapsed }: { collapsed: boolean }) {
-  return collapsed ? (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 6h12M4 10h12M4 14h12" strokeLinecap="round" />
-      <path d="M8 4l2 2 2-2M8 16l2-2 2 2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 6h12M4 10h12M4 14h12" strokeLinecap="round" />
-      <path d="M8 7l2-2 2 2M8 13l2 2 2-2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 // (Tiptap toolbar actions are handled inline in TiptapToolbar)
 
 function toDateInputValue(date: Date): string {
@@ -1173,10 +797,6 @@ function isMonday(date: Date): boolean {
 
 function isSunday(date: Date): boolean {
   return date.getDay() === 0;
-}
-
-function isFirstDayOfMonth(date: Date): boolean {
-  return date.getDate() === 1;
 }
 
 function isLastDayOfMonth(date: Date): boolean {
@@ -1646,6 +1266,36 @@ function getRichTextPreviewText(value: string): string {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function parseAssigneeNames(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/[;,]/)
+    .map((candidate) => candidate.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function getMonogram(value: string): string {
+  const parts = value
+    .split(/\s+/)
+    .map((candidate) => candidate.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) {
+    return "•";
+  }
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
 function getTaskSearchableText(task: Task, locale: UserLocale): string {
@@ -2690,47 +2340,6 @@ async function updateTask(taskId: string, input: TaskMutationInput, token: strin
   return payload.data;
 }
 
-async function saveCalendarEventNote(
-  eventId: string,
-  body: string,
-  token: string
-): Promise<CalendarEventLinkedNote> {
-  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note`, {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({ body }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: CalendarEventLinkedNote; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save calendar event note"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to save calendar event note.");
-  }
-
-  return payload.data;
-}
-
-async function deleteCalendarEventNote(eventId: string, token: string): Promise<void> {
-  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note`, {
-    method: "DELETE",
-    headers: createAuthHeaders(token, false),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: { deleted: boolean }; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete calendar event note"));
-  }
-}
-
 async function deleteTaskById(taskId: string, token: string): Promise<void> {
   const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
     method: "DELETE",
@@ -3288,62 +2897,6 @@ async function deleteNoteAttachmentApi(
   }
 }
 
-async function loadCalendarEventNoteAttachments(eventId: string, token: string): Promise<CalendarEventNoteAttachment[]> {
-  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note/attachments`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    cache: "no-store",
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: CalendarEventNoteAttachment[]; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load calendar event note attachments"));
-  }
-  return Array.isArray(payload?.data) ? payload.data : [];
-}
-
-async function createCalendarEventNoteAttachmentApi(
-  eventId: string,
-  input: { name: string; file: File },
-  token: string
-): Promise<CalendarEventNoteAttachment> {
-  const fileDataUrl = await readFileAsDataUrl(input.file);
-  const response = await fetch(`/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note/attachments`, {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({
-      name: input.name,
-      url: fileDataUrl,
-      contentType: input.file.type || null,
-      sizeBytes: input.file.size,
-    }),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: CalendarEventNoteAttachment; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create calendar event note attachment"));
-  }
-  if (!payload?.data) throw new Error("Unable to create calendar event note attachment.");
-  return payload.data;
-}
-
-async function deleteCalendarEventNoteAttachmentApi(
-  eventId: string,
-  attachmentId: string,
-  token: string
-): Promise<void> {
-  const response = await fetch(
-    `/backend-api/google-calendar/events/${encodeURIComponent(eventId)}/note/attachments/${encodeURIComponent(attachmentId)}`,
-    { method: "DELETE", headers: createAuthHeaders(token, false) }
-  );
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete calendar event note attachment"));
-  }
-}
-
 async function createReminderApi(
   input: { title: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt: string },
   token: string
@@ -3876,6 +3429,36 @@ function ProjectPlanningView({
   const completionRate = tasks.length > 0 ? Math.round((statsDone / tasks.length) * 100) : 0;
 
   const hasActiveFilters = filters.project || filters.status !== "all" || filters.dateFrom || filters.dateTo;
+  const overdueCount = tasks.filter((task) => task.dueDate && task.dueDate < today && task.status !== "done" && task.status !== "cancelled").length;
+  const upcomingCount = tasks.filter((task) => task.dueDate && task.dueDate >= today && task.status !== "done" && task.status !== "cancelled").length;
+  const activeProjectCount = new Set(tasks.flatMap((task) => (task.project ? [task.project] : []))).size;
+  const resultCountLabel = `${sorted.length} ${isFrench ? "résultat" : "result"}${sorted.length !== 1 ? "s" : ""}`;
+  const statusScopeLabel = filters.status === "all"
+    ? (isFrench ? "Tous les statuts" : "All statuses")
+    : isTaskStatus(filters.status)
+    ? formatStatusLabel(filters.status)
+    : filters.status;
+  const viewModeLabel = viewMode === "table"
+    ? (isFrench ? "Vue tableau" : "Table view")
+    : (isFrench ? "Vue Gantt" : "Gantt view");
+  const openStartLabel = isFrench ? "début libre" : "open start";
+  const openEndLabel = isFrench ? "fin libre" : "open end";
+  const timelineLabel = filters.dateFrom || filters.dateTo
+    ? `${filters.dateFrom ? formatShortDate(filters.dateFrom, locale) : openStartLabel} → ${filters.dateTo ? formatShortDate(filters.dateTo, locale) : openEndLabel}`
+    : ganttData?.months.length
+    ? ganttData.months.length === 1
+      ? (ganttData.months[0]?.label ?? (isFrench ? "Planification active" : "Timeline active"))
+      : `${ganttData.months[0]?.label ?? ""} · ${ganttData.months.length} ${isFrench ? "mois" : "months"}`
+    : isFrench
+    ? "Toutes les échéances"
+    : "All schedules";
+
+  function resetFilters() {
+    onFilterChange("project", "");
+    onFilterChange("status", "all");
+    onFilterChange("dateFrom", "");
+    onFilterChange("dateTo", "");
+  }
 
   function SortIcon({ column }: { column: string }) {
     if (sort.column !== column) {
@@ -3933,69 +3516,97 @@ function ProjectPlanningView({
   const thBase = "cursor-pointer select-none whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-foreground";
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-background lg:pl-[260px]">
+    <div className={workspaceShellClass}>
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-[radial-gradient(circle_at_top,rgba(136,86,229,0.22),transparent_58%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(145,219,42,0.18),transparent_68%)] blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(53,37,205,0.14),transparent_72%)] blur-3xl" />
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-3.5 sm:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-            <svg viewBox="0 0 20 20" className="h-4 w-4 text-accent" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <rect x="2" y="4" width="16" height="2.5" rx="1"/>
-              <rect x="2" y="8.75" width="11" height="2.5" rx="1"/>
-              <rect x="2" y="13.5" width="14" height="2.5" rx="1"/>
+      <div className={`${workspaceHeaderClass} gap-4`}>
+        <div className="flex min-w-0 flex-1 items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[24px] bg-gradient-to-br from-accent-soft via-white to-secondary-soft text-accent shadow-[0_18px_38px_rgba(53,37,205,0.16)]">
+            <svg viewBox="0 0 20 20" className="h-5 w-5 text-accent" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="2" y="4" width="16" height="2.5" rx="1" />
+              <rect x="2" y="8.75" width="11" height="2.5" rx="1" />
+              <rect x="2" y="13.5" width="14" height="2.5" rx="1" />
             </svg>
           </div>
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              {isFrench ? "Planification projet" : "Project Planning"}
-            </h2>
-            {!isLoading && tasks.length > 0 && (
-              <p className="text-[11px] text-muted">
-                {tasks.length} {isFrench ? "tâches" : "tasks"} · {completionRate}% {isFrench ? "complétées" : "complete"}
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-accent/10 bg-accent-soft px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">
+                {isFrench ? "Espace projet" : "Project workspace"}
+              </span>
+              <span className="rounded-full border border-white/60 bg-white/75 px-3 py-1 text-[11px] font-semibold text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                {viewModeLabel}
+              </span>
+              {hasActiveFilters ? (
+                <span className="rounded-full border border-[#cfe8a8] bg-[#edf8d6] px-3 py-1 text-[11px] font-semibold text-[#304f00]">
+                  {isFrench ? "Filtres actifs" : "Active filters"}
+                </span>
+              ) : null}
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold text-foreground sm:text-[1.35rem]">
+                {isFrench ? "Planification projet" : "Project Planning"}
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm text-muted">
+                {isFrench
+                  ? "Pilotez les charges, les échéances et la cadence du projet dans le langage visuel Stitch déjà en place."
+                  : "Track workload, deadlines, and delivery rhythm inside the Stitch workspace language already used across the app."}
               </p>
-            )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="dialog-section-shell rounded-full px-3 py-1.5 text-muted">
+                {timelineLabel}
+              </span>
+              <span className="dialog-section-shell rounded-full px-3 py-1.5 text-muted">
+                {activeProjectCount} {isFrench ? "projet(s)" : "project(s)"}
+              </span>
+              <span className="dialog-section-shell rounded-full px-3 py-1.5 text-muted">
+                {tasks.length} {isFrench ? "tâches" : "tasks"} · {completionRate}% {isFrench ? "complétées" : "complete"}
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* View mode toggle */}
-          <div className="flex rounded-lg border border-line bg-surface-soft p-0.5">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+          <div className={`${segmentedControlClass} shrink-0`}>
             <button
               type="button"
               title={isFrench ? "Vue tableau" : "Table view"}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all ${
                 viewMode === "table"
-                  ? "bg-white text-foreground shadow-sm"
+                  ? "bg-surface-elevated text-foreground shadow-sm"
                   : "text-muted hover:text-foreground"
               }`}
               onClick={() => onViewModeChange("table")}
             >
               <svg viewBox="0 0 16 12" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="1" y="1" width="14" height="10" rx="1.5"/>
-                <path d="M1 4.5h14M1 8h14M5.5 1v10M11 1v10"/>
+                <rect x="1" y="1" width="14" height="10" rx="1.5" />
+                <path d="M1 4.5h14M1 8h14M5.5 1v10M11 1v10" />
               </svg>
               <span className="hidden sm:inline">{isFrench ? "Tableau" : "Table"}</span>
             </button>
             <button
               type="button"
               title={isFrench ? "Vue Gantt" : "Gantt view"}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all ${
                 viewMode === "gantt"
-                  ? "bg-white text-foreground shadow-sm"
+                  ? "bg-surface-elevated text-foreground shadow-sm"
                   : "text-muted hover:text-foreground"
               }`}
               onClick={() => onViewModeChange("gantt")}
             >
               <svg viewBox="0 0 16 12" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="1" y="1.5" width="8" height="2" rx="1" fill="currentColor" stroke="none"/>
-                <rect x="4" y="5" width="7" height="2" rx="1" fill="currentColor" stroke="none"/>
-                <rect x="1" y="8.5" width="11" height="2" rx="1" fill="currentColor" stroke="none"/>
+                <rect x="1" y="1.5" width="8" height="2" rx="1" fill="currentColor" stroke="none" />
+                <rect x="4" y="5" width="7" height="2" rx="1" fill="currentColor" stroke="none" />
+                <rect x="1" y="8.5" width="11" height="2" rx="1" fill="currentColor" stroke="none" />
               </svg>
               <span className="hidden sm:inline">Gantt</span>
             </button>
           </div>
           <button
             type="button"
-            className={primaryButtonClass}
+            className={`${primaryButtonClass} shrink-0 px-5`}
             onClick={onCreateTask}
             disabled={isBusy}
           >
@@ -4004,12 +3615,12 @@ function ProjectPlanningView({
           </button>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+            className={`${iconButtonClass} h-10 w-10 shrink-0 rounded-2xl px-0`}
             onClick={onClose}
             aria-label={isFrench ? "Fermer" : "Close"}
           >
             <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round"/>
+              <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round" />
             </svg>
           </button>
         </div>
@@ -4017,10 +3628,10 @@ function ProjectPlanningView({
 
       {/* ── Stats cards ────────────────────────────────────────────────────── */}
       {!isLoading && tasks.length > 0 && (
-        <div className="shrink-0 border-b border-line bg-surface px-4 py-3 sm:px-6">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="shrink-0 px-4 pb-3 sm:px-6">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {/* Completion rate */}
-            <div className="flex min-w-[140px] flex-1 items-center gap-3 rounded-xl border border-line bg-surface-soft px-3 py-2.5">
+            <div className={`${workspaceStatCardClass} min-w-0 gap-3`}>
               <div className="relative h-9 w-9 shrink-0">
                 <svg viewBox="0 0 36 36" className="h-9 w-9 -rotate-90">
                   <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" strokeWidth="3" className="text-line" />
@@ -4028,7 +3639,7 @@ function ProjectPlanningView({
                     cx="18" cy="18" r="14" fill="none" stroke="currentColor" strokeWidth="3"
                     strokeDasharray={`${completionRate * 0.88} 88`}
                     strokeLinecap="round"
-                    className="text-emerald-500 transition-all duration-500"
+                    className="text-reward transition-all duration-500"
                   />
                 </svg>
                 <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-foreground">
@@ -4041,54 +3652,68 @@ function ProjectPlanningView({
               </div>
             </div>
             {/* Done */}
-            <div className="flex min-w-[100px] flex-1 items-center gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2">
+            <div className={`${workspaceStatCardClass} min-w-0 border-[#cfe8a8] bg-[#edf8d6]/90`}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#dff1bd]">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-[#426b00]" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M3 8l3.5 3.5L13 4.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </span>
               <div>
-                <p className="text-lg font-bold leading-none text-emerald-700">{statsDone}</p>
-                <p className="text-[11px] text-emerald-600">{isFrench ? "Terminées" : "Done"}</p>
+                <p className="text-lg font-bold leading-none text-[#304f00]">{statsDone}</p>
+                <p className="text-[11px] text-[#426b00]">{isFrench ? "Terminées" : "Done"}</p>
               </div>
             </div>
             {/* In progress */}
-            <div className="flex min-w-[100px] flex-1 items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-blue-600" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <div className={`${workspaceStatCardClass} min-w-0 border-[#d3bbff] bg-[#f5edff]/90`}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#ebddff]">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-[#581db3]" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <circle cx="8" cy="8" r="5.5"/>
                   <path d="M8 5v3.5l2 1.5" strokeLinecap="round"/>
                 </svg>
               </span>
               <div>
-                <p className="text-lg font-bold leading-none text-blue-700">{statsInProgress}</p>
-                <p className="text-[11px] text-blue-600">{isFrench ? "En cours" : "In progress"}</p>
+                <p className="text-lg font-bold leading-none text-[#581db3]">{statsInProgress}</p>
+                <p className="text-[11px] text-[#6e3aca]">{isFrench ? "En cours" : "In progress"}</p>
               </div>
             </div>
             {/* Todo */}
-            <div className="flex min-w-[100px] flex-1 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-slate-500" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <div className={`${workspaceStatCardClass} min-w-0 border-[#c7c4d8] bg-[#f2efff]/90`}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e3dfff]">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-[#464555]" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <rect x="3" y="3" width="10" height="10" rx="2"/>
                 </svg>
               </span>
               <div>
-                <p className="text-lg font-bold leading-none text-slate-700">{statsTodo}</p>
-                <p className="text-[11px] text-slate-500">{isFrench ? "À faire" : "To do"}</p>
+                <p className="text-lg font-bold leading-none text-[#100069]">{statsTodo}</p>
+                <p className="text-[11px] text-[#464555]">{isFrench ? "À faire" : "To do"}</p>
               </div>
             </div>
             {/* Time */}
             {totalPlanned > 0 && (
-              <div className="flex min-w-[100px] flex-1 items-center gap-2.5 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2.5">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100">
-                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-violet-600" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <div className={`${workspaceStatCardClass} min-w-0 border-[#c3c0ff] bg-[#f2efff]/90`}>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e2dfff]">
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-[#4f46e5]" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <circle cx="8" cy="8" r="5.5"/>
                     <path d="M8 5v3.5l2.5 1" strokeLinecap="round"/>
                   </svg>
                 </span>
                 <div>
-                  <p className="text-lg font-bold leading-none text-violet-700">{formatMinutes(totalPlanned)}</p>
-                  <p className="text-[11px] text-violet-600">{isFrench ? "Planifiées" : "Planned"}</p>
+                  <p className="text-lg font-bold leading-none text-[#3323cc]">{formatMinutes(totalPlanned)}</p>
+                  <p className="text-[11px] text-[#4f46e5]">{isFrench ? "Planifiées" : "Planned"}</p>
+                </div>
+              </div>
+            )}
+            {overdueCount > 0 && (
+              <div className={`${workspaceStatCardClass} min-w-0 border-rose-200 bg-rose-50/90`}>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100">
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-rose-500" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M8 3v4l2.5 1.5" strokeLinecap="round" />
+                    <circle cx="8" cy="8" r="5.5" />
+                  </svg>
+                </span>
+                <div>
+                  <p className="text-lg font-bold leading-none text-rose-600">{overdueCount}</p>
+                  <p className="text-[11px] text-rose-500">{isFrench ? "En retard" : "Overdue"}</p>
                 </div>
               </div>
             )}
@@ -4097,400 +3722,508 @@ function ProjectPlanningView({
       )}
 
       {/* ── Filters ─────────────────────────────────────────────────────────── */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface-soft/50 px-4 py-2.5 sm:px-6">
-        {/* Project */}
-        <div className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/20">
-          <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <rect x="1" y="1" width="5" height="5" rx="1.2"/>
-            <rect x="8" y="1" width="5" height="5" rx="1.2"/>
-            <rect x="1" y="8" width="5" height="5" rx="1.2"/>
-            <rect x="8" y="8" width="5" height="5" rx="1.2"/>
-          </svg>
-          <select
-            className="border-0 bg-transparent text-xs text-foreground outline-none"
-            value={filters.project}
-            onChange={(e) => onFilterChange("project", e.target.value)}
-          >
-            <option value="">{isFrench ? "Tous les projets" : "All projects"}</option>
-            {projectOptions.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </div>
+      <div className="shrink-0 px-4 pb-4 sm:px-6">
+        <div className={`${toolbarSurfaceClass} flex flex-col gap-3 rounded-[28px]`}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className={sectionHeaderClass}>{isFrench ? "Focus planning" : "Planning focus"}</p>
+              <p className="mt-1 text-sm text-muted">
+                {isFrench
+                  ? "Filtrez le projet, l’état et la fenêtre de dates sans sortir du shell Stitch."
+                  : "Filter project, status, and date window without leaving the Stitch shell."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="rounded-full border border-white/60 bg-white/80 px-3 py-1.5 font-semibold text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                {resultCountLabel}
+              </span>
+              <span className="rounded-full border border-white/60 bg-white/70 px-3 py-1.5 font-semibold text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+                {statusScopeLabel}
+              </span>
+            </div>
+          </div>
 
-        {/* Status pills */}
-        <div className="flex items-center gap-1">
-          {(["all", "todo", "in_progress", "done", "cancelled"] as const).map((s) => {
-            const label = s === "all"
-              ? (isFrench ? "Tous" : "All")
-              : s === "todo" ? (isFrench ? "À faire" : "To do")
-              : s === "in_progress" ? (isFrench ? "En cours" : "In progress")
-              : s === "done" ? (isFrench ? "Terminé" : "Done")
-              : (isFrench ? "Annulé" : "Cancelled");
-            const isActive = filters.status === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => onFilterChange("status", s)}
-                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all ${
-                  isActive
-                    ? "bg-accent text-white shadow-sm"
-                    : "bg-surface border border-line text-muted hover:border-accent/30 hover:text-foreground"
-                }`}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="dialog-section-shell flex items-center gap-1.5 rounded-full px-3 py-2 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/20">
+              <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <rect x="1" y="1" width="5" height="5" rx="1.2" />
+                <rect x="8" y="1" width="5" height="5" rx="1.2" />
+                <rect x="1" y="8" width="5" height="5" rx="1.2" />
+                <rect x="8" y="8" width="5" height="5" rx="1.2" />
+              </svg>
+              <select
+                className="border-0 bg-transparent text-xs text-foreground outline-none"
+                value={filters.project}
+                onChange={(e) => onFilterChange("project", e.target.value)}
               >
-                {s !== "all" && (
-                  <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-white/80" : STATUS_DOT[s]}`} />
-                )}
-                {label}
+                <option value="">{isFrench ? "Tous les projets" : "All projects"}</option>
+                {projectOptions.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className={`${segmentedControlClass} flex-wrap`}>
+              {(["all", "todo", "in_progress", "done", "cancelled"] as const).map((s) => {
+                const label = s === "all"
+                  ? (isFrench ? "Tous" : "All")
+                  : s === "todo" ? (isFrench ? "À faire" : "To do")
+                  : s === "in_progress" ? (isFrench ? "En cours" : "In progress")
+                  : s === "done" ? (isFrench ? "Terminé" : "Done")
+                  : (isFrench ? "Annulé" : "Cancelled");
+                const isActive = filters.status === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => onFilterChange("status", s)}
+                    className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition-all ${
+                      isActive
+                        ? "bg-accent text-white shadow-sm"
+                        : "border border-line bg-surface-elevated text-muted hover:border-accent/30 hover:text-foreground"
+                    }`}
+                  >
+                    {s !== "all" ? (
+                      <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-white/80" : STATUS_DOT[s]}`} />
+                    ) : null}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="dialog-section-shell flex items-center gap-1 rounded-full px-3 py-2 focus-within:border-accent/50">
+              <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <rect x="1" y="2" width="12" height="11" rx="1.5" />
+                <path d="M1 5.5h12M4.5 1v3M9.5 1v3" />
+              </svg>
+              <input
+                type="date"
+                className="border-0 bg-transparent text-xs text-foreground outline-none"
+                value={filters.dateFrom}
+                onChange={(e) => onFilterChange("dateFrom", e.target.value)}
+              />
+              <span className="text-xs text-muted">→</span>
+              <input
+                type="date"
+                className="border-0 bg-transparent text-xs text-foreground outline-none"
+                value={filters.dateTo}
+                onChange={(e) => onFilterChange("dateTo", e.target.value)}
+              />
+            </div>
+
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1.5 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/20"
+                onClick={resetFilters}
+              >
+                <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M2 2l6 6M8 2L2 8" strokeLinecap="round" />
+                </svg>
+                {isFrench ? "Effacer" : "Clear"}
               </button>
-            );
-          })}
+            ) : null}
+
+            <span className="ml-auto rounded-full border border-white/60 bg-white/70 px-3 py-1.5 text-[11px] font-semibold text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.76)]">
+              {timelineLabel}
+            </span>
+          </div>
         </div>
-
-        {/* Date range */}
-        <div className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 focus-within:border-accent/50">
-          <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <rect x="1" y="2" width="12" height="11" rx="1.5"/>
-            <path d="M1 5.5h12M4.5 1v3M9.5 1v3"/>
-          </svg>
-          <input
-            type="date"
-            className="border-0 bg-transparent text-xs text-foreground outline-none"
-            value={filters.dateFrom}
-            onChange={(e) => onFilterChange("dateFrom", e.target.value)}
-          />
-          <span className="text-xs text-muted">→</span>
-          <input
-            type="date"
-            className="border-0 bg-transparent text-xs text-foreground outline-none"
-            value={filters.dateTo}
-            onChange={(e) => onFilterChange("dateTo", e.target.value)}
-          />
-        </div>
-
-        {/* Reset */}
-        {hasActiveFilters && (
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
-            onClick={() => {
-              onFilterChange("project", "");
-              onFilterChange("status", "all");
-              onFilterChange("dateFrom", "");
-              onFilterChange("dateTo", "");
-            }}
-          >
-            <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M2 2l6 6M8 2L2 8" strokeLinecap="round"/>
-            </svg>
-            {isFrench ? "Effacer" : "Clear"}
-          </button>
-        )}
-
-        <span className="ml-auto text-[11px] text-muted">
-          {sorted.length} {isFrench ? "résultat" : "result"}{sorted.length !== 1 ? "s" : ""}
-        </span>
       </div>
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 px-4 pb-4 sm:px-6 sm:pb-6">
         {isLoading ? (
-          /* Skeleton loader */
-          <div className="divide-y divide-line">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-3.5">
-                <div className="h-3 w-4 animate-pulse rounded bg-line" />
-                <div className="h-3 flex-1 animate-pulse rounded bg-line" style={{ animationDelay: `${i * 80}ms` }} />
-                <div className="h-3 w-16 animate-pulse rounded bg-line" style={{ animationDelay: `${i * 80 + 40}ms` }} />
-                <div className="h-5 w-20 animate-pulse rounded-full bg-line" style={{ animationDelay: `${i * 80 + 80}ms` }} />
-                <div className="h-3 w-20 animate-pulse rounded bg-line" />
+          <div className="app-panel-soft h-full overflow-hidden rounded-[30px] border border-white/60">
+            <div className="workspace-header-shell px-5 py-4 sm:px-6">
+              <div>
+                <p className={sectionHeaderClass}>{isFrench ? "Chargement" : "Loading"}</p>
+                <p className="mt-1 text-sm text-muted">
+                  {isFrench ? "Préparation de la vue projet..." : "Preparing the project view..."}
+                </p>
               </div>
-            ))}
+            </div>
+            <div className="divide-y divide-line/70">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-6 py-4">
+                  <div className="h-7 w-7 animate-pulse rounded-full bg-line" />
+                  <div className="h-3 flex-1 animate-pulse rounded bg-line" style={{ animationDelay: `${i * 80}ms` }} />
+                  <div className="h-3 w-16 animate-pulse rounded bg-line" style={{ animationDelay: `${i * 80 + 40}ms` }} />
+                  <div className="h-8 w-24 animate-pulse rounded-full bg-line" style={{ animationDelay: `${i * 80 + 80}ms` }} />
+                  <div className="h-3 w-20 animate-pulse rounded bg-line" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : errorMessage ? (
-          <div className="flex h-full items-center justify-center p-8">
-            <div className="flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-red-100 bg-red-50 p-6 text-center">
-              <svg viewBox="0 0 24 24" className="h-8 w-8 text-red-400" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="12" cy="12" r="9"/>
-                <path d="M12 8v4M12 16h.01" strokeLinecap="round"/>
-              </svg>
-              <p className="text-sm text-red-700">{errorMessage}</p>
+          <div className="flex h-full items-center justify-center">
+            <div className="dialog-section-shell flex max-w-md flex-col items-center gap-4 rounded-[30px] px-8 py-10 text-center shadow-[0_24px_60px_rgba(16,0,105,0.1)]">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-rose-500">
+                <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {isFrench ? "Impossible de charger la planification" : "Unable to load planning"}
+                </p>
+                <p className="mt-2 text-sm text-rose-600">{errorMessage}</p>
+              </div>
+              <button
+                type="button"
+                className={controlButtonClass}
+                onClick={onClose}
+              >
+                {isFrench ? "Retourner au tableau" : "Back to workspace"}
+              </button>
             </div>
           </div>
         ) : tasks.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-soft">
-              <svg viewBox="0 0 48 48" className="h-8 w-8 text-muted/40" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="8" y="8" width="32" height="32" rx="4"/>
-                <path d="M16 20h16M16 26h10M16 32h13" strokeLinecap="round"/>
-              </svg>
+          <div className="flex h-full items-center justify-center">
+            <div className="dialog-section-shell flex max-w-md flex-col items-center gap-4 rounded-[30px] px-8 py-10 text-center shadow-[0_24px_60px_rgba(16,0,105,0.08)]">
+              <div className="flex h-16 w-16 items-center justify-center rounded-[26px] bg-gradient-to-br from-accent-soft via-white to-secondary-soft text-accent">
+                <svg viewBox="0 0 48 48" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="8" y="8" width="32" height="32" rx="4" />
+                  <path d="M16 20h16M16 26h10M16 32h13" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-base font-semibold text-foreground">
+                  {isFrench ? "Aucune tâche trouvée" : "No tasks found"}
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  {hasActiveFilters
+                    ? (isFrench ? "Essayez d’élargir vos filtres pour récupérer une vue projet complète." : "Try widening your filters to restore the full project view.")
+                    : (isFrench ? "Les tâches planifiées apparaîtront ici avec le même langage visuel que le dashboard Stitch." : "Scheduled tasks will appear here with the same Stitch visual language as the dashboard.")}
+                </p>
+              </div>
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  className={`${controlButtonClass} px-4 py-2 text-sm`}
+                  onClick={resetFilters}
+                >
+                  {isFrench ? "Réinitialiser les filtres" : "Reset filters"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`${primaryButtonClass} px-5`}
+                  onClick={onCreateTask}
+                  disabled={isBusy}
+                >
+                  <PlusIcon />
+                  {isFrench ? "Créer une tâche" : "Create task"}
+                </button>
+              )}
             </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-foreground">{isFrench ? "Aucune tâche trouvée" : "No tasks found"}</p>
-              <p className="mt-1 text-xs text-muted">
-                {hasActiveFilters
-                  ? (isFrench ? "Essayez d'ajuster vos filtres." : "Try adjusting your filters.")
-                  : (isFrench ? "Les tâches apparaîtront ici." : "Tasks will appear here.")}
-              </p>
-            </div>
-            {hasActiveFilters && (
-              <button
-                type="button"
-                className="rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/30 hover:text-accent"
-                onClick={() => {
-                  onFilterChange("project", "");
-                  onFilterChange("status", "all");
-                  onFilterChange("dateFrom", "");
-                  onFilterChange("dateTo", "");
-                }}
-              >
-                {isFrench ? "Réinitialiser les filtres" : "Reset filters"}
-              </button>
-            )}
           </div>
         ) : viewMode === "table" ? (
-          // ── Table view ────────────────────────────────────────────────────
-          <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-10 bg-surface shadow-[0_1px_0_0_var(--color-line)]">
-              <tr>
-                <th className="w-10 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">#</th>
-                <th className={thBase} onClick={() => onSortChange("title")}>
-                  {isFrench ? "Titre" : "Title"}<SortIcon column="title" />
-                </th>
-                <th className={thBase} onClick={() => onSortChange("project")}>
-                  {isFrench ? "Projet" : "Project"}<SortIcon column="project" />
-                </th>
-                <th className={thBase} onClick={() => onSortChange("status")}>
-                  {isFrench ? "Statut" : "Status"}<SortIcon column="status" />
-                </th>
-                <th className={thBase} onClick={() => onSortChange("priority")}>
-                  {isFrench ? "Priorité" : "Priority"}<SortIcon column="priority" />
-                </th>
-                <th className={thBase} onClick={() => onSortChange("targetDate")}>
-                  {isFrench ? "Planifiée" : "Planned"}<SortIcon column="targetDate" />
-                </th>
-                <th className={thBase} onClick={() => onSortChange("dueDate")}>
-                  {isFrench ? "Échéance" : "Due"}<SortIcon column="dueDate" />
-                </th>
-                <th className={thBase} onClick={() => onSortChange("plannedTime")}>
-                  {isFrench ? "Durée" : "Duration"}<SortIcon column="plannedTime" />
-                </th>
-                <th className="w-16 px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((task, index) => {
-                const isDone = task.status === "done";
-                const isOverdue = task.dueDate && task.dueDate < today && task.status !== "done" && task.status !== "cancelled";
-                return (
-                  <tr
-                    key={task.id}
-                    className={`group cursor-pointer border-b border-line transition-colors hover:bg-accent/[0.03] ${
-                      index % 2 === 0 ? "bg-background" : "bg-surface-soft/30"
-                    }`}
-                    onClick={() => onEditTask(task)}
-                  >
-                    <td className="w-10 px-4 py-3.5 text-center text-xs text-muted/40 tabular-nums">
-                      {index + 1}
-                    </td>
-                    <td className="max-w-[260px] px-4 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[task.status]}`} />
-                        <span className={`line-clamp-1 text-sm font-medium ${isDone ? "text-muted line-through decoration-muted/40" : "text-foreground"}`}>
-                          {task.title}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      {task.project ? (
-                        <span className="rounded-md bg-accent/8 px-2 py-0.5 text-xs font-medium text-accent">
-                          {task.project}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted/30">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[task.status]}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status]}`} />
-                        {formatStatusLabel(task.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${PRIORITY_BG[task.priority]}`}>
-                        <PriorityIcon priority={task.priority} />
-                        {formatPriorityLabel(task.priority)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-xs text-muted">
-                      {formatShortDate(task.targetDate, locale)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      {task.dueDate ? (
-                        <span className={`text-xs font-medium ${isOverdue ? "text-rose-500" : "text-muted"}`}>
-                          {isOverdue && (
-                            <svg viewBox="0 0 10 10" className="mr-1 inline h-2.5 w-2.5 text-rose-400" fill="currentColor">
-                              <path d="M5 1l4 8H1z"/>
-                            </svg>
-                          )}
-                          {formatShortDate(task.dueDate, locale)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted/30">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5 text-xs text-muted">
-                      {formatMinutes(task.plannedTime)}
-                    </td>
-                    <td className="w-16 px-4 py-3.5">
-                      <button
-                        type="button"
-                        className="rounded-md px-2 py-1 text-[11px] font-medium text-muted opacity-0 ring-1 ring-transparent transition-all hover:bg-accent-soft hover:text-accent hover:ring-accent/20 group-hover:opacity-100"
-                        onClick={(e) => { e.stopPropagation(); onEditTask(task); }}
-                      >
-                        {isFrench ? "Ouvrir" : "Open"}
-                      </button>
-                    </td>
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="app-panel-soft flex flex-wrap items-center justify-between gap-3 rounded-[26px] px-4 py-3">
+              <div>
+                <p className={sectionHeaderClass}>{isFrench ? "Vue détaillée" : "Detailed view"}</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {isFrench
+                    ? "Priorités, dates et durée regroupées dans une table de pilotage."
+                    : "Priorities, dates, and duration grouped in a control-table view."}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-full border border-[#c3c0ff] bg-[#f2efff] px-3 py-1.5 font-semibold text-[#3323cc]">
+                  {statusScopeLabel}
+                </span>
+                <span className="rounded-full border border-white/60 bg-white/80 px-3 py-1.5 font-semibold text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                  {overdueCount > 0
+                    ? `${overdueCount} ${isFrench ? "en retard" : "overdue"}`
+                    : `${upcomingCount} ${isFrench ? "à venir" : "up next"}`}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-[30px] border border-white/60 bg-[rgba(255,255,255,0.76)] shadow-[0_24px_60px_rgba(16,0,105,0.1)] backdrop-blur">
+              <table className="w-full border-separate border-spacing-0">
+                <thead className="sticky top-0 z-10 bg-[rgba(252,248,255,0.92)] backdrop-blur shadow-[0_1px_0_0_var(--color-line)]">
+                  <tr>
+                    <th className="w-14 px-4 py-4 text-center text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">#</th>
+                    <th className={thBase} onClick={() => onSortChange("title")}>
+                      {isFrench ? "Titre" : "Title"}<SortIcon column="title" />
+                    </th>
+                    <th className={thBase} onClick={() => onSortChange("project")}>
+                      {isFrench ? "Projet" : "Project"}<SortIcon column="project" />
+                    </th>
+                    <th className={thBase} onClick={() => onSortChange("status")}>
+                      {isFrench ? "Statut" : "Status"}<SortIcon column="status" />
+                    </th>
+                    <th className={thBase} onClick={() => onSortChange("priority")}>
+                      {isFrench ? "Priorité" : "Priority"}<SortIcon column="priority" />
+                    </th>
+                    <th className={thBase} onClick={() => onSortChange("targetDate")}>
+                      {isFrench ? "Planifiée" : "Planned"}<SortIcon column="targetDate" />
+                    </th>
+                    <th className={thBase} onClick={() => onSortChange("dueDate")}>
+                      {isFrench ? "Échéance" : "Due"}<SortIcon column="dueDate" />
+                    </th>
+                    <th className={thBase} onClick={() => onSortChange("plannedTime")}>
+                      {isFrench ? "Durée" : "Duration"}<SortIcon column="plannedTime" />
+                    </th>
+                    <th className="w-20 px-4 py-4" />
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {sorted.map((task, index) => {
+                    const isDone = task.status === "done";
+                    const isOverdue = task.dueDate && task.dueDate < today && task.status !== "done" && task.status !== "cancelled";
+                    return (
+                      <tr
+                        key={task.id}
+                        className={`group cursor-pointer border-b border-line/70 transition-all duration-200 hover:bg-accent/[0.05] ${
+                          index % 2 === 0 ? "bg-white/55" : "bg-surface-soft/45"
+                        }`}
+                        onClick={() => onEditTask(task)}
+                      >
+                        <td className="w-14 px-4 py-4 text-center text-xs text-muted/50 tabular-nums">
+                          <span className="inline-flex min-w-7 items-center justify-center rounded-full border border-white/60 bg-white/70 px-2 py-1 font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                            {index + 1}
+                          </span>
+                        </td>
+                        <td className="max-w-[280px] px-4 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[task.status]}`} />
+                            <span className={`line-clamp-1 text-sm font-medium ${isDone ? "text-muted line-through decoration-muted/40" : "text-foreground"}`}>
+                              {task.title}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          {task.project ? (
+                            <span className="rounded-full border border-accent/10 bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">
+                              {task.project}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted/30">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_COLORS[task.status]}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status]}`} />
+                            {formatStatusLabel(task.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${PRIORITY_BG[task.priority]}`}>
+                            <PriorityIcon priority={task.priority} />
+                            {formatPriorityLabel(task.priority)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-xs text-muted">
+                          {formatShortDate(task.targetDate, locale)}
+                        </td>
+                        <td className="px-4 py-4">
+                          {task.dueDate ? (
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                              isOverdue
+                                ? "border-rose-200 bg-rose-50 text-rose-600"
+                                : "border-white/60 bg-white/75 text-muted"
+                            }`}>
+                              {isOverdue ? (
+                                <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 text-rose-400" fill="currentColor">
+                                  <path d="M5 1l4 8H1z" />
+                                </svg>
+                              ) : null}
+                              {formatShortDate(task.dueDate, locale)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted/30">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-xs font-medium text-muted">
+                          {formatMinutes(task.plannedTime)}
+                        </td>
+                        <td className="w-20 px-4 py-4">
+                          <button
+                            type="button"
+                            className="rounded-full border border-transparent bg-white/60 px-3 py-1.5 text-[11px] font-semibold text-muted opacity-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all hover:border-accent/20 hover:bg-accent-soft hover:text-accent sm:opacity-0 group-hover:sm:opacity-100"
+                            onClick={(e) => { e.stopPropagation(); onEditTask(task); }}
+                          >
+                            {isFrench ? "Ouvrir" : "Open"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
-          // ── Gantt view ─────────────────────────────────────────────────────
           ganttData ? (
-            <div className="flex h-full min-w-[700px]">
-              {/* Fixed left panel - task names */}
-              <div className="flex w-52 shrink-0 flex-col border-r border-line bg-surface">
-                {/* Header spacer */}
-                <div className="h-[52px] border-b border-line" />
-                {/* Task rows */}
-                {ganttData.bars.map(({ task }, i) => (
-                  <div
-                    key={task.id}
-                    className={`flex h-12 cursor-pointer items-center gap-2 border-b border-line px-3 transition-colors hover:bg-accent/[0.04] ${
-                      i % 2 === 0 ? "bg-background" : "bg-surface-soft/30"
-                    }`}
-                    onClick={() => onEditTask(task)}
-                  >
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[task.status]}`} />
-                    <span className="min-w-0 truncate text-xs font-medium text-foreground" title={task.title}>
-                      {task.title}
-                    </span>
-                  </div>
-                ))}
-                {/* Legend */}
-                <div className="mt-auto border-t border-line px-3 py-3">
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    {isFrench ? "Légende" : "Legend"}
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="app-panel-soft flex flex-wrap items-center justify-between gap-3 rounded-[26px] px-4 py-3">
+                <div>
+                  <p className={sectionHeaderClass}>{isFrench ? "Calendrier opérationnel" : "Operational timeline"}</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    {isFrench
+                      ? "Vue macro pour arbitrer les charges, les dates et les chevauchements."
+                      : "Macro view for balancing workload, dates, and overlaps."}
                   </p>
-                  {(["todo", "in_progress", "done", "cancelled"] as TaskStatus[]).map((s) => (
-                    <div key={s} className="flex items-center gap-2 py-0.5">
-                      <span className={`h-2.5 w-2.5 rounded-sm ${STATUS_DOT[s]}`} />
-                      <span className="text-[11px] text-muted">{formatStatusLabel(s)}</span>
-                    </div>
-                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="rounded-full border border-[#c3c0ff] bg-[#f2efff] px-3 py-1.5 font-semibold text-[#3323cc]">
+                    {ganttData.totalDays} {isFrench ? "jours visibles" : "days visible"}
+                  </span>
+                  {ganttData.showTodayMarker ? (
+                    <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 font-semibold text-rose-600">
+                      {isFrench ? "Repère aujourd’hui" : "Today marker"}
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
-              {/* Scrollable timeline */}
-              <div className="flex-1 overflow-x-auto overflow-y-hidden">
-                <div className="relative" style={{ minWidth: "600px" }}>
-                  {/* Month header */}
-                  <div className="sticky top-0 z-10 h-[52px] border-b border-line bg-surface">
-                    <div className="relative h-full">
-                      {ganttData.months.map((m, i) => (
-                        <div
-                          key={i}
-                          className="absolute flex h-full flex-col justify-center border-r border-line/50 px-3"
-                          style={{ left: `${m.left}%`, width: `${m.width}%` }}
-                        >
-                          <span className="truncate text-xs font-semibold text-foreground">{m.label}</span>
-                          {ganttData.days.length === 0 && (
-                            <span className="text-[10px] text-muted">{isFrench ? "vue mensuelle" : "monthly view"}</span>
-                          )}
+              <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-[30px] border border-white/60 bg-[rgba(255,255,255,0.76)] shadow-[0_24px_60px_rgba(16,0,105,0.1)] backdrop-blur">
+                <div className="flex min-h-full min-w-[760px]">
+                  <div className="flex w-60 shrink-0 flex-col border-r border-line/60 bg-[rgba(246,242,255,0.82)]">
+                    <div className="flex h-[68px] items-end justify-between border-b border-line/60 px-4 pb-3">
+                      <div>
+                        <p className={sectionHeaderClass}>{isFrench ? "Tâches" : "Tasks"}</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">{resultCountLabel}</p>
+                      </div>
+                      <span className="rounded-full border border-white/60 bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted">
+                        {statusScopeLabel}
+                      </span>
+                    </div>
+
+                    {ganttData.bars.map(({ task }, index) => (
+                      <div
+                        key={task.id}
+                        className={`flex h-14 cursor-pointer items-center gap-2.5 border-b border-line/60 px-4 transition-colors hover:bg-accent/[0.04] ${
+                          index % 2 === 0 ? "bg-white/45" : "bg-surface-soft/45"
+                        }`}
+                        onClick={() => onEditTask(task)}
+                      >
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[task.status]}`} />
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-foreground" title={task.title}>
+                            {task.title}
+                          </p>
+                          <p className="truncate text-[10px] text-muted">
+                            {formatShortDate(task.targetDate, locale)}
+                            {task.dueDate ? ` → ${formatShortDate(task.dueDate, locale)}` : ""}
+                          </p>
                         </div>
-                      ))}
-                      {/* Day numbers row */}
-                      {ganttData.days.length > 0 && (
-                        <div className="absolute bottom-0 left-0 right-0 flex h-5 border-t border-line/30">
-                          {ganttData.days.map((d, i) => (
-                            <div
-                              key={i}
-                              className={`absolute flex h-full items-center justify-center text-[9px] ${
-                                d.isWeekend ? "text-muted/40" : "text-muted/70"
-                              }`}
-                              style={{ left: `${d.left}%`, width: `${100 / ganttData.totalDays}%` }}
-                            >
-                              {d.label}
+                      </div>
+                    ))}
+
+                    <div className="mt-auto border-t border-line/60 p-4">
+                      <div className="dialog-section-shell rounded-[22px] px-3 py-3">
+                        <p className={sectionHeaderClass}>{isFrench ? "Légende" : "Legend"}</p>
+                        <div className="mt-3 space-y-2">
+                          {(["todo", "in_progress", "done", "cancelled"] as TaskStatus[]).map((s) => (
+                            <div key={s} className="flex items-center gap-2">
+                              <span className={`h-2.5 w-2.5 rounded-full ${STATUS_DOT[s]}`} />
+                              <span className="text-[11px] text-muted">{formatStatusLabel(s)}</span>
                             </div>
                           ))}
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Task bar rows */}
-                  {ganttData.bars.map(({ task, left, width }, i) => (
-                    <div
-                      key={task.id}
-                      className={`relative h-12 border-b border-line ${
-                        i % 2 === 0 ? "bg-background" : "bg-surface-soft/30"
-                      }`}
-                    >
-                      {/* Weekend column shading */}
-                      {ganttData.days.map((d, di) =>
-                        d.isWeekend ? (
-                          <div
-                            key={di}
-                            className="absolute inset-y-0 bg-slate-50/60"
-                            style={{ left: `${d.left}%`, width: `${100 / ganttData.totalDays}%` }}
-                          />
-                        ) : null
-                      )}
-                      {/* Vertical month grid lines */}
-                      {ganttData.months.map((m, mi) => (
-                        <div
-                          key={mi}
-                          className="absolute inset-y-0 w-px bg-line/50"
-                          style={{ left: `${m.left}%` }}
-                        />
-                      ))}
-                      {/* Today marker */}
-                      {ganttData.showTodayMarker && (
-                        <div
-                          className="absolute inset-y-0 z-10 w-0.5 bg-rose-400/70"
-                          style={{ left: `${ganttData.todayLeft}%` }}
-                        />
-                      )}
-                      {/* Task bar */}
-                      <div
-                        className={`absolute top-2 h-8 cursor-pointer rounded-md bg-gradient-to-r transition-all hover:brightness-95 hover:shadow-md ${GANTT_STATUS_BAR[task.status].from} ${GANTT_STATUS_BAR[task.status].to}`}
-                        style={{ left: `${left}%`, width: `${width}%` }}
-                        title={`${task.title} · ${formatShortDate(task.targetDate, locale)}${task.dueDate ? ` → ${formatShortDate(task.dueDate, locale)}` : ""}`}
-                        onClick={() => onEditTask(task)}
-                      >
-                        {width > 4 && (
-                          <span className="absolute inset-0 flex items-center truncate px-2 text-[10px] font-semibold text-white/95 drop-shadow-sm">
-                            {task.title}
-                          </span>
-                        )}
+                  <div className="flex-1 overflow-x-auto overflow-y-hidden">
+                    <div className="relative min-h-full" style={{ minWidth: "640px" }}>
+                      <div className="sticky top-0 z-10 h-[68px] border-b border-line/60 bg-[rgba(252,248,255,0.92)] backdrop-blur">
+                        <div className="relative h-full">
+                          {ganttData.months.map((month, index) => (
+                            <div
+                              key={index}
+                              className="absolute flex h-full flex-col justify-center border-r border-line/50 px-4"
+                              style={{ left: `${month.left}%`, width: `${month.width}%` }}
+                            >
+                              <span className="truncate text-xs font-semibold text-foreground">{month.label}</span>
+                              {ganttData.days.length === 0 ? (
+                                <span className="text-[10px] text-muted">{isFrench ? "vue mensuelle" : "monthly view"}</span>
+                              ) : null}
+                            </div>
+                          ))}
+                          {ganttData.days.length > 0 ? (
+                            <div className="absolute bottom-0 left-0 right-0 flex h-6 border-t border-line/30">
+                              {ganttData.days.map((day, index) => (
+                                <div
+                                  key={index}
+                                  className={`absolute flex h-full items-center justify-center text-[9px] ${
+                                    day.isWeekend ? "text-muted/40" : "text-muted/70"
+                                  }`}
+                                  style={{ left: `${day.left}%`, width: `${100 / ganttData.totalDays}%` }}
+                                >
+                                  {day.label}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  ))}
 
-                  {/* Today marker label */}
-                  {ganttData.showTodayMarker && (
-                    <div
-                      className="sticky bottom-0 z-20"
-                      style={{ marginLeft: `${ganttData.todayLeft}%` }}
-                    >
-                      <span className="rounded-sm bg-rose-400 px-1 py-0.5 text-[9px] font-bold text-white">
-                        {isFrench ? "Auj." : "Today"}
-                      </span>
+                      {ganttData.bars.map(({ task, left, width }, index) => (
+                        <div
+                          key={task.id}
+                          className={`relative h-14 border-b border-line/60 ${
+                            index % 2 === 0 ? "bg-white/45" : "bg-surface-soft/45"
+                          }`}
+                        >
+                          {ganttData.days.map((day, dayIndex) =>
+                            day.isWeekend ? (
+                              <div
+                                key={dayIndex}
+                                className="absolute inset-y-0 bg-[#f6f2ff]/70"
+                                style={{ left: `${day.left}%`, width: `${100 / ganttData.totalDays}%` }}
+                              />
+                            ) : null
+                          )}
+
+                          {ganttData.months.map((month, monthIndex) => (
+                            <div
+                              key={monthIndex}
+                              className="absolute inset-y-0 w-px bg-line/50"
+                              style={{ left: `${month.left}%` }}
+                            />
+                          ))}
+
+                          {ganttData.showTodayMarker ? (
+                            <div
+                              className="absolute inset-y-0 z-10 w-0.5 bg-rose-400/70"
+                              style={{ left: `${ganttData.todayLeft}%` }}
+                            />
+                          ) : null}
+
+                          <div
+                            className={`absolute top-3 h-8 cursor-pointer rounded-full bg-gradient-to-r shadow-[0_14px_26px_rgba(16,0,105,0.16)] transition-all hover:-translate-y-0.5 hover:brightness-95 hover:shadow-[0_18px_34px_rgba(16,0,105,0.2)] ${GANTT_STATUS_BAR[task.status].from} ${GANTT_STATUS_BAR[task.status].to}`}
+                            style={{ left: `${left}%`, width: `${width}%` }}
+                            title={`${task.title} · ${formatShortDate(task.targetDate, locale)}${task.dueDate ? ` → ${formatShortDate(task.dueDate, locale)}` : ""}`}
+                            onClick={() => onEditTask(task)}
+                          >
+                            {width > 4 ? (
+                              <span className="absolute inset-0 flex items-center truncate px-3 text-[10px] font-semibold text-white/95 drop-shadow-sm">
+                                {task.title}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+
+                      {ganttData.showTodayMarker ? (
+                        <div
+                          className="sticky bottom-0 z-20"
+                          style={{ marginLeft: `${ganttData.todayLeft}%` }}
+                        >
+                          <span className="rounded-full bg-rose-500 px-2 py-1 text-[9px] font-bold text-white shadow-[0_10px_22px_rgba(244,63,94,0.22)]">
+                            {isFrench ? "Auj." : "Today"}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -4499,954 +4232,21 @@ function ProjectPlanningView({
       </div>
 
       {/* ── Cancelled count footnote ─────────────────────────────────────── */}
-      {!isLoading && statsCancelled > 0 && (
-        <div className="shrink-0 border-t border-line bg-surface px-6 py-2">
-          <p className="text-[11px] text-muted">
-            + {statsCancelled} {isFrench ? "tâche(s) annulée(s) non affichée(s) dans le Gantt" : "cancelled task(s)"}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-type AppNavbarProps = {
-  locale: UserLocale;
-  user: AuthUser | null;
-  onLogout?: () => void;
-  onOpenProfile?: () => void;
-  onLogin?: () => void;
-  alertsSummary?: AlertsSummary | null;
-  isTaskAlertsPanelOpen?: boolean;
-  onOpenTaskAlerts?: () => void;
-  onOpenSearch?: () => void;
-  isBusy?: boolean;
-  isProjectPlanningOpen?: boolean;
-  onOpenProjectPlanning?: () => void;
-  showMonthlyReview?: boolean;
-  showWeeklyReview?: boolean;
-  activeSectionId?: string;
-  isSidebarCollapsed?: boolean;
-  onToggleSidebar?: () => void;
-};
-
-const SOURCE_TYPE_LABELS: Record<SearchSourceType, { fr: string; en: string }> = {
-  task: { fr: "Tâche", en: "Task" },
-  comment: { fr: "Commentaire", en: "Comment" },
-  affirmation: { fr: "Affirmation", en: "Affirmation" },
-  bilan: { fr: "Bilan", en: "Bilan" },
-  reminder: { fr: "Rappel", en: "Reminder" },
-  calendarEvent: { fr: "Événement", en: "Event" },
-  calendarNote: { fr: "Note agenda", en: "Cal. Note" },
-  attachment: { fr: "Pièce jointe", en: "Attachment" },
-  note: { fr: "Note", en: "Note" },
-  noteAttachment: { fr: "Doc note", en: "Note Doc" },
-  weeklyObjective: { fr: "Obj. semaine", en: "Weekly Obj." },
-  weeklyReview: { fr: "Bilan semaine", en: "Weekly Review" },
-  monthlyObjective: { fr: "Obj. mois", en: "Monthly Obj." },
-  monthlyReview: { fr: "Bilan mois", en: "Monthly Review" },
-};
-
-const ALL_SEARCH_SOURCE_TYPES: SearchSourceType[] = [
-  "task",
-  "comment",
-  "affirmation",
-  "bilan",
-  "reminder",
-  "calendarEvent",
-  "calendarNote",
-  "attachment",
-  "note",
-  "noteAttachment",
-  "weeklyObjective",
-  "weeklyReview",
-  "monthlyObjective",
-  "monthlyReview",
-];
-
-const TYPE_BADGE: Record<SearchSourceType, string> = {
-  task:            "bg-indigo-50 text-indigo-500",
-  comment:         "bg-sky-50 text-sky-500",
-  affirmation:     "bg-amber-50 text-amber-500",
-  bilan:           "bg-emerald-50 text-emerald-500",
-  reminder:        "bg-rose-50 text-rose-500",
-  calendarEvent:   "bg-purple-50 text-purple-500",
-  calendarNote:    "bg-violet-50 text-violet-500",
-  attachment:      "bg-slate-100 text-slate-500",
-  note:            "bg-teal-50 text-teal-500",
-  noteAttachment:  "bg-cyan-50 text-cyan-500",
-  weeklyObjective: "bg-indigo-50 text-indigo-600",
-  weeklyReview:    "bg-violet-50 text-violet-600",
-  monthlyObjective:"bg-blue-50 text-blue-600",
-  monthlyReview:   "bg-amber-50 text-amber-600",
-};
-
-const TYPE_ICON_COLOR: Record<SearchSourceType, string> = {
-  task:            "text-indigo-400",
-  comment:         "text-sky-400",
-  affirmation:     "text-amber-400",
-  bilan:           "text-emerald-400",
-  reminder:        "text-rose-400",
-  calendarEvent:   "text-purple-400",
-  calendarNote:    "text-violet-400",
-  attachment:      "text-slate-400",
-  note:            "text-teal-400",
-  noteAttachment:  "text-cyan-400",
-  weeklyObjective: "text-indigo-400",
-  weeklyReview:    "text-violet-400",
-  monthlyObjective:"text-blue-400",
-  monthlyReview:   "text-amber-400",
-};
-
-function SearchTypeIcon({ type }: { type: SearchSourceType }) {
-  const cls = "h-4 w-4 shrink-0";
-  switch (type) {
-    case "task":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <rect x="3" y="3" width="18" height="18" rx="3" />
-          <path d="M8 12l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "comment":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinejoin="round" />
-        </svg>
-      );
-    case "affirmation":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" strokeLinecap="round" />
-        </svg>
-      );
-    case "bilan":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" strokeLinecap="round" />
-        </svg>
-      );
-    case "reminder":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" strokeLinejoin="round" />
-          <path d="M13.73 21a2 2 0 0 1-3.46 0" strokeLinecap="round" />
-        </svg>
-      );
-    case "calendarEvent":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
-        </svg>
-      );
-    case "calendarNote":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
-          <path d="M8 14h5M8 18h3" strokeLinecap="round" />
-        </svg>
-      );
-    case "attachment":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "note":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeLinejoin="round" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="8" y1="13" x2="16" y2="13" strokeLinecap="round" />
-          <line x1="8" y1="17" x2="13" y2="17" strokeLinecap="round" />
-        </svg>
-      );
-    case "noteAttachment":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeLinejoin="round" />
-          <polyline points="14 2 14 8 20 8" />
-          <path d="M10 17l2-2 2 2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "weeklyObjective":
-    case "weeklyReview":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M4 6h16M4 12h12M4 18h8" strokeLinecap="round" />
-        </svg>
-      );
-    case "monthlyObjective":
-    case "monthlyReview":
-      return (
-        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
-          <path d="M8 14h8M8 18h5" strokeLinecap="round" />
-        </svg>
-      );
-  }
-}
-
-function formatSearchResultDate(metadataJson: Record<string, unknown> | null, locale: UserLocale): string | null {
-  if (!metadataJson) return null;
-  const raw = (metadataJson.targetDate ?? metadataJson.remindAt ?? metadataJson.startTime) as string | undefined;
-  if (!raw) return null;
-  try {
-    return new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-US", {
-      month: "short",
-      day: "numeric",
-    }).format(new Date(raw));
-  } catch {
-    return null;
-  }
-}
-
-function renderHighlightedSnippet(snippet: string, query: string): React.ReactNode {
-  // If snippet contains [[ markers from ts_headline, parse them
-  if (snippet.includes("[[")) {
-    const parts: React.ReactNode[] = [];
-    let remaining = snippet;
-    let key = 0;
-    while (remaining.length > 0) {
-      const start = remaining.indexOf("[[");
-      if (start === -1) {
-        parts.push(remaining);
-        break;
-      }
-      if (start > 0) {
-        parts.push(remaining.slice(0, start));
-      }
-      const end = remaining.indexOf("]]", start + 2);
-      if (end === -1) {
-        parts.push(remaining.slice(start));
-        break;
-      }
-      const term = remaining.slice(start + 2, end);
-      parts.push(
-        <span key={key++} className="text-accent font-medium">
-          {term}
-        </span>
-      );
-      remaining = remaining.slice(end + 2);
-    }
-    return <>{parts}</>;
-  }
-
-  // Client-side highlighting for vector results (no markers)
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) return snippet;
-
-  const tokens = [...new Set(
-    trimmedQuery.split(/\s+/).filter((t) => t.length >= 2)
-  )];
-  if (tokens.length === 0) return snippet;
-
-  const pattern = new RegExp(`(${tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
-  const parts = snippet.split(pattern);
-  return (
-    <>
-      {parts.map((part, i) =>
-        pattern.test(part) ? (
-          <span key={i} className="text-accent font-medium">
-            {part}
-          </span>
-        ) : (
-          part
-        )
-      )}
-    </>
-  );
-}
-
-function SearchResultRow({
-  result,
-  locale,
-  query,
-  isFocused,
-  onClick,
-}: {
-  result: SearchResult;
-  locale: UserLocale;
-  query: string;
-  isFocused: boolean;
-  onClick: () => void;
-}) {
-  const isFrench = locale === "fr";
-  const label = SOURCE_TYPE_LABELS[result.sourceType]?.[isFrench ? "fr" : "en"] ?? result.sourceType;
-  const date = formatSearchResultDate(result.metadataJson, locale);
-  const isVector = result.matchedBy === "vector";
-
-  return (
-    <button
-      type="button"
-      data-search-result
-      className={`group flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-        isFocused
-          ? "bg-accent/[0.07] outline-none"
-          : "hover:bg-surface-soft"
-      }`}
-      onClick={onClick}
-    >
-      {/* Type icon */}
-      <span className={`shrink-0 ${TYPE_ICON_COLOR[result.sourceType]}`}>
-        <SearchTypeIcon type={result.sourceType} />
-      </span>
-
-      {/* Main content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {result.title ? (
-            <span className={`truncate text-sm font-medium ${isFocused ? "text-accent" : "text-foreground group-hover:text-accent"}`}>
-              {result.title.includes("[[") ? renderHighlightedSnippet(result.title, query) : result.title}
-            </span>
-          ) : (
-            <span className={`truncate text-sm ${isFocused ? "text-accent" : "text-muted"}`}>
-              {renderHighlightedSnippet(result.snippet.slice(0, 60), query)}
-            </span>
-          )}
-          {isVector && (
-            <span className="shrink-0 rounded px-1 py-px text-[9px] font-medium tracking-wide text-accent/60 ring-1 ring-accent/20">
-              {isFrench ? "sémantique" : "semantic"}
-            </span>
-          )}
-        </div>
-        {result.title && result.snippet ? (
-          <p className="mt-px truncate text-xs text-muted">{renderHighlightedSnippet(result.snippet, query)}</p>
-        ) : null}
-      </div>
-
-      {/* Right metadata */}
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className={`rounded px-1.5 py-px text-[9px] font-semibold uppercase tracking-widest ${TYPE_BADGE[result.sourceType]}`}>
-          {label}
-        </span>
-        {date ? (
-          <span className="text-[10px] text-muted">{date}</span>
-        ) : null}
-      </div>
-    </button>
-  );
-}
-
-type GlobalSearchModalProps = {
-  locale: UserLocale;
-  state: GlobalSearchState;
-  onQueryChange: (value: string) => void;
-  onTypeFilterChange: (filter: SearchSourceType | "all") => void;
-  onDateFilterChange: (field: "from" | "to", value: string) => void;
-  onLoadMore: () => void;
-  onClose: () => void;
-  onResultClick: (result: SearchResult) => void;
-};
-
-function GlobalSearchModal({
-  locale,
-  state,
-  onQueryChange,
-  onTypeFilterChange,
-  onDateFilterChange,
-  onLoadMore,
-  onClose,
-  onResultClick,
-}: GlobalSearchModalProps) {
-  const isFrench = locale === "fr";
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const [focusedIndex, setFocusedIndex] = useState(-1);
-
-  useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 60);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Reset focused index when results change
-  useEffect(() => {
-    setFocusedIndex(-1);
-  }, [state.results]);
-
-  const hasResults = state.results.length > 0;
-  const hasQuery = state.query.trim().length >= 2;
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (!hasResults) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setFocusedIndex((prev) => {
-        const next = Math.min(prev + 1, state.results.length - 1);
-        scrollResultIntoView(next);
-        return next;
-      });
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setFocusedIndex((prev) => {
-        const next = Math.max(prev - 1, 0);
-        scrollResultIntoView(next);
-        return next;
-      });
-    } else if (e.key === "Enter" && focusedIndex >= 0) {
-      e.preventDefault();
-      const result = state.results[focusedIndex];
-      if (result) { onResultClick(result); onClose(); }
-    }
-  }
-
-  function scrollResultIntoView(index: number) {
-    if (!listRef.current) return;
-    const rows = listRef.current.querySelectorAll<HTMLElement>("[data-search-result]");
-    rows[index]?.scrollIntoView({ block: "nearest" });
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-[10vh] backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="flex w-full max-w-xl flex-col rounded-2xl border border-line bg-surface shadow-2xl overflow-hidden">
-
-        {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3.5">
-          <span className="shrink-0 text-muted">
-            <SearchIcon />
-          </span>
-          <input
-            ref={inputRef}
-            type="text"
-            value={state.query}
-            onChange={(e) => { onQueryChange(e.target.value); }}
-            onKeyDown={handleKeyDown}
-            placeholder={isFrench ? "Rechercher dans votre espace..." : "Search your workspace..."}
-            className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
-          />
-          {state.isLoading ? (
-            <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          ) : null}
-          <kbd
-            onClick={onClose}
-            className="hidden cursor-pointer rounded border border-line px-1.5 py-0.5 text-[10px] font-medium text-muted hover:text-foreground sm:block"
-          >
-            Esc
-          </kbd>
-        </div>
-
-        {/* Type filter pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto border-t border-line px-4 py-2 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => onTypeFilterChange("all")}
-            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-              state.typeFilter === "all"
-                ? "bg-accent text-white"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            {isFrench ? "Tout" : "All"}
-          </button>
-          {ALL_SEARCH_SOURCE_TYPES.map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => onTypeFilterChange(type)}
-              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-                state.typeFilter === type
-                  ? "bg-accent text-white"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              {SOURCE_TYPE_LABELS[type][isFrench ? "fr" : "en"]}
-            </button>
-          ))}
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
-            <input
-              type="date"
-              value={state.from}
-              onChange={(e) => onDateFilterChange("from", e.target.value)}
-              className="w-28 rounded border border-line bg-surface-soft px-1.5 py-0.5 text-[10px] text-muted outline-none focus:border-accent"
-              title={isFrench ? "Date de début" : "From"}
-            />
-            <span className="text-[10px] text-muted">–</span>
-            <input
-              type="date"
-              value={state.to}
-              onChange={(e) => onDateFilterChange("to", e.target.value)}
-              className="w-28 rounded border border-line bg-surface-soft px-1.5 py-0.5 text-[10px] text-muted outline-none focus:border-accent"
-              title={isFrench ? "Date de fin" : "To"}
-            />
-          </div>
-        </div>
-
-        {/* Results list */}
-        <div ref={listRef} className="max-h-[52vh] overflow-y-auto border-t border-line">
-          {state.errorMessage ? (
-            <p className="px-4 py-8 text-center text-sm text-rose-500">{state.errorMessage}</p>
-          ) : !hasQuery ? (
-            state.isLoadingRecent ? (
-              <div className="flex items-center justify-center py-12 text-muted">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-              </div>
-            ) : state.recentResults.length > 0 ? (
-              <div className="py-1">
-                <p className="px-4 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                  {isFrench ? "Récemment modifié" : "Recently modified"}
-                </p>
-                {state.recentResults.map((result, index) => (
-                  <SearchResultRow
-                    key={`recent-${result.sourceType}-${result.sourceId}`}
-                    result={result}
-                    locale={locale}
-                    query=""
-                    isFocused={index === focusedIndex}
-                    onClick={() => { onResultClick(result); onClose(); }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2 py-12 text-muted">
-                <svg className="h-8 w-8 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" strokeLinecap="round" />
-                </svg>
-                <p className="text-sm">
-                  {isFrench ? "Tapez au moins 2 caractères" : "Type at least 2 characters"}
-                </p>
-              </div>
-            )
-          ) : !hasResults && !state.isLoading ? (
-            <div className="flex flex-col items-center gap-2 py-12 text-muted">
-              <svg className="h-8 w-8 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" strokeLinecap="round" />
+      {!isLoading && statsCancelled > 0 ? (
+        <div className="shrink-0 px-4 pb-4 sm:px-6">
+          <div className="dialog-section-shell flex items-center gap-2 rounded-[22px] px-4 py-3 text-[11px] text-muted">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-elevated text-muted">
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="M4 4l8 8M12 4 4 12" strokeLinecap="round" />
               </svg>
-              <p className="text-sm">
-                {isFrench ? "Aucun résultat" : "No results found"}
-              </p>
-              <p className="text-xs opacity-60">
-                {isFrench ? `Aucun résultat pour « ${state.query} »` : `No matches for "${state.query}"`}
-              </p>
-            </div>
-          ) : (
-            <div className="py-1">
-              {state.results.map((result, index) => (
-                <SearchResultRow
-                  key={`${result.sourceType}-${result.sourceId}`}
-                  result={result}
-                  locale={locale}
-                  query={state.query}
-                  isFocused={index === focusedIndex}
-                  onClick={() => { onResultClick(result); onClose(); }}
-                />
-              ))}
-              {state.hasMore ? (
-                <div className="px-4 py-2">
-                  <button
-                    type="button"
-                    onClick={onLoadMore}
-                    disabled={state.isLoading}
-                    className="w-full rounded-lg border border-line py-2 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground disabled:opacity-50"
-                  >
-                    {state.isLoading
-                      ? (isFrench ? "Chargement..." : "Loading...")
-                      : (isFrench ? "Voir plus de résultats" : "Load more results")}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-line px-4 py-2">
-          <div className="flex items-center gap-3 text-[10px] text-muted">
-            <span>↑↓ {isFrench ? "naviguer" : "navigate"}</span>
-            <span>↵ {isFrench ? "ouvrir" : "open"}</span>
-            <span>Esc {isFrench ? "fermer" : "close"}</span>
-          </div>
-          {hasResults ? (
-            <p className="text-[10px] text-muted">
-              {state.totalCount} {isFrench ? "résultat(s)" : "result(s)"}
+            </span>
+            <p>
+              + {statsCancelled} {isFrench ? "tâche(s) annulée(s) non affichée(s) dans le Gantt" : "cancelled task(s)"}
             </p>
-          ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
-  );
-}
-
-function ProfileGlyph({ isLoggedIn }: { isLoggedIn: boolean }) {
-  if (isLoggedIn) {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
-        <circle cx="12" cy="8" r="3.2" />
-        <path d="M5 19c1.2-3.1 3.8-4.7 7-4.7s5.8 1.6 7 4.7" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
-      <path d="M11 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" />
-      <path d="M13 8l4 4-4 4" />
-      <path d="M7 12h10" />
-    </svg>
-  );
-}
-
-function AppNavbar({
-  locale,
-  user,
-  onLogout,
-  onOpenProfile,
-  onLogin,
-  alertsSummary,
-  isTaskAlertsPanelOpen = false,
-  onOpenTaskAlerts,
-  onOpenSearch,
-  isBusy = false,
-  isProjectPlanningOpen = false,
-  onOpenProjectPlanning,
-  showMonthlyReview = false,
-  showWeeklyReview = false,
-  activeSectionId = "",
-  isSidebarCollapsed = false,
-  onToggleSidebar,
-}: AppNavbarProps) {
-  const isLoggedIn = user !== null;
-  const isFrench = locale === "fr";
-  const profileLabel = user?.displayName ?? user?.email ?? (isFrench ? "Invite" : "Guest");
-  const initials = profileLabel.slice(0, 2).toUpperCase();
-  const taskAlertsCount = alertsSummary?.count ?? 0;
-  const taskAlertsLabel = isFrench ? "Alertes" : "Alerts";
-
-  const activeMobileTab =
-    ["overview", "dailyControls", "reminders"].includes(activeSectionId) ? "jour" :
-    activeSectionId === "board" ? "kanban" :
-    activeSectionId === "affirmation" ? "affirmation" :
-    ["bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview"].includes(activeSectionId) ? "bilan" :
-    ["notes", "gaming"].includes(activeSectionId) ? "espace" : "";
-
-  function navItem(ids: string | string[], collapsed: boolean) {
-    const idList = Array.isArray(ids) ? ids : [ids];
-    const isActive = idList.includes(activeSectionId);
-    if (collapsed) {
-      return `flex h-9 w-9 mx-auto items-center justify-center rounded-lg text-sm transition-colors duration-150 ${
-        isActive ? "bg-accent-soft text-accent border-l-2 border-accent" : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
-      }`;
-    }
-    return `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150 ${
-      isActive ? "bg-accent-soft text-accent border-l-2 border-accent" : "text-foreground/80 hover:bg-surface-soft hover:text-foreground"
-    }`;
-  }
-
-  function groupHeader(fr: string, en: string) {
-    if (isSidebarCollapsed) return <div className="my-2 mx-2 border-t border-line" />;
-    return (
-      <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-        {isFrench ? fr : en}
-      </p>
-    );
-  }
-
-  return (
-    <>
-      {/* ── Desktop Sidebar ─────────────────────────────────────────────── */}
-      <aside
-        className={`fixed left-0 top-0 z-30 hidden h-screen flex-col border-r border-line bg-surface transition-[width] duration-200 lg:flex ${
-          isSidebarCollapsed ? "w-[56px]" : "w-[260px]"
-        }`}
-      >
-        {/* Logo */}
-        <div className={`flex items-center gap-3 py-5 ${isSidebarCollapsed ? "justify-center px-0" : "px-5"}`}>
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-sm font-bold text-white">J</div>
-          {!isSidebarCollapsed && (
-            <div className="overflow-hidden">
-              <p className="truncate text-sm font-semibold text-foreground">{APP_NAME}</p>
-              <p className="text-[11px] text-muted">{isFrench ? "Planification quotidienne" : "Daily planner"}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Search */}
-        <div className={`pb-2 ${isSidebarCollapsed ? "flex justify-center px-2" : "px-3"}`}>
-          {isSidebarCollapsed ? (
-            <button
-              type="button"
-              onClick={onOpenSearch}
-              disabled={!onOpenSearch}
-              title={isFrench ? "Rechercher" : "Search"}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-surface-soft text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
-            >
-              <SearchIcon />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onOpenSearch}
-              disabled={!onOpenSearch}
-              className="flex w-full items-center gap-2.5 rounded-lg border border-line bg-surface-soft px-3 py-2 text-sm text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
-            >
-              <SearchIcon />
-              <span className="flex-1 text-left">{isFrench ? "Rechercher..." : "Search..."}</span>
-              <kbd className="rounded border border-line px-1.5 py-0.5 text-[10px] text-muted">⌘K</kbd>
-            </button>
-          )}
-        </div>
-
-        {/* Nav */}
-        <div className="flex-1 overflow-y-auto px-3">
-          <nav className="space-y-0.5">
-
-            {/* ── AUJOURD'HUI ── */}
-            {groupHeader("Aujourd'hui", "Today")}
-            <a href="#overview" title={isSidebarCollapsed ? (isFrench ? "Vue d'ensemble" : "Overview") : undefined} className={navItem("overview", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Vue d'ensemble" : "Overview")}
-            </a>
-            <a href="#dailyControls" title={isSidebarCollapsed ? (isFrench ? "Pilotage du jour" : "Day Controls") : undefined} className={navItem("dailyControls", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Pilotage du jour" : "Day Controls")}
-            </a>
-            <a href="#affirmation" title={isSidebarCollapsed ? "Affirmation" : undefined} className={navItem("affirmation", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
-              {!isSidebarCollapsed && "Affirmation"}
-            </a>
-            <a href="#reminders" title={isSidebarCollapsed ? (isFrench ? "Rappels" : "Reminders") : undefined} className={navItem("reminders", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 4a5 5 0 00-5 5v3l-1 2h12l-1-2V9a5 5 0 00-5-5zM8.5 16a1.5 1.5 0 003 0" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Rappels" : "Reminders")}
-            </a>
-            <a href="#bilan" title={isSidebarCollapsed ? (isFrench ? "Bilan du jour" : "Day Bilan") : undefined} className={navItem("bilan", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Bilan du jour" : "Day Bilan")}
-            </a>
-
-            {/* ── SEMAINE & MOIS ── */}
-            {groupHeader("Semaine & Mois", "Week & Month")}
-            <a href="#weeklyObjective" title={isSidebarCollapsed ? (isFrench ? "Objectif semaine" : "Weekly Objective") : undefined} className={navItem(["weeklyObjective", "weeklyReview"], isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Objectif de la semaine" : "Weekly Objective")}
-            </a>
-            {showWeeklyReview && (
-              <a href="#weeklyReview" title={isSidebarCollapsed ? (isFrench ? "Bilan semaine" : "Weekly Review") : undefined}
-                className={`${navItem("weeklyReview", isSidebarCollapsed)} ${activeSectionId !== "weeklyReview" ? "text-violet-700 hover:bg-violet-50 hover:text-violet-800" : ""}`}
-              >
-                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-violet-500" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 5h14M3 10h10M3 15h7" strokeLinecap="round"/><path d="M14 12l2 2 3-3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                {!isSidebarCollapsed && (isFrench ? "Bilan de la semaine" : "Weekly Review")}
-              </a>
-            )}
-            <a href="#monthlyObjective" title={isSidebarCollapsed ? (isFrench ? "Objectif du mois" : "Monthly Objective") : undefined} className={navItem(["monthlyObjective", "monthlyReview"], isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12h6M7 15h4" strokeLinecap="round"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Objectif du mois" : "Monthly Objective")}
-            </a>
-            {showMonthlyReview && (
-              <a href="#monthlyReview" title={isSidebarCollapsed ? (isFrench ? "Bilan du mois" : "Monthly Review") : undefined}
-                className={`${navItem("monthlyReview", isSidebarCollapsed)} ${activeSectionId !== "monthlyReview" ? "text-amber-700 hover:bg-amber-50 hover:text-amber-800" : ""}`}
-              >
-                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/><path d="M7 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                {!isSidebarCollapsed && (isFrench ? "Bilan du mois" : "Monthly Review")}
-              </a>
-            )}
-
-            {/* ── WORKSPACE ── */}
-            {groupHeader("Workspace", "Workspace")}
-            <a href="#board" title={isSidebarCollapsed ? (isFrench ? "Tableau Kanban" : "Kanban Board") : undefined} className={navItem("board", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>
-              {!isSidebarCollapsed && (isFrench ? "Tableau Kanban" : "Kanban Board")}
-            </a>
-            <button
-              type="button"
-              title={isSidebarCollapsed ? (isFrench ? "Planification projet" : "Project Planning") : undefined}
-              className={`${navItem("", isSidebarCollapsed)} ${isProjectPlanningOpen ? "bg-accent-soft text-accent" : ""}`}
-              onClick={onOpenProjectPlanning}
-              disabled={isBusy || !onOpenProjectPlanning}
-            >
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7">
-                <rect x="2" y="4" width="16" height="2.5" rx="1"/>
-                <rect x="2" y="8.75" width="11" height="2.5" rx="1"/>
-                <rect x="2" y="13.5" width="14" height="2.5" rx="1"/>
-              </svg>
-              {!isSidebarCollapsed && <span className="flex-1 text-left">{isFrench ? "Planification projet" : "Project Planning"}</span>}
-            </button>
-
-            {/* ── MON SUIVI ── */}
-            {groupHeader("Mon suivi", "My Track")}
-            <a href="#notes" title={isSidebarCollapsed ? "Notes" : undefined} className={navItem("notes", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>
-              {!isSidebarCollapsed && "Notes"}
-            </a>
-            <a href="#gaming" title="Gaming Track" className={navItem("gaming", isSidebarCollapsed)}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7">
-                <path d="M5 3h10l-1.5 7a3.5 3.5 0 01-7 0L5 3z" strokeLinejoin="round"/>
-                <path d="M10 13.5V16" strokeLinecap="round"/>
-                <path d="M7 16h6" strokeLinecap="round"/>
-                <path d="M3 3h2M15 3h2" strokeLinecap="round"/>
-              </svg>
-              {!isSidebarCollapsed && "Gaming Track"}
-            </a>
-            <button
-              type="button"
-              title={isSidebarCollapsed ? taskAlertsLabel : undefined}
-              className={`${navItem("", isSidebarCollapsed)} ${isTaskAlertsPanelOpen ? "bg-rose-50 text-rose-600" : ""}`}
-              onClick={onOpenTaskAlerts}
-              disabled={isBusy || !onOpenTaskAlerts}
-            >
-              <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
-                <BellIcon />
-                {taskAlertsCount > 0 && (
-                  <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
-                    {taskAlertsCount > 9 ? "9+" : taskAlertsCount}
-                  </span>
-                )}
-              </span>
-              {!isSidebarCollapsed && <span className="flex-1 text-left">{taskAlertsLabel}</span>}
-            </button>
-          </nav>
-        </div>
-
-        {/* Footer: user + collapse toggle */}
-        <div className="border-t border-line px-3 py-4">
-          {isLoggedIn && !isSidebarCollapsed && (
-            <>
-              <div className="flex items-center gap-3 rounded-lg px-2.5 py-2">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">{initials}</div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{profileLabel}</p>
-                </div>
-              </div>
-              <div className="mt-1 flex items-center gap-1 px-1">
-                <button type="button" className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenProfile} disabled={isBusy || !onOpenProfile}>
-                  {isFrench ? "Profil" : "Settings"}
-                </button>
-                <button type="button" className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-red-50 hover:text-red-500" onClick={onLogout} disabled={isBusy || !onLogout}>
-                  {isFrench ? "Deconnexion" : "Logout"}
-                </button>
-              </div>
-            </>
-          )}
-          {isLoggedIn && isSidebarCollapsed && (
-            <div className="mb-2 flex justify-center">
-              <button type="button" title={profileLabel} className="grid h-8 w-8 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent" onClick={onOpenProfile} disabled={isBusy || !onOpenProfile}>
-                {initials}
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={onToggleSidebar}
-            title={isSidebarCollapsed ? (isFrench ? "Développer" : "Expand") : (isFrench ? "Réduire" : "Collapse")}
-            className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground ${isSidebarCollapsed ? "mx-auto h-8 w-8 justify-center" : "w-full"}`}
-          >
-            <svg viewBox="0 0 20 20" className={`h-4 w-4 shrink-0 transition-transform duration-200 ${isSidebarCollapsed ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.7">
-              <path d="M12 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            {!isSidebarCollapsed && <span>{isFrench ? "Réduire" : "Collapse"}</span>}
-          </button>
-        </div>
-      </aside>
-
-      {/* ── Mobile Top Bar ─────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-3 backdrop-blur-sm lg:hidden">
-        <div className="flex items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-xs font-bold text-white">J</div>
-          <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isLoggedIn ? (
-            <>
-              <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenSearch} disabled={!onOpenSearch} aria-label={isFrench ? "Rechercher" : "Search"}>
-                <SearchIcon />
-              </button>
-              <button
-                type="button"
-                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${isTaskAlertsPanelOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-soft hover:text-foreground"}`}
-                onClick={onOpenTaskAlerts}
-                disabled={isBusy || !onOpenTaskAlerts}
-                aria-label={taskAlertsLabel}
-              >
-                <BellIcon />
-                {taskAlertsCount > 0 && (
-                  <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
-                    {taskAlertsCount > 9 ? "9+" : taskAlertsCount}
-                  </span>
-                )}
-              </button>
-            </>
-          ) : (
-            <button type="button" className={controlButtonClass} onClick={onLogin} disabled={isBusy || !onLogin}>
-              {isFrench ? "Connexion" : "Login"}
-            </button>
-          )}
-        </div>
-      </nav>
-
-      {/* ── Mobile Bottom Navigation ────────────────────────────────────── */}
-      {isLoggedIn && (
-        <nav
-          className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-line bg-surface/95 backdrop-blur-sm lg:hidden"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        >
-          {(
-            [
-              {
-                id: "jour",
-                href: "#overview",
-                label: isFrench ? "Jour" : "Day",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>,
-              },
-              {
-                id: "kanban",
-                href: "#board",
-                label: isFrench ? "Tâches" : "Tasks",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>,
-              },
-              {
-                id: "affirmation",
-                href: "#affirmation",
-                label: isFrench ? "Affirm." : "Affirm.",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>,
-              },
-              {
-                id: "bilan",
-                href: "#bilan",
-                label: "Bilan",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>,
-              },
-              {
-                id: "espace",
-                href: "#notes",
-                label: isFrench ? "Espace" : "Space",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>,
-              },
-            ] as const
-          ).map((tab) => (
-            <a
-              key={tab.id}
-              href={tab.href}
-              className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
-                activeMobileTab === tab.id ? "text-accent" : "text-muted hover:text-foreground"
-              }`}
-            >
-              {tab.icon}
-              {tab.label}
-            </a>
-          ))}
-          <button
-            type="button"
-            className="flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-muted transition-colors hover:text-foreground"
-            onClick={onOpenProfile}
-            disabled={isBusy || !onOpenProfile}
-          >
-            <span className="grid h-5 w-5 place-items-center rounded-full bg-accent-soft text-[9px] font-semibold text-accent">
-              {initials}
-            </span>
-            {isFrench ? "Profil" : "Profile"}
-          </button>
-        </nav>
-      )}
-    </>
   );
 }
 
@@ -5896,6 +4696,8 @@ type TaskCardProps = {
 
 function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: TaskCardProps) {
   const isFrench = locale === "fr";
+  const assigneeNames = parseAssigneeNames(task.assignees);
+  const descriptionPreview = task.description ? getRichTextPreviewText(task.description) : "";
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: task.id,
     disabled: isSaving,
@@ -5908,25 +4710,41 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
     <article
       ref={setNodeRef}
       style={style}
-      className={`group relative rounded-xl bg-surface px-4 py-3.5 shadow-sm transition-all duration-200 ${
-        isDragging ? "scale-[0.97] opacity-70 shadow-lg ring-2 ring-accent/20" : "hover:-translate-y-0.5 hover:shadow-md"
+      className={`task-card-shell group relative overflow-hidden rounded-[28px] px-5 py-5 transition-all duration-200 ${
+        isDragging ? "scale-[0.97] opacity-70 shadow-lg ring-2 ring-accent/20" : "hover:-translate-y-1 hover:shadow-[0_24px_48px_rgba(16,0,105,0.12)]"
       } ${isSaving ? "cursor-wait opacity-80" : "cursor-grab active:cursor-grabbing"}`}
       aria-busy={isSaving}
       {...attributes}
       {...listeners}
     >
-      <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-full ${
-        task.priority === "high" ? "bg-red-400" : task.priority === "medium" ? "bg-indigo-400" : "bg-slate-300"
+      <div className={`absolute inset-y-6 left-0 w-1 rounded-r-full ${
+        task.priority === "high" ? "bg-red-400" : task.priority === "medium" ? "bg-[#4f46e5]" : "bg-[#c7c4d8]"
       }`} />
-      <div className="flex items-start justify-between gap-2 pl-2">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-medium text-foreground">{task.title}</h3>
+
+      <div className="flex items-start justify-between gap-3 pl-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+            task.project
+              ? "bg-[#f2efff] text-[#4f46e5]"
+              : task.priority === "high"
+                ? "bg-red-50 text-red-600"
+                : task.priority === "medium"
+                  ? "bg-[#f5edff] text-[#581db3]"
+                  : "bg-[#f2efff] text-[#464555]"
+          }`}>
+            {task.project ?? formatPriority(task.priority, locale)}
+          </span>
+          {task.recurrenceSourceTaskId ? (
+            <span className="rounded-full bg-[#edf8d6] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#304f00]">
+              {isFrench ? "Recurrente" : "Recurring"}
+            </span>
+          ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover:opacity-100">
           <button
             type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onEdit(task)}
             disabled={isSaving}
@@ -5937,7 +4755,7 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
           </button>
           <button
             type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-red-50 hover:text-red-500"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-red-50 hover:text-red-500"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onDelete(task)}
             disabled={isSaving}
@@ -5949,39 +4767,65 @@ function TaskCard({ locale, task, isDragging, isSaving, onEdit, onDelete }: Task
         </div>
       </div>
 
-      {task.description ? (
-        <RichTextContent
-          value={task.description}
-          className="rich-text-render mt-1.5 pl-2 text-[13px] leading-5 text-muted"
-        />
-      ) : null}
+      <div className="pl-2 pt-3">
+        <h3 className="text-base font-semibold leading-6 text-foreground">{task.title}</h3>
+        {descriptionPreview ? (
+          <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-muted">
+            {descriptionPreview}
+          </p>
+        ) : null}
+      </div>
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5 pl-2">
-        <span
-          className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[task.priority]}`}
-        >
-          {formatPriority(task.priority, locale)}
+      <div className="mt-4 flex items-end justify-between gap-3 pl-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
+          {assigneeNames.length > 0 ? (
+            <div className="flex -space-x-2">
+              {assigneeNames.map((name) => (
+                <span
+                  key={name}
+                  title={name}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#e9e5ff] text-[10px] font-semibold text-[#3323cc]"
+                >
+                  {getMonogram(name)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <span
+            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[task.priority]}`}
+          >
+            {formatPriority(task.priority, locale)}
+          </span>
+          {task.dueDate ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#f5edff] px-2 py-0.5 text-[11px] text-[#581db3]">
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <rect x="2.25" y="3" width="11.5" height="10.5" rx="2" />
+                <path d="M5 1.75V4M11 1.75V4M2.25 6.25h11.5" strokeLinecap="round" />
+              </svg>
+              {formatDateOnlyForLocale(task.dueDate, locale)}
+            </span>
+          ) : null}
+          {typeof task.plannedTime === "number" ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <circle cx="8" cy="8" r="5.75" />
+                <path d="M8 4.5V8l2.75 1.5" strokeLinecap="round" />
+              </svg>
+              {formatPlannedTime(task.plannedTime)}
+            </span>
+          ) : null}
+          {task.calendarEventId ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#edf8d6] px-2 py-0.5 text-[11px] font-medium text-[#304f00]">
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M3 8h10M8 3v10" strokeLinecap="round" />
+              </svg>
+              {isFrench ? "Liee" : "Linked"}
+            </span>
+          ) : null}
+        </div>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+          {formatTaskStatus(task.status, locale)}
         </span>
-        {task.dueDate ? (
-          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-            {isFrench ? "Echeance" : "Due"} {formatDateOnlyForLocale(task.dueDate, locale)}
-          </span>
-        ) : null}
-        {task.project ? (
-          <span className="rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
-            {task.project}
-          </span>
-        ) : null}
-        {typeof task.plannedTime === "number" ? (
-          <span className="rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
-            {formatPlannedTime(task.plannedTime)}
-          </span>
-        ) : null}
-        {task.recurrenceSourceTaskId ? (
-          <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
-            {isFrench ? "Recurrente" : "Recurring"}
-          </span>
-        ) : null}
       </div>
     </article>
   );
@@ -6000,309 +4844,11 @@ function TaskColumn({ status, children }: TaskColumnProps) {
   return (
     <div
       ref={setNodeRef}
-      className={`mt-4 flex-1 space-y-3 overflow-y-auto rounded-2xl p-1 transition ${
+      className={`mt-3 flex-1 space-y-4 overflow-y-auto rounded-[24px] pt-1 transition ${
         isOver ? statusDropClassByStatus[status] : "bg-transparent"
       }`}
     >
       {children}
-    </div>
-  );
-}
-
-type AuthPanelProps = {
-  locale: UserLocale;
-  mode: AuthMode;
-  values: AuthFormValues;
-  isSubmitting: boolean;
-  errorMessage: string | null;
-  infoMessage: string | null;
-  onModeChange: (mode: AuthMode) => void;
-  onValueChange: (field: keyof AuthFormValues, value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-};
-
-function AuthPanel({
-  locale,
-  mode,
-  values,
-  isSubmitting,
-  errorMessage,
-  infoMessage,
-  onModeChange,
-  onValueChange,
-  onSubmit,
-}: AuthPanelProps) {
-  const isFrench = locale === "fr";
-  const submitLabel =
-    mode === "login"
-      ? isSubmitting
-        ? isFrench
-          ? "Connexion..."
-          : "Signing in..."
-        : isFrench
-        ? "Se connecter"
-        : "Sign in"
-      : mode === "register"
-      ? isSubmitting
-        ? isFrench
-          ? "Creation..."
-          : "Creating..."
-        : isFrench
-        ? "Creer un compte"
-        : "Create account"
-      : mode === "forgot_password"
-      ? isSubmitting
-        ? isFrench
-          ? "Preparation..."
-          : "Preparing..."
-        : isFrench
-        ? "Generer un jeton"
-        : "Generate reset token"
-      : isSubmitting
-      ? isFrench
-        ? "Reinitialisation..."
-        : "Resetting..."
-      : isFrench
-      ? "Reinitialiser le mot de passe"
-      : "Reset password";
-
-  const heading =
-    mode === "login"
-      ? isFrench
-        ? "Bon retour"
-        : "Welcome back"
-      : mode === "register"
-      ? isFrench
-        ? "Creer un compte"
-        : "Create your account"
-      : mode === "forgot_password"
-      ? isFrench
-        ? "Mot de passe oublie"
-        : "Forgot password"
-      : isFrench
-      ? "Nouveau mot de passe"
-      : "Set a new password";
-
-  const subtitle =
-    mode === "login"
-      ? isFrench
-        ? "Connectez-vous pour acceder a votre tableau."
-        : "Sign in to access your daily board."
-      : mode === "register"
-      ? isFrench
-        ? "Commencez a suivre vos taches maintenant."
-        : "Start tracking your tasks today."
-      : mode === "forgot_password"
-      ? isFrench
-        ? "Entrez votre email pour generer un jeton de reinitialisation."
-        : "Enter your email to generate a reset token."
-      : isFrench
-      ? "Collez le jeton si besoin puis choisissez un nouveau mot de passe."
-      : "Paste the token if needed, then choose a new password.";
-
-  return (
-    <div className="flex min-h-screen animate-fade-in">
-      {/* Left branding panel */}
-      <div className="hidden w-1/2 flex-col justify-between bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 p-12 lg:flex">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/20 text-lg font-bold text-white backdrop-blur-sm">J</div>
-            <p className="text-xl font-semibold text-white">{APP_NAME}</p>
-          </div>
-          <h1 className="mt-12 max-w-md text-4xl font-semibold leading-tight text-white">
-            {isFrench
-              ? "Organisez chaque journee avec intention."
-              : "Organize every day with intention."}
-          </h1>
-          <p className="mt-4 max-w-md text-base leading-7 text-indigo-200">{APP_TAGLINE}</p>
-
-          <div className="mt-10 space-y-4">
-            <div className="flex items-center gap-3 text-sm text-indigo-100">
-              <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/15">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l3.5 3.5L13 4.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
-              {isFrench ? "Planifiez par jour, gardez les priorites visibles" : "Plan by day, keep priorities visible"}
-            </div>
-            <div className="flex items-center gap-3 text-sm text-indigo-100">
-              <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/15">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l3.5 3.5L13 4.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
-              {isFrench ? "Glissez les taches entre les statuts" : "Drag tasks across statuses"}
-            </div>
-            <div className="flex items-center gap-3 text-sm text-indigo-100">
-              <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/15">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l3.5 3.5L13 4.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
-              {isFrench ? "Suivez votre progression et consistance" : "Track progress and consistency"}
-            </div>
-          </div>
-        </div>
-        <p className="text-xs text-indigo-300">&copy; {new Date().getFullYear()} {APP_NAME}</p>
-      </div>
-
-      {/* Right form panel */}
-      <div className="flex w-full flex-col items-center justify-center px-6 py-10 lg:w-1/2 lg:px-16">
-        <div className="w-full max-w-md">
-          <div className="mb-8 lg:hidden">
-            <div className="flex items-center gap-2.5">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-strong text-sm font-bold text-white">J</div>
-              <p className="text-lg font-semibold text-foreground">{APP_NAME}</p>
-            </div>
-          </div>
-
-          <h2 className="text-2xl font-semibold text-foreground">
-            {heading}
-          </h2>
-          <p className="mt-1.5 text-sm text-muted">
-            {subtitle}
-          </p>
-
-          {mode === "login" || mode === "register" ? (
-            <div className="mt-6 inline-flex rounded-lg bg-surface-soft p-1">
-              <button
-                type="button"
-                className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
-                  mode === "login" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
-                }`}
-                onClick={() => onModeChange("login")}
-                disabled={isSubmitting}
-              >
-                {isFrench ? "Connexion" : "Sign in"}
-              </button>
-              <button
-                type="button"
-                className={`rounded-md px-5 py-2 text-sm font-medium transition-all duration-200 ${
-                  mode === "register" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
-                }`}
-                onClick={() => onModeChange("register")}
-                disabled={isSubmitting}
-              >
-                {isFrench ? "Inscription" : "Register"}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="mt-6 text-sm font-medium text-accent hover:text-accent-strong"
-              onClick={() => onModeChange("login")}
-              disabled={isSubmitting}
-            >
-              {isFrench ? "Retour a la connexion" : "Back to sign in"}
-            </button>
-          )}
-
-          <form className="mt-6 space-y-4" onSubmit={onSubmit}>
-            {mode !== "reset_password" ? (
-              <label className="block text-sm font-medium text-foreground">
-                {isFrench ? "Email" : "Email"}
-                <input
-                  type="email"
-                  autoComplete="email"
-                  value={values.email}
-                  onChange={(event) => onValueChange("email", event.target.value)}
-                  className={textFieldClass}
-                  disabled={isSubmitting}
-                  placeholder="you@company.com"
-                  required
-                />
-              </label>
-            ) : null}
-
-            {mode === "reset_password" ? (
-              <label className="block text-sm font-medium text-foreground">
-                {isFrench ? "Jeton de reinitialisation" : "Reset token"}
-                <input
-                  type="text"
-                  autoComplete="one-time-code"
-                  value={values.resetToken}
-                  onChange={(event) => onValueChange("resetToken", event.target.value)}
-                  className={textFieldClass}
-                  disabled={isSubmitting}
-                  placeholder={isFrench ? "Collez le jeton ici" : "Paste the token here"}
-                  required
-                />
-              </label>
-            ) : null}
-
-            {mode !== "forgot_password" ? (
-              <label className="block text-sm font-medium text-foreground">
-                {mode === "reset_password"
-                  ? isFrench
-                    ? "Nouveau mot de passe"
-                    : "New password"
-                  : isFrench
-                  ? "Mot de passe"
-                  : "Password"}
-                <input
-                  type="password"
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  value={values.password}
-                  onChange={(event) => onValueChange("password", event.target.value)}
-                  className={textFieldClass}
-                  disabled={isSubmitting}
-                  minLength={8}
-                  required
-                />
-              </label>
-            ) : null}
-
-            {mode === "login" ? (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="text-sm font-medium text-accent hover:text-accent-strong"
-                  onClick={() => onModeChange("forgot_password")}
-                  disabled={isSubmitting}
-                >
-                  {isFrench ? "Mot de passe oublie ?" : "Forgot password?"}
-                </button>
-              </div>
-            ) : null}
-
-            {mode === "register" ? (
-              <label className="block text-sm font-medium text-foreground">
-                {isFrench ? "Nom affiche (optionnel)" : "Display Name (optional)"}
-                <input
-                  type="text"
-                  autoComplete="name"
-                  value={values.displayName}
-                  onChange={(event) => onValueChange("displayName", event.target.value)}
-                  className={textFieldClass}
-                  disabled={isSubmitting}
-                  placeholder={isFrench ? "Comment devons-nous vous appeler ?" : "How should we address you?"}
-                />
-              </label>
-            ) : null}
-
-            {infoMessage ? (
-              <p className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm text-sky-700">
-                {infoMessage}
-              </p>
-            ) : null}
-
-            {errorMessage ? (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
-                {errorMessage}
-              </p>
-            ) : null}
-
-            <button type="submit" className={`w-full py-3 ${primaryButtonClass}`} disabled={isSubmitting}>
-              {submitLabel}
-            </button>
-
-            {mode === "reset_password" ? (
-              <button
-                type="button"
-                className="w-full text-sm font-medium text-muted hover:text-foreground"
-                onClick={() => onModeChange("forgot_password")}
-                disabled={isSubmitting}
-              >
-                {isFrench ? "Generer un nouveau jeton" : "Generate a new token"}
-              </button>
-            ) : null}
-          </form>
-        </div>
-      </div>
     </div>
   );
 }
@@ -6342,15 +4888,6 @@ export function AppShell() {
   const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEventSummary[]>([]);
   const [isCalendarEventsLoading, setIsCalendarEventsLoading] = useState(false);
-  const [calendarEventNoteDrafts, setCalendarEventNoteDrafts] = useState<Record<string, string>>({});
-  const [pendingCalendarEventNoteIds, setPendingCalendarEventNoteIds] = useState<string[]>([]);
-  const [calendarEventNoteAttachments, setCalendarEventNoteAttachments] = useState<Record<string, CalendarEventNoteAttachment[]>>({});
-  const [calendarEventNoteAttachmentNameDraft, setCalendarEventNoteAttachmentNameDraft] = useState("");
-  const [calendarEventNoteAttachmentFileDraft, setCalendarEventNoteAttachmentFileDraft] = useState<File | null>(null);
-  const calendarEventNoteAttachmentFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [calendarEventNoteAttachmentErrorMessage, setCalendarEventNoteAttachmentErrorMessage] = useState<string | null>(null);
-  const [isCreatingCalendarEventNoteAttachment, setIsCreatingCalendarEventNoteAttachment] = useState(false);
-  const [pendingCalendarEventNoteAttachmentIds, setPendingCalendarEventNoteAttachmentIds] = useState<string[]>([]);
   const [pendingCalendarEventTaskIds, setPendingCalendarEventTaskIds] = useState<string[]>([]);
   const [expandedCalendarEventId, setExpandedCalendarEventId] = useState<string | null>(null);
   const [calendarEventSearchQuery, setCalendarEventSearchQuery] = useState("");
@@ -6366,14 +4903,7 @@ export function AppShell() {
   const [isCarryingOverYesterday, setIsCarryingOverYesterday] = useState(false);
   const [carryOverMessage, setCarryOverMessage] = useState<string | null>(null);
   const [carryOverErrorMessage, setCarryOverErrorMessage] = useState<string | null>(null);
-  const [dashboardBlockOrder, setDashboardBlockOrder] = useState<DashboardBlockId[]>(
-    () => getInitialDashboardLayoutConfig().order
-  );
-  const [dashboardBlockCollapsed, setDashboardBlockCollapsed] = useState<Record<DashboardBlockId, boolean>>(
-    () => getInitialDashboardLayoutConfig().collapsed
-  );
-  const [draggedDashboardBlockId, setDraggedDashboardBlockId] = useState<DashboardBlockId | null>(null);
-  const [dashboardDropTargetId, setDashboardDropTargetId] = useState<DashboardBlockId | null>(null);
+  const dashboardBlockCollapsed = VISIBLE_DASHBOARD_BLOCKS;
   const [dayAffirmation, setDayAffirmation] = useState<DayAffirmation | null>(null);
   const [dayAffirmationDraft, setDayAffirmationDraft] = useState("");
   const dayAffirmationDraftRef = useRef(dayAffirmationDraft);
@@ -6402,10 +4932,12 @@ export function AppShell() {
   const [weeklyObjective, setWeeklyObjective] = useState<string>("");
   const [weeklyReview, setWeeklyReview] = useState<string>("");
   const [weeklyEntryErrorMessage, setWeeklyEntryErrorMessage] = useState<string | null>(null);
+  const [weeklyEntrySuccessMessage, setWeeklyEntrySuccessMessage] = useState<string | null>(null);
   const [monthlyEntry, setMonthlyEntry] = useState<MonthlyEntry | null>(null);
   const [monthlyObjective, setMonthlyObjective] = useState<string>("");
   const [monthlyReview, setMonthlyReview] = useState<string>("");
   const [monthlyEntryErrorMessage, setMonthlyEntryErrorMessage] = useState<string | null>(null);
+  const [monthlyEntrySuccessMessage, setMonthlyEntrySuccessMessage] = useState<string | null>(null);
   const [navigationBlockers, setNavigationBlockers] = useState<string[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isLoadingReminders, setIsLoadingReminders] = useState(false);
@@ -6698,7 +5230,7 @@ export function AppShell() {
   const activeTimeZone = authUser?.preferredTimeZone ?? null;
   const taskAlertsAnchorDate = getCurrentDateInputValue(activeTimeZone ?? getBrowserTimeZone());
   const alertRemindersHorizonDate = shiftDate(taskAlertsAnchorDate, 1);
-  const dashboardIconButtonClass = `${iconButtonClass} h-9 w-9 rounded-xl px-0`;
+  const dashboardIconButtonClass = `${iconButtonClass} h-10 w-10 rounded-2xl px-0`;
   const alertPanelItems = useMemo(() => {
     const taskItems: AlertPanelItem[] = (taskAlertsSummary?.tasks ?? []).flatMap((task) => {
       if (!task.dueDate) {
@@ -6768,50 +5300,6 @@ export function AppShell() {
 
     return summary;
   }, [alertPanelItems]);
-  const dashboardBlockOrderIndex = useMemo(() => {
-    const fallbackIndex = Object.fromEntries(
-      DASHBOARD_BLOCK_IDS.map((blockId, index) => [blockId, index])
-    ) as Record<DashboardBlockId, number>;
-
-    dashboardBlockOrder.forEach((blockId, index) => {
-      fallbackIndex[blockId] = index;
-    });
-
-    return fallbackIndex;
-  }, [dashboardBlockOrder]);
-  const getDashboardBlockVisualOrder = useCallback(
-    (blockId: DashboardBlockId, offset = 0) => (dashboardBlockOrderIndex[blockId] ?? 0) * 10 + offset,
-    [dashboardBlockOrderIndex]
-  );
-  const isAllDashboardBlocksCollapsed = DASHBOARD_BLOCK_IDS.every((blockId) => dashboardBlockCollapsed[blockId]);
-  const getCollapseToggleLabel = (isCollapsed: boolean) =>
-    isCollapsed
-      ? isFrench
-        ? "Developper"
-        : "Expand"
-      : isFrench
-      ? "Reduire"
-      : "Collapse";
-  const getCollapseToggleAriaLabel = (blockId: DashboardBlockId, isCollapsed: boolean) => {
-    const blockLabel = formatDashboardBlockLabel(blockId, activeLocale);
-    const action = getCollapseToggleLabel(isCollapsed);
-    return `${action} ${blockLabel}`;
-  };
-  const getDashboardDragHandleLabel = (blockId: DashboardBlockId) => {
-    const blockLabel = formatDashboardBlockLabel(blockId, activeLocale);
-    return isFrench ? `Deplacer ${blockLabel}` : `Move ${blockLabel}`;
-  };
-  const getDashboardDropClassName = (blockId: DashboardBlockId) =>
-    draggedDashboardBlockId && dashboardDropTargetId === blockId
-      ? "ring-2 ring-accent/35 ring-offset-2 ring-offset-surface"
-      : "";
-  const collapseAllBlocksButtonLabel = isAllDashboardBlocksCollapsed
-    ? isFrench
-      ? "Developper tous les blocs"
-      : "Expand all blocks"
-    : isFrench
-    ? "Reduire tous les blocs"
-    : "Collapse all blocks";
   const collapsedHintLabel = isFrench ? "Bloc replie." : "Block collapsed.";
   const isEditingGeneratedTask =
     taskDialogMode === "edit" && (editingTask?.recurrenceSourceTaskId ?? null) !== null;
@@ -6875,10 +5363,6 @@ export function AppShell() {
     setGoogleCalendarError(null);
     setCalendarEvents([]);
     setIsCalendarEventsLoading(false);
-    setCalendarEventNoteDrafts({});
-    setPendingCalendarEventNoteIds([]);
-    setCalendarEventNoteAttachments({});
-    setPendingCalendarEventNoteAttachmentIds([]);
     setPendingCalendarEventTaskIds([]);
     setExpandedCalendarEventId(null);
     setCalendarEventSearchQuery("");
@@ -6889,8 +5373,6 @@ export function AppShell() {
     setIsCarryingOverYesterday(false);
     setCarryOverMessage(null);
     setCarryOverErrorMessage(null);
-    setDraggedDashboardBlockId(null);
-    setDashboardDropTargetId(null);
     dayAffirmationCacheRef.current = {};
     applyDayAffirmationState(null);
     setIsDayAffirmationLoading(false);
@@ -7233,7 +5715,6 @@ export function AppShell() {
   async function fetchCalendarEvents(date: string, forceLoad = false) {
     if (!authToken || (!forceLoad && googleCalendarConnections.length === 0)) {
       setCalendarEvents([]);
-      setCalendarEventNoteDrafts({});
       setExpandedCalendarEventId(null);
       return;
     }
@@ -7246,18 +5727,13 @@ export function AppShell() {
         const payload = await response.json();
         const nextEvents = (payload.data ?? []) as CalendarEventSummary[];
         setCalendarEvents(nextEvents);
-        setCalendarEventNoteDrafts(
-          Object.fromEntries(nextEvents.map((event) => [event.id, event.note?.body ?? ""]))
-        );
         setExpandedCalendarEventId(null);
       } else {
         setCalendarEvents([]);
-        setCalendarEventNoteDrafts({});
         setExpandedCalendarEventId(null);
       }
     } catch {
       setCalendarEvents([]);
-      setCalendarEventNoteDrafts({});
       setExpandedCalendarEventId(null);
     } finally {
       setIsCalendarEventsLoading(false);
@@ -7289,134 +5765,6 @@ export function AppShell() {
       );
     } finally {
       setIsGoogleCalendarSyncing(false);
-    }
-  }
-
-  async function handleSaveCalendarEventNote(eventId: string) {
-    if (!authToken) return;
-    const draft = (calendarEventNoteDrafts[eventId] ?? "").trim();
-    if (!draft) {
-      setGoogleCalendarError(
-        isFrench ? "La note de l'evenement ne peut pas etre vide." : "Calendar event note cannot be empty."
-      );
-      return;
-    }
-
-    setGoogleCalendarError(null);
-    setPendingCalendarEventNoteIds((current) =>
-      current.includes(eventId) ? current : [...current, eventId]
-    );
-
-    try {
-      const note = await saveCalendarEventNote(eventId, draft, authToken);
-      setCalendarEvents((current) =>
-        current.map((event) => (event.id === eventId ? { ...event, note } : event))
-      );
-      setCalendarEventNoteDrafts((current) => ({
-        ...current,
-        [eventId]: note.body,
-      }));
-    } catch (error) {
-      setGoogleCalendarError(
-        error instanceof Error
-          ? error.message
-          : isFrench
-          ? "Impossible d'enregistrer la note de l'evenement."
-          : "Unable to save calendar event note."
-      );
-    } finally {
-      setPendingCalendarEventNoteIds((current) => current.filter((candidate) => candidate !== eventId));
-    }
-  }
-
-  async function handleDeleteCalendarEventNote(eventId: string) {
-    if (!authToken) return;
-
-    setGoogleCalendarError(null);
-    setPendingCalendarEventNoteIds((current) =>
-      current.includes(eventId) ? current : [...current, eventId]
-    );
-
-    try {
-      await deleteCalendarEventNote(eventId, authToken);
-      setCalendarEvents((current) =>
-        current.map((event) => (event.id === eventId ? { ...event, note: null } : event))
-      );
-      setCalendarEventNoteDrafts((current) => ({
-        ...current,
-        [eventId]: "",
-      }));
-    } catch (error) {
-      setGoogleCalendarError(
-        error instanceof Error
-          ? error.message
-          : isFrench
-          ? "Impossible de supprimer la note de l'evenement."
-          : "Unable to delete calendar event note."
-      );
-    } finally {
-      setPendingCalendarEventNoteIds((current) => current.filter((candidate) => candidate !== eventId));
-    }
-  }
-
-  async function handleLoadCalendarEventNoteAttachments(eventId: string) {
-    if (!authToken || calendarEventNoteAttachments[eventId]) return;
-    try {
-      const attachments = await loadCalendarEventNoteAttachments(eventId, authToken);
-      setCalendarEventNoteAttachments((prev) => ({ ...prev, [eventId]: attachments }));
-    } catch {
-      setCalendarEventNoteAttachments((prev) => ({ ...prev, [eventId]: [] }));
-    }
-  }
-
-  async function handleCreateCalendarEventNoteAttachment(eventId: string) {
-    if (!authToken || isCreatingCalendarEventNoteAttachment) return;
-    const file = calendarEventNoteAttachmentFileDraft;
-    const name = calendarEventNoteAttachmentNameDraft.trim() || file?.name?.trim() || "";
-
-    if (!name) {
-      setCalendarEventNoteAttachmentErrorMessage(isFrench ? "Le nom de la piece jointe est requis." : "Attachment name is required.");
-      return;
-    }
-    if (!file) {
-      setCalendarEventNoteAttachmentErrorMessage(isFrench ? "Veuillez selectionner un fichier." : "Please select a file.");
-      return;
-    }
-
-    setCalendarEventNoteAttachmentErrorMessage(null);
-    setIsCreatingCalendarEventNoteAttachment(true);
-
-    try {
-      const attachment = await createCalendarEventNoteAttachmentApi(eventId, { name, file }, authToken);
-      setCalendarEventNoteAttachments((prev) => ({
-        ...prev,
-        [eventId]: [...(prev[eventId] ?? []), attachment],
-      }));
-      setCalendarEventNoteAttachmentNameDraft("");
-      setCalendarEventNoteAttachmentFileDraft(null);
-      if (calendarEventNoteAttachmentFileInputRef.current) calendarEventNoteAttachmentFileInputRef.current.value = "";
-    } catch (error) {
-      setCalendarEventNoteAttachmentErrorMessage(
-        error instanceof Error ? error.message : isFrench ? "Impossible d'ajouter le document." : "Unable to add document."
-      );
-    } finally {
-      setIsCreatingCalendarEventNoteAttachment(false);
-    }
-  }
-
-  async function handleDeleteCalendarEventNoteAttachment(eventId: string, attachmentId: string) {
-    if (!authToken) return;
-    setPendingCalendarEventNoteAttachmentIds((prev) => [...prev, attachmentId]);
-    try {
-      await deleteCalendarEventNoteAttachmentApi(eventId, attachmentId, authToken);
-      setCalendarEventNoteAttachments((prev) => ({
-        ...prev,
-        [eventId]: (prev[eventId] ?? []).filter((a) => a.id !== attachmentId),
-      }));
-    } catch {
-      // silent
-    } finally {
-      setPendingCalendarEventNoteAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
     }
   }
 
@@ -7794,10 +6142,12 @@ export function AppShell() {
     setWeeklyObjective("");
     setWeeklyReview("");
     setWeeklyEntryErrorMessage(null);
+    setWeeklyEntrySuccessMessage(null);
     setMonthlyEntry(null);
     setMonthlyObjective("");
     setMonthlyReview("");
     setMonthlyEntryErrorMessage(null);
+    setMonthlyEntrySuccessMessage(null);
     setNavigationBlockers([]);
     setGamingTrackErrorMessage(null);
     setAssistantErrorMessage(null);
@@ -7814,92 +6164,6 @@ export function AppShell() {
     resetTaskDetailsState();
 
     setSelectedDate(nextDate);
-  }
-
-  function toggleDashboardBlock(blockId: DashboardBlockId) {
-    setDashboardBlockCollapsed((currentState) => ({
-      ...currentState,
-      [blockId]: !currentState[blockId],
-    }));
-  }
-
-  function handleToggleAllDashboardBlocks() {
-    setDashboardBlockCollapsed((currentState) => {
-      const shouldCollapseAll = DASHBOARD_BLOCK_IDS.some((blockId) => !currentState[blockId]);
-      const nextState = { ...currentState };
-
-      for (const blockId of DASHBOARD_BLOCK_IDS) {
-        nextState[blockId] = shouldCollapseAll;
-      }
-
-      return nextState;
-    });
-  }
-
-  function moveDashboardBlock(sourceId: DashboardBlockId, targetId: DashboardBlockId) {
-    if (sourceId === targetId) {
-      return;
-    }
-
-    setDashboardBlockOrder((currentOrder) => {
-      const sourceIndex = currentOrder.indexOf(sourceId);
-      const targetIndex = currentOrder.indexOf(targetId);
-      if (sourceIndex < 0 || targetIndex < 0) {
-        return currentOrder;
-      }
-
-      const nextOrder = [...currentOrder];
-      nextOrder.splice(sourceIndex, 1);
-      nextOrder.splice(targetIndex, 0, sourceId);
-      return nextOrder;
-    });
-  }
-
-  function handleDashboardBlockDragStart(blockId: DashboardBlockId, event: ReactDragEvent<HTMLButtonElement>) {
-    setDraggedDashboardBlockId(blockId);
-    setDashboardDropTargetId(blockId);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", blockId);
-  }
-
-  function handleDashboardBlockDragOver(blockId: DashboardBlockId, event: ReactDragEvent<HTMLElement>) {
-    const sourceIdFromTransfer = event.dataTransfer.getData("text/plain");
-    const sourceId =
-      typeof sourceIdFromTransfer === "string" && isDashboardBlockId(sourceIdFromTransfer)
-        ? sourceIdFromTransfer
-        : draggedDashboardBlockId;
-
-    if (!sourceId || sourceId === blockId) {
-      return;
-    }
-
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-
-    if (dashboardDropTargetId !== blockId) {
-      setDashboardDropTargetId(blockId);
-    }
-  }
-
-  function handleDashboardBlockDrop(blockId: DashboardBlockId, event: ReactDragEvent<HTMLElement>) {
-    event.preventDefault();
-    const sourceIdFromTransfer = event.dataTransfer.getData("text/plain");
-    const sourceId =
-      typeof sourceIdFromTransfer === "string" && isDashboardBlockId(sourceIdFromTransfer)
-        ? sourceIdFromTransfer
-        : draggedDashboardBlockId;
-
-    if (sourceId && sourceId !== blockId) {
-      moveDashboardBlock(sourceId, blockId);
-    }
-
-    setDraggedDashboardBlockId(null);
-    setDashboardDropTargetId(null);
-  }
-
-  function handleDashboardBlockDragEnd() {
-    setDraggedDashboardBlockId(null);
-    setDashboardDropTargetId(null);
   }
 
   function refreshTaskAlerts() {
@@ -8188,10 +6452,13 @@ export function AppShell() {
     if (!authToken) return;
     const dateObj = parseDateInput(selectedDate);
     const { year, week } = getISOWeekYear(dateObj);
+    setWeeklyEntryErrorMessage(null);
+    setWeeklyEntrySuccessMessage(null);
     try {
       const saved = await upsertWeeklyEntry({ year, week, objective: weeklyObjective }, authToken);
       setWeeklyEntry(saved);
       setWeeklyObjective(saved.objective ?? "");
+      setWeeklyEntrySuccessMessage(isFrench ? "Objectif hebdomadaire enregistré." : "Weekly objective saved.");
     } catch (error) {
       setWeeklyEntryErrorMessage(
         error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer l'objectif hebdomadaire." : "Unable to save weekly objective."
@@ -8203,10 +6470,13 @@ export function AppShell() {
     if (!authToken) return;
     const dateObj = parseDateInput(selectedDate);
     const { year, week } = getISOWeekYear(dateObj);
+    setWeeklyEntryErrorMessage(null);
+    setWeeklyEntrySuccessMessage(null);
     try {
       const saved = await upsertWeeklyEntry({ year, week, review: weeklyReview }, authToken);
       setWeeklyEntry(saved);
       setWeeklyReview(saved.review ?? "");
+      setWeeklyEntrySuccessMessage(isFrench ? "Bilan hebdomadaire enregistré." : "Weekly review saved.");
     } catch (error) {
       setWeeklyEntryErrorMessage(
         error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer le bilan hebdomadaire." : "Unable to save weekly review."
@@ -8219,10 +6489,13 @@ export function AppShell() {
     const dateObj = parseDateInput(selectedDate);
     const year = dateObj.getFullYear();
     const month = dateObj.getMonth() + 1;
+    setMonthlyEntryErrorMessage(null);
+    setMonthlyEntrySuccessMessage(null);
     try {
       const saved = await upsertMonthlyEntry({ year, month, objective: monthlyObjective }, authToken);
       setMonthlyEntry(saved);
       setMonthlyObjective(saved.objective ?? "");
+      setMonthlyEntrySuccessMessage(isFrench ? "Objectif mensuel enregistré." : "Monthly objective saved.");
     } catch (error) {
       setMonthlyEntryErrorMessage(
         error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer l'objectif mensuel." : "Unable to save monthly objective."
@@ -8235,10 +6508,13 @@ export function AppShell() {
     const dateObj = parseDateInput(selectedDate);
     const year = dateObj.getFullYear();
     const month = dateObj.getMonth() + 1;
+    setMonthlyEntryErrorMessage(null);
+    setMonthlyEntrySuccessMessage(null);
     try {
       const saved = await upsertMonthlyEntry({ year, month, review: monthlyReview }, authToken);
       setMonthlyEntry(saved);
       setMonthlyReview(saved.review ?? "");
+      setMonthlyEntrySuccessMessage(isFrench ? "Bilan mensuel enregistré." : "Monthly review saved.");
     } catch (error) {
       setMonthlyEntryErrorMessage(
         error instanceof Error ? error.message : isFrench ? "Impossible d'enregistrer le bilan mensuel." : "Unable to save monthly review."
@@ -8665,15 +6941,6 @@ export function AppShell() {
     } finally {
       setPendingReminderAttachmentIds((prev) => prev.filter((id) => id !== attachmentId));
     }
-  }
-
-  async function refreshGamingTrackSummary() {
-    if (!authToken) {
-      return;
-    }
-
-    const summary = await loadGamingTrackSummary(selectedDate, gamingTrackPeriod, authToken);
-    setGamingTrackSummary(summary);
   }
 
   function updateTaskFormField(field: keyof TaskFormValues, value: string | null) {
@@ -9371,16 +7638,6 @@ export function AppShell() {
   }, [activeLocale]);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      DASHBOARD_LAYOUT_STORAGE_KEY,
-      JSON.stringify({
-        order: dashboardBlockOrder,
-        collapsed: dashboardBlockCollapsed,
-      })
-    );
-  }, [dashboardBlockCollapsed, dashboardBlockOrder]);
-
-  useEffect(() => {
     if (!isAuthReady) {
       return;
     }
@@ -9983,6 +8240,38 @@ export function AppShell() {
         : isFrench
           ? "Enregistrer les modifications"
           : "Save changes";
+  const unresolvedReminders = reminders.filter((reminder) => !isReminderResolvedStatus(reminder.status));
+  const reminderPastDueCount = unresolvedReminders.filter(
+    (reminder) => new Date(reminder.remindAt).getTime() < Date.now()
+  ).length;
+  const reminderUpcomingCount = unresolvedReminders.length - reminderPastDueCount;
+  const nextActiveReminder = sortRemindersByRemindAt(unresolvedReminders)[0] ?? null;
+  const reminderPeoplePreview = Array.from(
+    new Set(unresolvedReminders.flatMap((reminder) => parseAssigneeNames(reminder.assignees)))
+  ).slice(0, 4);
+  const noteStandaloneCount = notes.filter((note) => !note.linkedCalendarEvent).length;
+  const noteLinkedCount = notes.length - noteStandaloneCount;
+  const noteScheduledCount = notes.filter((note) => note.targetDate).length;
+  const latestUpdatedNote = notes.reduce<Note | null>((latest, note) => {
+    if (!latest) {
+      return note;
+    }
+
+    return new Date(note.updatedAt).getTime() > new Date(latest.updatedAt).getTime() ? note : latest;
+  }, null);
+  const noteDialogAttachmentCount =
+    noteDialogMode === "edit" && editingNoteId ? (noteAttachments[editingNoteId] ?? []).length : 0;
+  const selectedNoteCalendarEventTitle =
+    noteCalendarEventOptions.find((eventOption) => eventOption.id === noteFormValues.calendarEventId)?.title ??
+    editingNote?.linkedCalendarEvent?.title ??
+    null;
+  const noteDialogPreview = getRichTextPreviewText(noteFormValues.body);
+  const reminderDialogAttachmentCount =
+    reminderDialogMode === "edit" && editingReminderId ? (reminderAttachments[editingReminderId] ?? []).length : 0;
+  const reminderDialogAssigneePreview = parseAssigneeNames(reminderFormValues.assignees).slice(0, 4);
+  const reminderDialogScheduleLabel = reminderFormValues.remindAt
+    ? formatDateTime(reminderFormValues.remindAt, activeLocale, activeTimeZone)
+    : null;
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
   const isAffirmationCompleted = dayAffirmation?.isCompleted ?? false;
@@ -9991,6 +8280,21 @@ export function AppShell() {
   const completedItemCount = tasksByStatus.done.length + (isAffirmationCompleted ? 1 : 0);
   const completionRate =
     completionItemCount === 0 ? 0 : Math.round((completedItemCount / completionItemCount) * 100);
+  const dashboardAlertPreviewItems = alertPanelItems.slice(0, 3);
+  const dashboardCalendarPreviewEvents = calendarEvents.slice(0, 4);
+  const dashboardAffirmationPreview = getRichTextPreviewText(dayAffirmationDraft);
+  const dashboardBilanWinsPreview = getRichTextPreviewText(dayBilanFormValues.wins);
+  const dashboardBilanBlockersPreview = getRichTextPreviewText(dayBilanFormValues.blockers);
+  const dashboardBilanLessonsPreview = getRichTextPreviewText(dayBilanFormValues.lessonsLearned);
+  const dashboardBilanTomorrowPreview = getRichTextPreviewText(dayBilanFormValues.tomorrowTop3);
+  const boardPeoplePreview = Array.from(
+    new Set(filteredTasks.flatMap((task) => parseAssigneeNames(task.assignees)))
+  ).slice(0, 4);
+  const boardActiveFilterCount =
+    Number(taskFilterValues.query.trim().length > 0) +
+    Number(taskFilterValues.status !== "all") +
+    Number(taskFilterValues.priority !== "all") +
+    Number(taskFilterValues.project.length > 0);
   const gamingTrackPeriodLabel = formatGamingTrackPeriod(gamingTrackPeriod, activeLocale);
   const gamingTrackRangeLabel = gamingTrackSummary
     ? gamingTrackSummary.rangeStart === gamingTrackSummary.rangeEnd
@@ -10228,6 +8532,18 @@ export function AppShell() {
     }
   }
 
+  const selectedDateObj = parseDateInput(selectedDate);
+  const showWeeklyObjectiveSurface =
+    Boolean(authUser?.requireWeeklySynthesis) || !isRichTextEmpty(weeklyObjective);
+  const showWeeklyReviewSurface =
+    (Boolean(authUser?.requireWeeklySynthesis) || !isRichTextEmpty(weeklyReview)) &&
+    isSunday(selectedDateObj);
+  const showMonthlyObjectiveSurface =
+    Boolean(authUser?.requireMonthlySynthesis) || !isRichTextEmpty(monthlyObjective);
+  const showMonthlyReviewSurface =
+    (Boolean(authUser?.requireMonthlySynthesis) || !isRichTextEmpty(monthlyReview)) &&
+    isLastDayOfMonth(selectedDateObj);
+
   return (
     <div className="min-h-screen bg-background">
       {isSearchModalOpen ? (
@@ -10254,8 +8570,11 @@ export function AppShell() {
         isBusy={isMutationPending || isLoading}
         isProjectPlanningOpen={isProjectPlanningOpen}
         onOpenProjectPlanning={openProjectPlanning}
-        showMonthlyReview={isLastDayOfMonth(parseDateInput(selectedDate))}
-        showWeeklyReview={isSunday(parseDateInput(selectedDate))}
+        onCreateTask={() => openCreateTaskDialog()}
+        showMonthlyObjective={showMonthlyObjectiveSurface}
+        showMonthlyReview={showMonthlyReviewSurface}
+        showWeeklyObjective={showWeeklyObjectiveSurface}
+        showWeeklyReview={showWeeklyReviewSurface}
         activeSectionId={activeSectionId}
         isSidebarCollapsed={isSidebarCollapsed}
         onToggleSidebar={() => {
@@ -10298,131 +8617,810 @@ export function AppShell() {
       />
     ) : null}
 
-    <div className={`flex min-h-screen flex-col gap-6 px-4 py-6 pb-24 sm:px-8 lg:pb-8 lg:px-10 lg:py-8 ${isSidebarCollapsed ? "lg:ml-[56px]" : "lg:ml-[260px]"} transition-[margin] duration-200`}>
-      <div className="flex items-center justify-between">
-        <div />
+    <div className={`fixed right-0 top-0 z-20 hidden h-[78px] items-center justify-between border-b border-line/40 bg-surface-soft/88 px-8 shadow-[0_20px_44px_rgba(16,0,105,0.06)] backdrop-blur-xl transition-[left] duration-200 lg:flex ${isSidebarCollapsed ? "left-[56px]" : "left-[260px]"}`}>
+      <div className="flex items-center gap-4">
         <button
           type="button"
           className={controlIconButtonClass}
-          onClick={handleToggleAllDashboardBlocks}
-          aria-label={collapseAllBlocksButtonLabel}
-          title={collapseAllBlocksButtonLabel}
+          onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
+          disabled={isMutationPending}
+          aria-label={isFrench ? "Jour precedent" : "Previous day"}
         >
-          <LayoutToggleIcon collapsed={isAllDashboardBlocksCollapsed} />
+          <ArrowLeftIcon />
+        </button>
+        <div className="min-w-[180px] text-center">
+          <h1 className="text-2xl font-black tracking-[-0.04em] text-accent">
+            {getDateHeading(selectedDate, activeLocale)}
+          </h1>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">
+            {isFrench ? "Contexte actif" : "Active context"}
+          </p>
+        </div>
+        <button
+          type="button"
+          className={controlIconButtonClass}
+          onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
+          disabled={isMutationPending}
+          aria-label={isFrench ? "Jour suivant" : "Next day"}
+        >
+          <ArrowRightIcon />
+        </button>
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(event) => {
+            if (event.target.value) {
+              handleDateChange(event.target.value);
+            }
+          }}
+          disabled={isMutationPending}
+          className="ml-2 hidden rounded-full border border-line bg-white/84 px-4 py-2.5 text-sm text-foreground outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15 xl:block"
+        />
+        <button
+          type="button"
+          className={`${controlButtonClass} hidden xl:inline-flex`}
+          onClick={() => handleDateChange(toDateInputValue(new Date()))}
+          disabled={isMutationPending}
+        >
+          {isFrench ? "Aujourd'hui" : "Today"}
         </button>
       </div>
 
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          className="segmented-surface hidden w-56 items-center gap-2.5 rounded-full px-4 py-2.5 text-sm text-muted transition-colors hover:text-accent xl:flex 2xl:w-80"
+          onClick={() => setIsSearchModalOpen(true)}
+        >
+          <SearchIcon />
+          <span className="flex-1 text-left">{isFrench ? "Rechercher dans Jotly..." : "Search workspace..."}</span>
+          <kbd className="rounded border border-line px-1.5 py-0.5 text-[10px] text-muted">⌘K</kbd>
+        </button>
+        <button
+          type="button"
+          className={`${controlIconButtonClass} xl:hidden`}
+          onClick={() => setIsSearchModalOpen(true)}
+          aria-label={isFrench ? "Rechercher" : "Search"}
+        >
+          <SearchIcon />
+        </button>
+        <button
+          type="button"
+          className={`${controlIconButtonClass} hidden xl:inline-flex 2xl:hidden`}
+          onClick={handleCarryOverYesterday}
+          disabled={isMutationPending || isLoading || isDayAffirmationSaving}
+          aria-label={isFrench ? "Copier hier" : "Carry over"}
+          title={isFrench ? "Copier hier" : "Carry over"}
+        >
+          <CopyIcon />
+        </button>
+        <button
+          type="button"
+          className={`${controlButtonClass} hidden 2xl:inline-flex`}
+          onClick={handleCarryOverYesterday}
+          disabled={isMutationPending || isLoading || isDayAffirmationSaving}
+        >
+          <CopyIcon />
+          {isCarryingOverYesterday
+            ? isFrench
+              ? "Copie..."
+              : "Carrying..."
+            : isFrench
+            ? "Copier hier"
+            : "Carry over"}
+        </button>
+        <button
+          type="button"
+          className={primaryButtonClass}
+          onClick={() => openCreateTaskDialog()}
+          disabled={isMutationPending}
+        >
+          <PlusIcon />
+          {isFrench ? "Nouvelle entree" : "New Entry"}
+        </button>
+        <button
+          type="button"
+          className={`relative inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isTaskAlertsPanelOpen ? "bg-accent-soft text-accent" : "bg-white/72 text-muted hover:bg-surface-elevated hover:text-accent"}`}
+          onClick={toggleTaskAlertsPanel}
+          disabled={isMutationPending || isLoading}
+          aria-label={isFrench ? "Alertes" : "Alerts"}
+        >
+          <BellIcon />
+          {alertsSummary.count > 0 ? (
+            <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4 text-white">
+              {alertsSummary.count > 9 ? "9+" : alertsSummary.count}
+            </span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          className="grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-accent-soft text-xs font-black text-accent shadow-[0_12px_24px_rgba(16,0,105,0.08)]"
+          onClick={openProfileDialog}
+          disabled={isMutationPending || isLoading}
+          aria-label={authUser?.displayName ?? authUser?.email ?? (isFrench ? "Profil" : "Profile")}
+          title={authUser?.displayName ?? authUser?.email ?? (isFrench ? "Profil" : "Profile")}
+        >
+          {(authUser?.displayName ?? authUser?.email ?? "J").slice(0, 2).toUpperCase()}
+        </button>
+      </div>
+    </div>
+
+    <div className={`app-shell-page flex min-h-screen flex-col gap-6 px-4 py-6 pb-24 sm:px-8 lg:pb-8 lg:px-10 lg:pt-28 ${isSidebarCollapsed ? "lg:ml-[56px]" : "lg:ml-[260px]"} transition-[margin] duration-200`}>
       <header
         id="overview"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("overview")}`}
-        style={{ order: getDashboardBlockVisualOrder("overview") }}
-        onDragOver={(event) => handleDashboardBlockDragOver("overview", event)}
-        onDrop={(event) => handleDashboardBlockDrop("overview", event)}
+        className={`${dashboardSectionClass} overflow-hidden`}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="hidden items-end justify-between gap-4 lg:flex">
           <div>
-            <h1 className="text-xl font-semibold text-foreground">{getDateHeading(selectedDate, activeLocale)}</h1>
-            <p className="mt-0.5 text-sm text-muted">{APP_TAGLINE}</p>
+            <p className={sectionHeaderClass}>{isFrench ? "Dashboard" : "Dashboard"}</p>
+            <h2 className="mt-2 text-4xl font-black tracking-[-0.05em] text-foreground">
+              {isFrench ? "Workspace quotidien" : "Daily Workspace"}
+            </h2>
+            <p className="mt-1.5 text-sm text-muted">
+              {isFrench
+                ? "Vue operationnelle des taches, du contexte calendrier et des alertes du jour."
+                : "Operational view for tasks, calendar context, and today's active alerts."}
+            </p>
           </div>
-          <div className="flex items-center gap-1">
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-4 lg:hidden">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("overview", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("overview")}
-              title={getDashboardDragHandleLabel("overview")}
+              className={controlIconButtonClass}
+              onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
+              disabled={isMutationPending}
+              aria-label={isFrench ? "Jour precedent" : "Previous day"}
             >
-              <DragHandleIcon />
+              <ArrowLeftIcon />
+            </button>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted">
+                {isFrench ? "Contexte du jour" : "Day context"}
+              </p>
+              <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-accent sm:text-3xl">
+                {getDateHeading(selectedDate, activeLocale)}
+              </h1>
+            </div>
+            <button
+              type="button"
+              className={controlIconButtonClass}
+              onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
+              disabled={isMutationPending}
+              aria-label={isFrench ? "Jour suivant" : "Next day"}
+            >
+              <ArrowRightIcon />
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={controlButtonClass}
+              onClick={() => handleDateChange(toDateInputValue(new Date()))}
+              disabled={isMutationPending}
+            >
+              {isFrench ? "Aujourd'hui" : "Today"}
+            </button>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                if (event.target.value) {
+                  handleDateChange(event.target.value);
+                }
+              }}
+              disabled={isMutationPending}
+              className="hidden rounded-full border border-line bg-white px-4 py-2.5 text-sm text-foreground outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15 sm:block"
+            />
+            <button
+              type="button"
+              className={`${controlButtonClass} hidden sm:inline-flex`}
+              onClick={handleCarryOverYesterday}
+              disabled={isMutationPending || isLoading || isDayAffirmationSaving}
+            >
+              <CopyIcon />
+              {isCarryingOverYesterday
+                ? isFrench
+                  ? "Copie..."
+                  : "Carrying..."
+                : isFrench
+                ? "Copier hier"
+                : "Carry over"}
             </button>
             <button
               type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("overview")}
-              aria-expanded={!dashboardBlockCollapsed.overview}
-              aria-label={getCollapseToggleAriaLabel("overview", dashboardBlockCollapsed.overview)}
-              title={getCollapseToggleAriaLabel("overview", dashboardBlockCollapsed.overview)}
+              className={`${primaryButtonClass} hidden sm:inline-flex`}
+              onClick={() => openCreateTaskDialog()}
+              disabled={isMutationPending}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.overview} />
+              <PlusIcon />
+              {isFrench ? "Nouvelle tache" : "New Task"}
             </button>
           </div>
         </div>
 
+        {carryOverMessage ? (
+          <p className="mt-4 rounded-[22px] border border-[#cfe8a8] bg-[#edf8d6] px-4 py-3 text-sm text-[#304f00]">
+            {carryOverMessage}
+          </p>
+        ) : null}
+        {carryOverErrorMessage ? (
+          <p className="mt-4 rounded-[22px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {carryOverErrorMessage}
+          </p>
+        ) : null}
+
         {dashboardBlockCollapsed.overview ? (
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-500">
-                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="14" height="11" rx="2"/><path d="M7 3v4M13 3v4M3 9h14" strokeLinecap="round"/></svg>
+          <>
+            <div className="mt-6 grid gap-4 lg:grid-cols-12">
+              <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:col-span-8 lg:grid-cols-3">
+                <div className={`${dashboardMetricCardClass} min-h-[118px]`}>
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent-soft text-accent">
+                    <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="14" height="11" rx="2"/><path d="M7 3v4M13 3v4M3 9h14" strokeLinecap="round"/></svg>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{isFrench ? "Total taches" : "Total Tasks"}</p>
+                    <p className="mt-1 text-3xl font-extrabold tracking-tight text-foreground">{tasks.length}</p>
+                  </div>
+                </div>
+                <div className={`${dashboardMetricCardClass} min-h-[118px]`}>
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#f5edff] text-[#581db3]">
+                    <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3v14M5 8l5-5 5 5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{isFrench ? "Actionnables" : "Actionable"}</p>
+                    <p className="mt-1 text-3xl font-extrabold tracking-tight text-foreground">{actionableTaskCount}</p>
+                  </div>
+                </div>
+                <div className={`${dashboardMetricCardClass} min-h-[118px]`}>
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#edf8d6] text-[#426b00]">
+                    <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.5l2.8 1.7" strokeLinecap="round"/></svg>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{isFrench ? "Temps planifie" : "Planned Time"}</p>
+                    <p className="mt-1 text-3xl font-extrabold tracking-tight text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-semibold text-foreground">{tasks.length}</p>
-                <p className="text-xs text-muted">{isFrench ? "Total taches" : "Total Tasks"}</p>
+
+              <section className="order-first overflow-hidden rounded-[28px] bg-gradient-to-br from-accent via-[#4338ca] to-accent-strong p-5 text-white shadow-[0_24px_56px_rgba(53,37,205,0.24)] lg:order-none lg:col-span-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-white/72">{isFrench ? "Flux quotidien" : "Daily Flow"}</p>
+                    <h2 className="mt-2 text-5xl font-black tracking-[-0.06em]">{completionRate}%</h2>
+                  </div>
+                  <div className="relative h-20 w-20 shrink-0">
+                    <svg viewBox="0 0 80 80" className="h-20 w-20 -rotate-90">
+                      <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" strokeWidth="8" className="text-white/20" />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="34"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        strokeLinecap="round"
+                        strokeDasharray="213.6"
+                        strokeDashoffset={213.6 - (213.6 * completionRate) / 100}
+                        className="text-reward"
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-reward">
+                      <LightningIcon />
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-3 border-t border-white/12 pt-5 text-sm">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/58">{isFrench ? "Total" : "Total"}</p>
+                    <p className="mt-1 font-bold">{tasks.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/58">{isFrench ? "Actives" : "Active"}</p>
+                    <p className="mt-1 font-bold">{actionableTaskCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/58">{isFrench ? "Plan" : "Plan"}</p>
+                    <p className="mt-1 font-bold">{formatPlannedTime(totalPlannedMinutes)}</p>
+                  </div>
+                </div>
+              </section>
+
+              <div className="grid grid-cols-2 gap-3 sm:hidden">
+                <button
+                  type="button"
+                  className="metric-card flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-[28px] p-4 text-center"
+                  onClick={handleCarryOverYesterday}
+                  disabled={isMutationPending || isLoading || isDayAffirmationSaving}
+                >
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent-soft text-accent">
+                    <CopyIcon />
+                  </span>
+                  <span className="text-xs font-bold text-foreground">
+                    {isFrench ? "Copier les taches d'hier" : "Carry Over Tasks"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="metric-card flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-[28px] p-4 text-center"
+                  onClick={() => openCreateTaskDialog()}
+                  disabled={isMutationPending}
+                >
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent-soft text-accent">
+                    <PlusIcon />
+                  </span>
+                  <span className="text-xs font-bold text-foreground">
+                    {isFrench ? "Nouvelle tache" : "New Task"}
+                  </span>
+                </button>
+              </div>
+
+              <div className="hidden gap-4 sm:grid lg:hidden">
+                <section className="rounded-[28px] bg-gradient-to-br from-[#6e3aca] via-accent-strong to-accent p-5 text-white shadow-[0_24px_56px_rgba(53,37,205,0.16)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/62">
+                    {isFrench ? "Ancre quotidienne" : "Daily Anchor"}
+                  </p>
+                  <p className="mt-4 text-lg font-semibold leading-8">
+                    &quot;{dashboardAffirmationPreview || (isFrench ? "Ecrivez votre intention du jour pour garder le cap." : "Write your daily intention to keep momentum.")}&quot;
+                  </p>
+                </section>
+
+                <section className="app-panel-soft rounded-[28px] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-bold text-foreground">{isFrench ? "Alertes actives" : "Active Alerts"}</h3>
+                      <p className="text-xs text-muted">
+                        {alertsSummary.count > 0
+                          ? isFrench
+                            ? `${alertsSummary.count} element(s) a surveiller.`
+                            : `${alertsSummary.count} item(s) need attention.`
+                          : isFrench
+                          ? "Aucune alerte critique pour le moment."
+                          : "No critical alerts right now."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-accent transition-colors hover:text-accent-strong"
+                      onClick={toggleTaskAlertsPanel}
+                    >
+                      {isFrench ? "Ouvrir" : "Open"}
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {dashboardAlertPreviewItems.length > 0 ? dashboardAlertPreviewItems.map((item) => (
+                      <div key={`${item.sourceType}-${item.sourceType === "task" ? item.task.id : item.reminder.id}`} className="flex items-start gap-3 rounded-[20px] bg-white/78 px-4 py-3">
+                        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${
+                          item.urgency === "overdue"
+                            ? "bg-red-500"
+                            : item.urgency === "today"
+                              ? "bg-[#8856e5]"
+                              : "bg-[#4f46e5]"
+                        }`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {item.sourceType === "task" ? item.task.title : item.reminder.title}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {item.sourceType === "task"
+                              ? `${formatDateOnlyForLocale(item.task.dueDate ?? selectedDate, activeLocale)} · ${item.task.project ?? (isFrench ? "Tache" : "Task")}`
+                              : `${formatDateTime(item.reminder.remindAt, activeLocale, activeTimeZone)} · ${item.reminder.project ?? (isFrench ? "Rappel" : "Reminder")}`}
+                          </p>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className={dashboardEmptyStateClass}>
+                        {isFrench ? "Aucune alerte active." : "No active alerts."}
+                      </div>
+                    )}
+                  </div>
+                </section>
               </div>
             </div>
-            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-500">
-                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3v14M5 8l5-5 5 5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+
+            <div className="mt-4 hidden gap-4 lg:grid lg:grid-cols-12">
+              <section className="app-panel-soft rounded-[28px] p-5 lg:col-span-7">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                      {isFrench ? "Google Calendar" : "Google Calendar"}
+                    </p>
+                    <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-foreground">
+                      {isFrench ? "Contexte calendrier" : "Calendar Context"}
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      {isFrench
+                        ? "Evenements synchronises et actions liees pour la journee."
+                        : "Synced events and linked actions for the day."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={controlButtonClass}
+                    onClick={() => document.getElementById("dailyControls")?.scrollIntoView({ behavior: "smooth" })}
+                  >
+                    <CalendarIcon />
+                    {isFrench ? "Calendrier" : "Calendar"}
+                  </button>
+                </div>
+
+                {googleCalendarConnections.length > 0 ? (
+                  <div className="mt-5 space-y-3">
+                    <div className="flex items-center justify-between rounded-[22px] bg-white/74 px-4 py-3">
+                      <span className="text-sm font-semibold text-foreground">
+                        {isCalendarEventsLoading
+                          ? isFrench
+                            ? "Synchronisation..."
+                            : "Syncing..."
+                          : `${calendarEvents.length} ${isFrench ? "evenement" : "event"}${calendarEvents.length === 1 ? "" : "s"}`}
+                      </span>
+                      <span className="rounded-full bg-accent-soft px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
+                        {isFrench ? "Aujourd'hui" : "Today"}
+                      </span>
+                    </div>
+
+                    {dashboardCalendarPreviewEvents.length > 0 ? (
+                      dashboardCalendarPreviewEvents.map((event) => {
+                        const eventAccentColor = connectionColorMap.get(event.connectionId) ?? "#6366f1";
+
+                        return (
+                          <article
+                            key={event.id}
+                            className="group flex items-center gap-4 rounded-[24px] border border-line/70 bg-white/84 px-4 py-3 transition-all hover:border-accent/20 hover:bg-surface-container-low"
+                          >
+                            <div className="min-w-[78px]">
+                              <p className="text-sm font-black text-foreground">
+                                {formatCalendarEventTimeLabel(event, activeLocale, activeTimeZone)}
+                              </p>
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+                                {event.isAllDay ? (isFrench ? "Jour" : "All day") : (isFrench ? "Event" : "Event")}
+                              </p>
+                            </div>
+                            <span className="h-12 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: eventAccentColor }} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="truncate text-sm font-bold text-foreground">{event.title}</p>
+                                {event.linkedTasks.length > 0 ? (
+                                  <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                                    {event.linkedTasks.length}
+                                  </span>
+                                ) : null}
+                                {event.note ? (
+                                  <span className="shrink-0 text-accent" title={isFrench ? "Note interne" : "Internal note"}>
+                                    <ChatIcon />
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="mt-1 truncate text-xs text-muted">
+                                {event.location ||
+                                  event.description ||
+                                  (isFrench ? "Evenement synchronise avec le contexte du jour." : "Event synced into today's context.")}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="inline-flex h-9 min-w-9 items-center justify-center rounded-full border border-line bg-white text-muted transition-colors hover:border-accent hover:text-accent"
+                              onClick={() => {
+                                setExpandedCalendarEventId(event.id);
+                                document.getElementById("dailyControls")?.scrollIntoView({ behavior: "smooth" });
+                              }}
+                              aria-label={isFrench ? "Ouvrir l'evenement" : "Open event"}
+                              title={isFrench ? "Ouvrir l'evenement" : "Open event"}
+                            >
+                              <ArrowRightIcon />
+                            </button>
+                          </article>
+                        );
+                      })
+                    ) : (
+                      <div className={dashboardEmptyStateClass}>
+                        {isCalendarEventsLoading
+                          ? isFrench
+                            ? "Chargement des evenements..."
+                            : "Loading events..."
+                          : isFrench
+                          ? "Aucun evenement pour cette date."
+                          : "No events for this date."}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className={`${dashboardEmptyStateClass} mt-5`}>
+                    {isFrench
+                      ? "Aucun compte Google Calendar connecte. Ouvrez le profil pour synchroniser les evenements."
+                      : "No Google Calendar account is connected. Open profile settings to sync events."}
+                  </div>
+                )}
+              </section>
+
+              <div className="grid gap-4 lg:col-span-5">
+                <section className="rounded-[28px] bg-gradient-to-br from-[#6e3aca] via-accent-strong to-accent p-5 text-white shadow-[0_24px_56px_rgba(53,37,205,0.16)]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/62">
+                        {isFrench ? "Day Affirmation" : "Day Affirmation"}
+                      </p>
+                      <h3 className="mt-2 text-xl font-black tracking-[-0.04em]">
+                        {isAffirmationCompleted
+                          ? isFrench
+                            ? "Ancre terminee"
+                            : "Anchor completed"
+                          : isFrench
+                          ? "Ancre du jour"
+                          : "Daily Anchor"}
+                      </h3>
+                    </div>
+                    <span className="rounded-full bg-white/14 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/78">
+                      {isAffirmationCompleted ? (isFrench ? "Done" : "Done") : (isFrench ? "Draft" : "Draft")}
+                    </span>
+                  </div>
+                  <p className="mt-5 line-clamp-5 text-base font-semibold leading-8 text-white/94">
+                    &quot;{dashboardAffirmationPreview || (isFrench ? "Ecrivez votre intention du jour pour garder le cap." : "Write your daily intention to keep momentum.")}&quot;
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-5 inline-flex items-center gap-2 rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/22"
+                    onClick={() => document.getElementById("affirmation")?.scrollIntoView({ behavior: "smooth" })}
+                  >
+                    <PencilIcon />
+                    {isFrench ? "Modifier" : "Edit"}
+                  </button>
+                </section>
+
+                <section className="app-panel-soft rounded-[28px] p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                        {isFrench ? "Active Alerts" : "Active Alerts"}
+                      </p>
+                      <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-foreground">
+                        {alertsSummary.count > 0
+                          ? isFrench
+                            ? `${alertsSummary.count} signal${alertsSummary.count === 1 ? "" : "s"}`
+                            : `${alertsSummary.count} signal${alertsSummary.count === 1 ? "" : "s"}`
+                          : isFrench
+                          ? "Aucune alerte"
+                          : "No alerts"}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      className={controlIconButtonClass}
+                      onClick={toggleTaskAlertsPanel}
+                      aria-label={isFrench ? "Ouvrir les alertes" : "Open alerts"}
+                      title={isFrench ? "Ouvrir les alertes" : "Open alerts"}
+                    >
+                      <BellIcon />
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {dashboardAlertPreviewItems.length > 0 ? dashboardAlertPreviewItems.map((item) => (
+                      <div key={`${item.sourceType}-${item.sourceType === "task" ? item.task.id : item.reminder.id}`} className="flex items-start gap-3 rounded-[20px] bg-white/78 px-4 py-3">
+                        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${
+                          item.urgency === "overdue"
+                            ? "bg-red-500"
+                            : item.urgency === "today"
+                              ? "bg-[#8856e5]"
+                              : "bg-[#4f46e5]"
+                        }`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {item.sourceType === "task" ? item.task.title : item.reminder.title}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {item.sourceType === "task"
+                              ? `${formatDateOnlyForLocale(item.task.dueDate ?? selectedDate, activeLocale)} - ${item.task.project ?? (isFrench ? "Tache" : "Task")}`
+                              : `${formatDateTime(item.reminder.remindAt, activeLocale, activeTimeZone)} - ${item.reminder.project ?? (isFrench ? "Rappel" : "Reminder")}`}
+                          </p>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className={dashboardEmptyStateClass}>
+                        {isFrench ? "Aucune alerte active." : "No active alerts."}
+                      </div>
+                    )}
+                  </div>
+                </section>
               </div>
-              <div>
-                <p className="text-2xl font-semibold text-foreground">{actionableTaskCount}</p>
-                <p className="text-xs text-muted">{isFrench ? "Actionnables" : "Actionable"}</p>
-              </div>
+
+              <section className="app-panel-soft rounded-[28px] p-5 lg:col-span-12">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                      {isFrench ? "Day Bilan" : "Day Bilan"}
+                    </p>
+                    <h3 className="mt-2 text-xl font-black tracking-[-0.04em] text-foreground">
+                      {isFrench ? "Revue complete du jour" : "Full Daily Review"}
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      {isFrench
+                        ? "Humeur, victoire, blocages, apprentissages et top 3 de demain."
+                        : "Mood, win, blockers, lessons, and tomorrow's top 3."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={primaryButtonClass}
+                    onClick={() => document.getElementById("bilan")?.scrollIntoView({ behavior: "smooth" })}
+                  >
+                    <PencilIcon />
+                    {isFrench ? "Completer" : "Complete"}
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-3 lg:grid-cols-5">
+                  <div className="rounded-[22px] bg-white/82 px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                      {isFrench ? "Humeur" : "Daily Mood"}
+                    </p>
+                    <p className="mt-3 text-2xl font-extrabold text-foreground">
+                      {dayBilanFormValues.mood || dayBilan?.mood ? `${dayBilanFormValues.mood || dayBilan?.mood}/5` : "-"}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-muted">
+                      {dayBilanFormValues.mood || dayBilan?.mood
+                        ? isFrench ? "Energie capturee." : "Mood captured."
+                        : isFrench ? "Ajoutez votre ressenti." : "Add your emotional pulse."}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] bg-white/82 px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                      {isFrench ? "Big win" : "Big Win"}
+                    </p>
+                    <p className="mt-3 line-clamp-4 text-sm leading-6 text-foreground">
+                      {dashboardBilanWinsPreview
+                        ? dashboardBilanWinsPreview.slice(0, 120)
+                        : isFrench ? "Notez ce qui a vraiment avance." : "Capture what really moved forward."}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] bg-white/82 px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                      {isFrench ? "Blocages" : "Blockers"}
+                    </p>
+                    <p className="mt-3 line-clamp-4 text-sm leading-6 text-foreground">
+                      {dashboardBilanBlockersPreview
+                        ? dashboardBilanBlockersPreview.slice(0, 120)
+                        : isFrench ? "Identifiez les frictions utiles." : "Identify useful friction points."}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] bg-white/82 px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                      {isFrench ? "Lecons" : "Lessons"}
+                    </p>
+                    <p className="mt-3 line-clamp-4 text-sm leading-6 text-foreground">
+                      {dashboardBilanLessonsPreview
+                        ? dashboardBilanLessonsPreview.slice(0, 120)
+                        : isFrench ? "Gardez les apprentissages visibles." : "Keep useful learnings visible."}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] bg-gradient-to-br from-accent to-accent-strong px-4 py-4 text-white">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/68">
+                      {isFrench ? "Demain" : "Tomorrow Top 3"}
+                    </p>
+                    <p className="mt-3 line-clamp-4 text-sm leading-6 text-white">
+                      {dashboardBilanTomorrowPreview
+                        ? dashboardBilanTomorrowPreview.slice(0, 120)
+                        : isFrench ? "Definir les 3 prochaines priorites." : "Define the next three focused moves."}
+                    </p>
+                  </div>
+                </div>
+              </section>
             </div>
-            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-500">
-                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.5l2.8 1.7" strokeLinecap="round"/></svg>
+
+            <section className="mt-4 hidden app-panel-soft rounded-[28px] p-5 sm:block lg:hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">{isFrench ? "Day Bilan" : "Day Bilan"}</h3>
+                  <p className="text-xs text-muted">
+                    {isFrench ? "Reflet de votre execution et des prochains leviers." : "A compact reflection of execution and next moves."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={primaryButtonClass}
+                  onClick={() => document.getElementById("bilan")?.scrollIntoView({ behavior: "smooth" })}
+                >
+                  <ArrowRightIcon />
+                  {isFrench ? "Voir le bilan" : "View Review"}
+                </button>
               </div>
-              <div>
-                <p className="text-2xl font-semibold text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
-                <p className="text-xs text-muted">{isFrench ? "Temps planifie" : "Planned Time"}</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="rounded-[22px] bg-white/82 px-4 py-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">{isFrench ? "Humeur" : "Daily Mood"}</p>
+                  <p className="mt-3 text-2xl font-extrabold text-foreground">{dayBilan?.mood ? `${dayBilan.mood}/5` : "—"}</p>
+                  <p className="mt-2 text-xs text-muted">
+                    {dayBilan?.mood
+                      ? isFrench ? "Energie capturée." : "Mood captured."
+                      : isFrench ? "Ajoutez votre ressenti." : "Add your emotional pulse."}
+                  </p>
+                </div>
+                <div className="rounded-[22px] bg-white/82 px-4 py-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">{isFrench ? "Wins" : "Wins"}</p>
+                  <p className="mt-3 text-sm leading-6 text-foreground">
+                    {dayBilan?.wins ? getRichTextPreviewText(dayBilan.wins).slice(0, 96) || "—" : (isFrench ? "Notez vos victoires du jour." : "Capture what moved forward today.")}
+                  </p>
+                </div>
+                <div className="rounded-[22px] bg-white/82 px-4 py-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">{isFrench ? "Blocages" : "Main Blockers"}</p>
+                  <p className="mt-3 text-sm leading-6 text-foreground">
+                    {dayBilan?.blockers ? getRichTextPreviewText(dayBilan.blockers).slice(0, 96) || "—" : (isFrench ? "Aucun blocage renseigné." : "No blockers documented yet.")}
+                  </p>
+                </div>
+                <div className="rounded-[22px] bg-gradient-to-br from-accent to-accent-strong px-4 py-4 text-white">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/68">{isFrench ? "Demain" : "Tomorrow's Top 3"}</p>
+                  <p className="mt-3 text-sm leading-6 text-white">
+                    {dayBilan?.tomorrowTop3 ? getRichTextPreviewText(dayBilan.tomorrowTop3).slice(0, 96) || "—" : (isFrench ? "Definir les 3 prochaines priorites." : "Define the next three focused moves.")}
+                  </p>
+                </div>
               </div>
-            </div>
-          </div>
+            </section>
+          </>
         )}
       </header>
 
       <section
         id="board"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("board")}`}
-        style={{ order: getDashboardBlockVisualOrder("board"), animationDelay: "0.2s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("board", event)}
-        onDrop={(event) => handleDashboardBlockDrop("board", event)}
+        className={dashboardSectionClass}
+        style={{ animationDelay: "0.2s" }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
-          <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.05em] text-foreground sm:text-4xl">
+              {isFrench ? "Flux du jour" : "Task Flow"}
+            </h2>
+            <p className="mt-1.5 text-sm text-muted">
+              {isFrench
+                ? "Visualisez les statuts actifs pour la date selectionnee et faites avancer les priorites."
+                : "Visualize active statuses for the selected date and keep momentum visible."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {boardPeoplePreview.length > 0 ? (
+              <div className="hidden items-center sm:flex">
+                <div className="flex -space-x-3">
+                  {boardPeoplePreview.map((name) => (
+                    <span
+                      key={name}
+                      title={name}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border-4 border-background bg-[#e9e5ff] text-xs font-bold text-accent shadow-[0_10px_20px_rgba(16,0,105,0.08)]"
+                    >
+                      {getMonogram(name)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <button
               type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("board", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("board")}
-              title={getDashboardDragHandleLabel("board")}
+              className={`${controlButtonClass} hidden sm:inline-flex`}
+              onClick={() => document.getElementById("boardFilters")?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
             >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("board")}
-              aria-expanded={!dashboardBlockCollapsed.board}
-              aria-label={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
-              title={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.board} />
+              <SearchIcon />
+              {hasActiveTaskFilters
+                ? isFrench
+                  ? `${boardActiveFilterCount} filtre(s)`
+                  : `${boardActiveFilterCount} filter(s)`
+                : isFrench
+                ? "Filtres"
+                : "Filter"}
             </button>
           </div>
         </div>
+
+        {dragErrorMessage ? (
+          <p className="mt-4 rounded-[22px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {dragErrorMessage}
+          </p>
+        ) : null}
 
         {dashboardBlockCollapsed.board ? (
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
-            <section className="mt-4 rounded-2xl border border-line bg-surface-soft/60 p-4">
+            <section id="boardFilters" className={`mt-5 hidden sm:block ${dashboardInsetPanelClass}`}>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.9fr))_auto]">
                 <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
                   {isFrench ? "Recherche" : "Search"}
@@ -10588,7 +9586,7 @@ export function AppShell() {
               onDragEnd={handleDragEnd}
               onDragCancel={() => setActiveTaskId(null)}
             >
-              <main className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <main className="mt-4 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible xl:grid-cols-4">
                 {boardColumns.map((column) => {
                   const columnTasks = filteredTasksByStatus[column.status];
                   const totalColumnTasks = tasksByStatus[column.status];
@@ -10596,7 +9594,7 @@ export function AppShell() {
                   return (
                     <section
                       key={column.status}
-                      className={`flex h-[480px] flex-col rounded-xl border-t-2 bg-surface-soft/50 px-3 py-3 ${statusColumnClassByStatus[column.status]}`}
+                      className={`${kanbanColumnShellClass} ${statusColumnClassByStatus[column.status]} min-w-[84vw] snap-center md:min-w-0`}
                     >
                       <header className="flex items-center justify-between gap-2 pb-2">
                         <div className="flex items-center gap-2">
@@ -10664,37 +9662,22 @@ export function AppShell() {
       </section>
 
       <section id="dailyControls"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("dailyControls")}`}
-        style={{ order: getDashboardBlockVisualOrder("dailyControls"), animationDelay: "0.1s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("dailyControls", event)}
-        onDrop={(event) => handleDashboardBlockDrop("dailyControls", event)}
+        className={dashboardSectionClass}
+        style={{ animationDelay: "0.1s" }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={sectionHeaderClass}>
-            {isFrench ? "Pilotage du jour" : "Day Controls"}
-          </h2>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("dailyControls", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("dailyControls")}
-              title={getDashboardDragHandleLabel("dailyControls")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("dailyControls")}
-              aria-expanded={!dashboardBlockCollapsed.dailyControls}
-              aria-label={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
-              title={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.dailyControls} />
-            </button>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className={sectionHeaderClass}>
+              {isFrench ? "Calendrier" : "Calendar"}
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.05em] text-foreground sm:text-4xl">
+              {isFrench ? "Contexte calendrier" : "Calendar Context"}
+            </h2>
+            <p className="mt-1.5 text-sm text-muted">
+              {isFrench
+                ? "Inspectez les evenements synchronises et transformez-les en actions Jotly."
+                : "Inspect synced events and turn them into Jotly actions."}
+            </p>
           </div>
         </div>
 
@@ -10702,100 +9685,28 @@ export function AppShell() {
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-1 rounded-lg bg-surface-soft p-1">
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
-                  onClick={() => handleDateChange(shiftDate(selectedDate, -1))}
-                  disabled={isMutationPending}
-                  aria-label={isFrench ? "Jour precedent" : "Previous day"}
-                >
-                  <ArrowLeftIcon />
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-foreground"
-                  onClick={() => handleDateChange(toDateInputValue(new Date()))}
-                  disabled={isMutationPending}
-                >
-                  {isFrench ? "Aujourd'hui" : "Today"}
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
-                  onClick={() => handleDateChange(shiftDate(selectedDate, 1))}
-                  disabled={isMutationPending}
-                  aria-label={isFrench ? "Jour suivant" : "Next day"}
-                >
-                  <ArrowRightIcon />
-                </button>
-              </div>
-
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => {
-                  if (event.target.value) {
-                    handleDateChange(event.target.value);
-                  }
-                }}
-                disabled={isMutationPending}
-                className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-foreground outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
-              />
-
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className={controlButtonClass}
-                  onClick={handleCarryOverYesterday}
-                  disabled={isMutationPending || isLoading || isDayAffirmationSaving}
-                >
-                  <CopyIcon />
-                  {isCarryingOverYesterday
-                    ? isFrench
-                      ? "Copie..."
-                      : "Carrying..."
-                    : isFrench
-                    ? "Copier d'hier"
-                    : "Carry Over"}
-                </button>
-                <button
-                  type="button"
-                  className={primaryButtonClass}
-                  onClick={() => openCreateTaskDialog()}
-                  disabled={isMutationPending}
-                >
-                  <PlusIcon />
-                  {isFrench ? "Nouvelle tache" : "New Task"}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center gap-3 rounded-lg bg-surface-soft px-4 py-2.5">
-              <p className="flex-1 text-sm text-muted">
-                {isLoading
-                  ? isFrench
-                    ? "Chargement des taches..."
-                    : "Loading tasks..."
-                  : isFrench
-                  ? `${tasks.length} tache${tasks.length === 1 ? "" : "s"} pour la date selectionnee`
-                  : `${tasks.length} task${tasks.length === 1 ? "" : "s"} for the selected date`}
-              </p>
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-24 rounded-full bg-line">
-                  <div className="progress-gradient h-full rounded-full transition-all duration-500" style={{ width: `${completionRate}%` }} />
-                </div>
-                <span className="text-xs font-medium text-muted">{completionRate}%</span>
-              </div>
-            </div>
-
             {googleCalendarConnections.length > 0 ? (
-              <div className="mt-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {isFrench ? "Evenements du calendrier" : "Calendar Events"}
-                  </h3>
+              <div className="mt-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">
+                      {isFrench ? "Evenements du calendrier" : "Calendar Events"}
+                    </h3>
+                    <p className="text-xs text-muted">
+                      {googleCalendarConnections.length > 0
+                        ? isFrench
+                          ? "Contexte synchronise avec vos comptes connectes."
+                          : "Synchronized context across your connected accounts."
+                        : null}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-accent-soft px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                    {isCalendarEventsLoading
+                      ? "Sync..."
+                      : `${filteredCalendarEvents.length} ${isFrench ? "items" : "items"}`}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
                   <span className="text-xs text-muted">
                     {isCalendarEventsLoading
                       ? (isFrench ? "Chargement..." : "Loading...")
@@ -10830,36 +9741,53 @@ export function AppShell() {
                   </div>
                 ) : null}
                 {filteredCalendarEvents.length > 0 ? (
-                  <div className="mt-2 rounded-lg border border-line bg-surface-soft overflow-hidden divide-y divide-line">
+                  <div className="mt-3 space-y-3">
                     {filteredCalendarEvents.map((event) => {
                       const isExpanded = expandedCalendarEventId === event.id;
                       const hasNote = Boolean(event.note);
                       const hasLinkedTasks = event.linkedTasks.length > 0;
 
                       return (
-                        <div key={event.id}>
+                        <div key={event.id} className={`overflow-hidden rounded-[26px] border transition-all ${
+                          isExpanded
+                            ? "border-accent/20 bg-surface-container shadow-[0_18px_40px_rgba(16,0,105,0.08)]"
+                            : "border-line/70 bg-white/88 hover:border-accent/20 hover:bg-surface-container-low"
+                        }`}>
                           {/* Compact row — always visible */}
                           <button
                             type="button"
-                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface"
+                            className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors"
                             onClick={() => setExpandedCalendarEventId(isExpanded ? null : event.id)}
                           >
-                            <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: connectionColorMap.get(event.connectionId) ?? "#6366f1" }} />
-                            <span className="shrink-0 text-xs tabular-nums text-muted">
-                              {formatCalendarEventTimeLabel(event, activeLocale, activeTimeZone)}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                              {event.title}
-                            </span>
+                            <div className="min-w-[56px] text-center">
+                              <p className="text-sm font-black text-foreground">
+                                {formatCalendarEventTimeLabel(event, activeLocale, activeTimeZone)}
+                              </p>
+                              <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                {event.isAllDay ? (isFrench ? "Jour" : "All day") : (isFrench ? "Event" : "Event")}
+                              </p>
+                            </div>
+                            <span className="h-10 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: connectionColorMap.get(event.connectionId) ?? "#6366f1" }} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate text-sm font-bold text-foreground">
+                                  {event.title}
+                                </span>
+                                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: connectionColorMap.get(event.connectionId) ?? "#6366f1" }} />
+                              </div>
+                              <p className="mt-1 truncate text-xs font-medium text-muted">
+                                {event.location
+                                  || event.description
+                                  || (isFrench ? "Evenement synchronise avec votre contexte du jour." : "Event synchronized into your day context.")}
+                              </p>
+                            </div>
                             {hasNote ? (
-                              <span className="shrink-0 text-xs text-accent" title={isFrench ? "Note interne" : "Internal note"}>
-                                <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
-                                  <path d="M3.505 2.365A41.369 41.369 0 0 1 9 2c1.863 0 3.697.124 5.495.365 1.247.167 2.18 1.249 2.18 2.487V11.5a2.5 2.5 0 0 1-2.5 2.5h-1.862l-3.27 3.27a.75.75 0 0 1-1.293-.519V14h-.5A2.5 2.5 0 0 1 4.75 11.5V4.852c0-1.238.933-2.32 2.18-2.487h-3.425Z" />
-                                </svg>
+                              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent" title={isFrench ? "Note interne" : "Internal note"}>
+                                <ChatIcon />
                               </span>
                             ) : null}
                             {hasLinkedTasks ? (
-                              <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                              <span className="shrink-0 rounded-full bg-accent/10 px-2 py-1 text-[10px] font-semibold text-accent">
                                 {event.linkedTasks.length}
                               </span>
                             ) : null}
@@ -11012,17 +9940,21 @@ export function AppShell() {
                   </p>
                 ) : null}
               </div>
-            ) : null}
+            ) : (
+              <div className={`${dashboardEmptyStateClass} mt-5`}>
+                {isFrench
+                  ? "Aucun compte Google Calendar connecte. Ouvrez les parametres du profil pour synchroniser les evenements."
+                  : "No Google Calendar account is connected. Open profile settings to sync events."}
+              </div>
+            )}
           </>
         )}
       </section>
 
       <section
         id="affirmation"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getDashboardDropClassName("affirmation")}`}
-        style={{ order: getDashboardBlockVisualOrder("affirmation"), animationDelay: "0.15s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("affirmation", event)}
-        onDrop={(event) => handleDashboardBlockDrop("affirmation", event)}
+        className="animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm"
+        style={{ animationDelay: "0.15s" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -11074,27 +10006,6 @@ export function AppShell() {
                 </svg>
               </button>
             ) : null}
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("affirmation", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("affirmation")}
-              title={getDashboardDragHandleLabel("affirmation")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("affirmation")}
-              aria-expanded={!dashboardBlockCollapsed.affirmation}
-              aria-label={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
-              title={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.affirmation} />
-            </button>
           </div>
         </div>
 
@@ -11478,10 +10389,8 @@ export function AppShell() {
 
       <section
         id="reminders"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-amber-50/40 via-surface to-orange-50/30 p-6 shadow-sm ${getDashboardDropClassName("reminders")}`}
-        style={{ order: getDashboardBlockVisualOrder("reminders"), animationDelay: "0.18s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("reminders", event)}
-        onDrop={(event) => handleDashboardBlockDrop("reminders", event)}
+        className={`${dashboardSectionClass} overflow-hidden`}
+        style={{ animationDelay: "0.18s" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -11506,27 +10415,6 @@ export function AppShell() {
                 {isFrench ? "Ajouter" : "Add"}
               </button>
             ) : null}
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("reminders", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("reminders")}
-              title={getDashboardDragHandleLabel("reminders")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("reminders")}
-              aria-expanded={!dashboardBlockCollapsed.reminders}
-              aria-label={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
-              title={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.reminders} />
-            </button>
           </div>
         </div>
 
@@ -11544,81 +10432,262 @@ export function AppShell() {
         ) : (
           <>
             {isLoadingReminders ? (
-              <p className="mt-4 text-sm text-muted">
+              <p className={`mt-4 ${dashboardEmptyStateClass}`}>
                 {isFrench ? "Chargement..." : "Loading..."}
               </p>
             ) : reminders.length === 0 ? (
-              <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Aucun rappel actif." : "No active reminders."}
-              </p>
+              <div className={`mt-4 ${dashboardEmptyStateClass} space-y-4`}>
+                <p>{isFrench ? "Aucun rappel actif." : "No active reminders."}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className={primaryButtonClass}
+                    onClick={openCreateReminderDialog}
+                    disabled={isLoadingReminders}
+                  >
+                    <PlusIcon />
+                    {isFrench ? "Creer un rappel" : "Create reminder"}
+                  </button>
+                  <span className="text-xs text-muted">
+                    {isFrench
+                      ? "Planifiez un suivi précis pour garder le bon rythme."
+                      : "Schedule a precise follow-up to keep the day on pace."}
+                  </span>
+                </div>
+              </div>
             ) : (
-              <ul className="mt-4 space-y-2">
-                {reminders.map((reminder) => {
-                  const remindAtDate = new Date(reminder.remindAt);
-                  const timeStr = remindAtDate.toLocaleTimeString(isFrench ? "fr-FR" : "en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: activeTimeZone ?? undefined,
-                  });
+              <>
+                <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(280px,0.88fr)]">
+                  <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#3525cd] via-[#6e3aca] to-[#91db2a] px-5 py-5 text-white shadow-[0_28px_56px_rgba(53,37,205,0.24)]">
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/72">
+                      <span>{isFrench ? "Fenetre active" : "Active window"}</span>
+                      <span>•</span>
+                      <span>{formatDateOnlyForLocale(selectedDate, activeLocale)}</span>
+                    </div>
+                    <p className="mt-4 text-2xl font-black tracking-[-0.04em] sm:text-3xl">
+                      {nextActiveReminder?.title || (isFrench ? "Tout est sous controle" : "Everything is under control")}
+                    </p>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">
+                      {nextActiveReminder
+                        ? `${isFrench ? "Prochain point de vigilance" : "Next touchpoint"}: ${formatDateTime(
+                            nextActiveReminder.remindAt,
+                            activeLocale,
+                            activeTimeZone
+                          )}`
+                        : isFrench
+                        ? "Aucun rappel actionnable ne reste ouvert pour cette fenetre."
+                        : "No actionable reminders remain open in this window."}
+                    </p>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                          {isFrench ? "Actifs" : "Active"}
+                        </p>
+                        <p className="mt-2 text-xl font-bold">{unresolvedReminders.length}</p>
+                      </div>
+                      <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                          {isFrench ? "En retard" : "Past due"}
+                        </p>
+                        <p className="mt-2 text-xl font-bold">{reminderPastDueCount}</p>
+                      </div>
+                      <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                          {isFrench ? "A venir" : "Upcoming"}
+                        </p>
+                        <p className="mt-2 text-xl font-bold">{reminderUpcomingCount}</p>
+                      </div>
+                    </div>
+                  </section>
 
-                  return (
-                    <li
-                      key={reminder.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white/60 px-3 py-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {reminder.title}
-                          {reminder.project ? (
-                            <span className="ml-2 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{reminder.project}</span>
-                          ) : null}
+                  <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                    <article className={`${dashboardMetricCardClass} flex-col items-start`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Cadence" : "Cadence"}
+                      </p>
+                      <p className="text-2xl font-black tracking-[-0.04em] text-foreground">
+                        {reminders.length}
+                      </p>
+                      <p className="text-sm leading-6 text-muted">
+                        {isFrench
+                          ? "Rappels visibles dans la fenetre de travail courante."
+                          : "Reminders visible in the current working window."}
+                      </p>
+                    </article>
+
+                    <article className={`${dashboardMetricCardClass} flex-col items-start`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Statut critique" : "Critical state"}
+                      </p>
+                      <p className="text-lg font-semibold text-foreground">
+                        {reminderPastDueCount > 0
+                          ? isFrench
+                            ? `${reminderPastDueCount} a traiter`
+                            : `${reminderPastDueCount} need action`
+                          : isFrench
+                          ? "Aucun retard"
+                          : "No overdue items"}
+                      </p>
+                      <p className="text-sm leading-6 text-muted">
+                        {reminderPastDueCount > 0
+                          ? isFrench
+                            ? "Traitez les rappels dépassés pour dégager la file."
+                            : "Clear overdue reminders first to unblock the queue."
+                          : isFrench
+                          ? "La file reste propre sur la période sélectionnée."
+                          : "The queue stays clean for the selected period."}
+                      </p>
+                    </article>
+
+                    <article className={`${dashboardMetricCardClass} flex-col items-start`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Personnes suivies" : "People in loop"}
+                      </p>
+                      {reminderPeoplePreview.length > 0 ? (
+                        <>
+                          <div className="flex -space-x-2">
+                            {reminderPeoplePreview.map((name) => (
+                              <span
+                                key={name}
+                                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-accent-soft text-xs font-black text-accent shadow-[0_10px_20px_rgba(53,37,205,0.12)]"
+                              >
+                                {getMonogram(name)}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-sm leading-6 text-muted">{reminderPeoplePreview.join(", ")}</p>
+                        </>
+                      ) : (
+                        <p className="text-sm leading-6 text-muted">
+                          {isFrench
+                            ? "Aucun participant saisi sur les rappels visibles."
+                            : "No assignee has been set on the visible reminders."}
                         </p>
-                        {reminder.assignees ? (
-                          <p className="truncate text-xs text-muted">{reminder.assignees}</p>
-                        ) : null}
-                        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                          <span>{timeStr}</span>
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[reminder.status]}`}
-                          >
-                            {formatReminderStatus(reminder.status, activeLocale)}
-                          </span>
-                          {remindAtDate.getTime() < Date.now() ? (
-                            <span>{isFrench ? "Echeance depassee" : "Past due"}</span>
-                          ) : null}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {!isReminderResolvedStatus(reminder.status) ? (
-                          <button
-                            type="button"
-                            className="rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-soft"
-                            onClick={() => { void handleCompleteReminder(reminder.id); }}
-                          >
-                            {isFrench ? "Traiter" : "Complete"}
-                          </button>
-                        ) : null}
-                        {!isReminderResolvedStatus(reminder.status) ? (
-                          <button
-                            type="button"
-                            className="rounded-md px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-surface-soft hover:text-foreground"
-                            onClick={() => { void handleCancelReminder(reminder.id); }}
-                          >
-                            {isFrench ? "Annuler" : "Cancel"}
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-                          onClick={() => openEditReminderDialog(reminder)}
-                        >
-                          {isFrench ? "Modifier" : "Edit"}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                      )}
+                    </article>
+                  </div>
+                </div>
+
+                <ul className="mt-5 space-y-3">
+                  {reminders.map((reminder) => {
+                    const remindAtDate = new Date(reminder.remindAt);
+                    const isReminderPastDue =
+                      !isReminderResolvedStatus(reminder.status) && remindAtDate.getTime() < Date.now();
+                    const reminderPreview = getRichTextPreviewText(reminder.description ?? "");
+                    const reminderAssigneeNames = parseAssigneeNames(reminder.assignees);
+                    const reminderAccentClass =
+                      reminder.status === "completed"
+                        ? "from-[#91db2a] via-[#b8ea76] to-[#e8f7cd]"
+                        : reminder.status === "cancelled"
+                        ? "from-[#c7c4d8] via-[#ddd8ee] to-[#f6f3ff]"
+                        : reminder.status === "fired"
+                        ? "from-[#6e3aca] via-[#8856e5] to-[#ddd3ff]"
+                        : "from-[#4f46e5] via-[#8856e5] to-[#dff5b1]";
+
+                    return (
+                      <li key={reminder.id} className="metric-card relative overflow-hidden rounded-[28px] p-0">
+                        <div className={`h-1.5 w-full bg-gradient-to-r ${reminderAccentClass}`} />
+                        <div className="px-4 py-4 sm:px-5 sm:py-5">
+                          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`rounded-full px-3 py-1 text-[11px] font-semibold ${reminderStatusChipClassByStatus[reminder.status]}`}
+                                >
+                                  {formatReminderStatus(reminder.status, activeLocale)}
+                                </span>
+                                {reminder.project ? (
+                                  <span className="rounded-full border border-accent/12 bg-accent-soft px-3 py-1 text-[11px] font-semibold text-accent">
+                                    {reminder.project}
+                                  </span>
+                                ) : null}
+                                {isReminderPastDue ? (
+                                  <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700">
+                                    {isFrench ? "En retard" : "Past due"}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <p className="mt-3 text-lg font-semibold tracking-[-0.02em] text-foreground">
+                                {reminder.title}
+                              </p>
+
+                              {reminderPreview ? (
+                                <div className={`mt-3 ${dashboardInsetPanelClass}`}>
+                                  <p className="text-sm leading-6 text-foreground/82 line-clamp-3">{reminderPreview}</p>
+                                </div>
+                              ) : null}
+
+                              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+                                <span className="rounded-full border border-line bg-surface-elevated px-3 py-1.5 font-semibold text-foreground/80">
+                                  {formatDateTime(reminder.remindAt, activeLocale, activeTimeZone)}
+                                </span>
+                                {reminderAssigneeNames.length > 0 ? (
+                                <span className="rounded-full border border-line bg-surface-elevated px-3 py-1.5">
+                                    {isFrench ? "Participants" : "Assignees"}: {reminderAssigneeNames.join(", ")}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {reminderAssigneeNames.length > 0 ? (
+                                <div className="mt-4 flex flex-wrap items-center gap-3">
+                                  <div className="flex -space-x-2">
+                                    {reminderAssigneeNames.slice(0, 4).map((name) => (
+                                      <span
+                                        key={`${reminder.id}-${name}`}
+                                        className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white/90 text-[11px] font-black text-accent shadow-[0_10px_18px_rgba(16,0,105,0.1)]"
+                                      >
+                                        {getMonogram(name)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <p className="text-xs text-muted">
+                                    {isFrench ? "Coordination" : "Coordination"} · {reminderAssigneeNames.length}
+                                  </p>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="flex shrink-0 flex-wrap items-center gap-2 xl:max-w-[240px] xl:justify-end">
+                              {!isReminderResolvedStatus(reminder.status) ? (
+                                <button
+                                  type="button"
+                                  className={`${primaryButtonClass} px-3 py-2 text-xs`}
+                                  onClick={() => {
+                                    void handleCompleteReminder(reminder.id);
+                                  }}
+                                >
+                                  <LightningIcon />
+                                  {isFrench ? "Traiter" : "Complete"}
+                                </button>
+                              ) : null}
+                              {!isReminderResolvedStatus(reminder.status) ? (
+                                <button
+                                  type="button"
+                                  className={`${controlButtonClass} px-3 py-2 text-xs`}
+                                  onClick={() => {
+                                    void handleCancelReminder(reminder.id);
+                                  }}
+                                >
+                                  {isFrench ? "Annuler" : "Cancel"}
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={`${controlButtonClass} px-3 py-2 text-xs`}
+                                onClick={() => openEditReminderDialog(reminder)}
+                              >
+                                <PencilIcon />
+                                {isFrench ? "Modifier" : "Edit"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
             )}
 
             {reminderErrorMessage && !reminderDialogMode ? (
@@ -11632,10 +10701,8 @@ export function AppShell() {
 
       <section
         id="bilan"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("bilan")}`}
-        style={{ order: getDashboardBlockVisualOrder("bilan"), animationDelay: "0.25s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("bilan", event)}
-        onDrop={(event) => handleDashboardBlockDrop("bilan", event)}
+        className={dashboardSectionClass}
+        style={{ animationDelay: "0.25s" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -11666,27 +10733,6 @@ export function AppShell() {
                   : "Save bilan"}
               </button>
             ) : null}
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("bilan", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("bilan")}
-              title={getDashboardDragHandleLabel("bilan")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("bilan")}
-              aria-expanded={!dashboardBlockCollapsed.bilan}
-              aria-label={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
-              title={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.bilan} />
-            </button>
           </div>
         </div>
 
@@ -11835,11 +10881,6 @@ export function AppShell() {
       </section>
 
       {(() => {
-        const selectedDateObj = parseDateInput(selectedDate);
-        const showMonthlyObjective = true;
-        const showMonthlyReview = isLastDayOfMonth(selectedDateObj);
-        const showWeeklyObjective = true;
-        const showWeeklyReview = isSunday(selectedDateObj);
         const monthNames = isFrench
           ? ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
           : ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -11847,8 +10888,8 @@ export function AppShell() {
 
         return (
           <>
-            {showMonthlyObjective ? (
-              <section id="monthlyObjective" className="animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm" style={{ order: 43 }}>
+            {showMonthlyObjectiveSurface ? (
+              <section id="monthlyObjective" className={dashboardSectionClass}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11860,28 +10901,63 @@ export function AppShell() {
                         : `Set the main goal for ${monthLabel}.`}
                     </p>
                   </div>
+                  <span className={reflectionBadgeClass}>
+                    {isFrench ? "Cap mensuel" : "Monthly focus"}
+                  </span>
                 </div>
-                <div className="mt-4">
-                  <RichTextEditor
-                    locale={activeLocale}
-                    value={monthlyObjective}
-                    onChange={setMonthlyObjective}
-                    disabled={false}
-                    contentClassName="max-h-[200px] overflow-y-auto"
-                  />
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+                  <div className={reflectionPanelClass}>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={monthlyObjective}
+                      onChange={(nextValue) => {
+                        setMonthlyObjective(nextValue);
+                        setMonthlyEntryErrorMessage(null);
+                        setMonthlyEntrySuccessMessage(null);
+                      }}
+                      disabled={false}
+                      contentClassName="max-h-[220px] overflow-y-auto"
+                    />
+                  </div>
+                  <aside className={`${reflectionMetaCardClass} space-y-3`}>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Usage" : "Use"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-foreground/85">
+                        {isFrench
+                          ? "Définissez la trajectoire dominante du mois et gardez-la visible sur le dashboard."
+                          : "Set the month’s dominant trajectory and keep it visible from the dashboard."}
+                      </p>
+                    </div>
+                    <div className="rounded-[20px] bg-surface-elevated px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                        {isFrench ? "Statut" : "Status"}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {monthlyEntry?.updatedAt
+                          ? isFrench ? "Enregistré" : "Saved"
+                          : isFrench ? "Brouillon" : "Draft"}
+                      </p>
+                      {monthlyEntry?.updatedAt ? (
+                        <p className="mt-1 text-xs text-muted">
+                          {formatDateTime(monthlyEntry.updatedAt, activeLocale, activeTimeZone)}
+                        </p>
+                      ) : null}
+                    </div>
+                  </aside>
                 </div>
-                {monthlyEntry?.updatedAt ? (
-                  <p className="mt-2 text-xs text-muted">
-                    {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
-                    {formatDateTime(monthlyEntry.updatedAt, activeLocale, activeTimeZone)}
-                  </p>
-                ) : null}
                 {monthlyEntryErrorMessage ? (
                   <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     {monthlyEntryErrorMessage}
                   </p>
                 ) : null}
-                <div className="mt-3 flex justify-end">
+                {monthlyEntrySuccessMessage ? (
+                  <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    {monthlyEntrySuccessMessage}
+                  </p>
+                ) : null}
+                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     className={primaryButtonClass}
@@ -11893,8 +10969,8 @@ export function AppShell() {
               </section>
             ) : null}
 
-            {showMonthlyReview ? (
-              <section id="monthlyReview" className="animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm" style={{ order: 44 }}>
+            {showMonthlyReviewSurface ? (
+              <section id="monthlyReview" className={dashboardSectionClass}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11906,25 +10982,56 @@ export function AppShell() {
                         : "Last day of the month — complete your review before moving on."}
                     </p>
                   </div>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                  <span className={reflectionBadgeClass}>
                     {isFrench ? "Requis" : "Required"}
                   </span>
                 </div>
-                <div className="mt-4">
-                  <RichTextEditor
-                    locale={activeLocale}
-                    value={monthlyReview}
-                    onChange={setMonthlyReview}
-                    disabled={false}
-                    contentClassName="max-h-[200px] overflow-y-auto"
-                  />
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+                  <div className={reflectionPanelClass}>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={monthlyReview}
+                      onChange={(nextValue) => {
+                        setMonthlyReview(nextValue);
+                        setMonthlyEntryErrorMessage(null);
+                        setMonthlyEntrySuccessMessage(null);
+                      }}
+                      disabled={false}
+                      contentClassName="max-h-[220px] overflow-y-auto"
+                    />
+                  </div>
+                  <aside className={`${reflectionMetaCardClass} space-y-3`}>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Checkpoint" : "Checkpoint"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-foreground/85">
+                        {isFrench
+                          ? "Clôturez le mois avec les gains, frictions et décisions pour le suivant."
+                          : "Close the month with wins, friction points, and decisions for the next one."}
+                      </p>
+                    </div>
+                    <div className="rounded-[20px] bg-surface-elevated px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                        {isFrench ? "Fenêtre" : "Window"}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {isFrench ? "Fin de mois" : "Month end"}
+                      </p>
+                    </div>
+                  </aside>
                 </div>
                 {monthlyEntryErrorMessage ? (
                   <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     {monthlyEntryErrorMessage}
                   </p>
                 ) : null}
-                <div className="mt-3 flex justify-end">
+                {monthlyEntrySuccessMessage ? (
+                  <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    {monthlyEntrySuccessMessage}
+                  </p>
+                ) : null}
+                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     className={primaryButtonClass}
@@ -11936,8 +11043,8 @@ export function AppShell() {
               </section>
             ) : null}
 
-            {showWeeklyObjective ? (
-              <section id="weeklyObjective" className="animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm" style={{ order: 41 }}>
+            {showWeeklyObjectiveSurface ? (
+              <section id="weeklyObjective" className={dashboardSectionClass}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11949,31 +11056,63 @@ export function AppShell() {
                         : "Start of week — set your objective before continuing."}
                     </p>
                   </div>
-                  <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-800">
+                  <span className={reflectionBadgeClass}>
                     {isFrench ? "Requis" : "Required"}
                   </span>
                 </div>
-                <div className="mt-4">
-                  <RichTextEditor
-                    locale={activeLocale}
-                    value={weeklyObjective}
-                    onChange={setWeeklyObjective}
-                    disabled={false}
-                    contentClassName="max-h-[200px] overflow-y-auto"
-                  />
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+                  <div className={reflectionPanelClass}>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={weeklyObjective}
+                      onChange={(nextValue) => {
+                        setWeeklyObjective(nextValue);
+                        setWeeklyEntryErrorMessage(null);
+                        setWeeklyEntrySuccessMessage(null);
+                      }}
+                      disabled={false}
+                      contentClassName="max-h-[220px] overflow-y-auto"
+                    />
+                  </div>
+                  <aside className={`${reflectionMetaCardClass} space-y-3`}>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Usage" : "Use"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-foreground/85">
+                        {isFrench
+                          ? "Choisissez une intention simple qui sert de fil rouge à la semaine."
+                          : "Choose one simple intention that acts as the week’s throughline."}
+                      </p>
+                    </div>
+                    <div className="rounded-[20px] bg-surface-elevated px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                        {isFrench ? "Statut" : "Status"}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {weeklyEntry?.updatedAt
+                          ? isFrench ? "Enregistré" : "Saved"
+                          : isFrench ? "Brouillon" : "Draft"}
+                      </p>
+                      {weeklyEntry?.updatedAt ? (
+                        <p className="mt-1 text-xs text-muted">
+                          {formatDateTime(weeklyEntry.updatedAt, activeLocale, activeTimeZone)}
+                        </p>
+                      ) : null}
+                    </div>
+                  </aside>
                 </div>
-                {weeklyEntry?.updatedAt ? (
-                  <p className="mt-2 text-xs text-muted">
-                    {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
-                    {formatDateTime(weeklyEntry.updatedAt, activeLocale, activeTimeZone)}
-                  </p>
-                ) : null}
                 {weeklyEntryErrorMessage ? (
                   <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     {weeklyEntryErrorMessage}
                   </p>
                 ) : null}
-                <div className="mt-3 flex justify-end">
+                {weeklyEntrySuccessMessage ? (
+                  <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    {weeklyEntrySuccessMessage}
+                  </p>
+                ) : null}
+                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     className={primaryButtonClass}
@@ -11985,8 +11124,8 @@ export function AppShell() {
               </section>
             ) : null}
 
-            {showWeeklyReview ? (
-              <section id="weeklyReview" className="animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm" style={{ order: 42 }}>
+            {showWeeklyReviewSurface ? (
+              <section id="weeklyReview" className={dashboardSectionClass}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className={sectionHeaderClass}>
@@ -11998,31 +11137,56 @@ export function AppShell() {
                         : "End of week — complete your review before moving to next week."}
                     </p>
                   </div>
-                  <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-800">
+                  <span className={reflectionBadgeClass}>
                     {isFrench ? "Requis" : "Required"}
                   </span>
                 </div>
-                <div className="mt-4">
-                  <RichTextEditor
-                    locale={activeLocale}
-                    value={weeklyReview}
-                    onChange={setWeeklyReview}
-                    disabled={false}
-                    contentClassName="max-h-[200px] overflow-y-auto"
-                  />
+                <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+                  <div className={reflectionPanelClass}>
+                    <RichTextEditor
+                      locale={activeLocale}
+                      value={weeklyReview}
+                      onChange={(nextValue) => {
+                        setWeeklyReview(nextValue);
+                        setWeeklyEntryErrorMessage(null);
+                        setWeeklyEntrySuccessMessage(null);
+                      }}
+                      disabled={false}
+                      contentClassName="max-h-[220px] overflow-y-auto"
+                    />
+                  </div>
+                  <aside className={`${reflectionMetaCardClass} space-y-3`}>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Checkpoint" : "Checkpoint"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-foreground/85">
+                        {isFrench
+                          ? "Clôturez la semaine avec les décisions, apprentissages et ajustements utiles."
+                          : "Close the week with decisions, learnings, and useful adjustments."}
+                      </p>
+                    </div>
+                    <div className="rounded-[20px] bg-surface-elevated px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                        {isFrench ? "Fenêtre" : "Window"}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {isFrench ? "Fin de semaine" : "Week end"}
+                      </p>
+                    </div>
+                  </aside>
                 </div>
-                {weeklyEntry?.updatedAt ? (
-                  <p className="mt-2 text-xs text-muted">
-                    {isFrench ? "Derniere mise a jour" : "Last update"}:{" "}
-                    {formatDateTime(weeklyEntry.updatedAt, activeLocale, activeTimeZone)}
-                  </p>
-                ) : null}
                 {weeklyEntryErrorMessage ? (
                   <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     {weeklyEntryErrorMessage}
                   </p>
                 ) : null}
-                <div className="mt-3 flex justify-end">
+                {weeklyEntrySuccessMessage ? (
+                  <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    {weeklyEntrySuccessMessage}
+                  </p>
+                ) : null}
+                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     className={primaryButtonClass}
@@ -12039,10 +11203,8 @@ export function AppShell() {
 
       <section
         id="notes"
-        className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getDashboardDropClassName("notes")}`}
-        style={{ order: getDashboardBlockVisualOrder("notes"), animationDelay: "0.19s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("notes", event)}
-        onDrop={(event) => handleDashboardBlockDrop("notes", event)}
+        className={`${dashboardSectionClass} overflow-hidden`}
+        style={{ animationDelay: "0.19s" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -12063,27 +11225,6 @@ export function AppShell() {
               <PlusIcon />
               {isFrench ? "Ajouter une note" : "Add note"}
             </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("notes", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("notes")}
-              title={getDashboardDragHandleLabel("notes")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("notes")}
-              aria-expanded={!dashboardBlockCollapsed.notes}
-              aria-label={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
-              title={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.notes} />
-            </button>
           </div>
         </div>
 
@@ -12097,268 +11238,408 @@ export function AppShell() {
         ) : (
           <>
             {isLoadingNotes ? (
-              <p className="mt-4 text-sm text-muted">
+              <p className={`mt-4 ${dashboardEmptyStateClass}`}>
                 {isFrench ? "Chargement..." : "Loading..."}
               </p>
             ) : notes.length === 0 && noteDialogMode === null ? (
-              <p className="mt-4 text-sm text-muted">
-                {isFrench ? "Aucune note. Créez votre première note." : "No notes yet. Create your first note."}
-              </p>
+              <div className={`mt-4 ${dashboardEmptyStateClass} space-y-4`}>
+                <p>{isFrench ? "Aucune note. Créez votre première note." : "No notes yet. Create your first note."}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className={primaryButtonClass}
+                    onClick={() => openCreateNoteDialog({ targetDate: selectedDate })}
+                    disabled={isLoadingNotes}
+                  >
+                    <PlusIcon />
+                    {isFrench ? "Creer une note" : "Create note"}
+                  </button>
+                  <span className="text-xs text-muted">
+                    {isFrench
+                      ? "Captez vos idees, references et notes reliees au calendrier."
+                      : "Capture ideas, references, and notes linked to your calendar."}
+                  </span>
+                </div>
+              </div>
             ) : (
-              <ul className="mt-4 grid gap-3 md:grid-cols-2">
-                {notes.map((note) => {
-                  const isExpanded = expandedNoteId === note.id;
-                  const attachmentsForNote = noteAttachments[note.id] ?? [];
-                  const hasLoadedAttachments = Object.prototype.hasOwnProperty.call(noteAttachments, note.id);
-                  const previewText = getRichTextPreviewText(note.body);
-                  const noteTitle =
-                    note.title?.trim() ||
-                    (isFrench ? "Note sans titre" : "Untitled note");
-                  const noteAccentClass = note.linkedCalendarEvent
-                    ? "from-sky-500 via-cyan-400 to-indigo-400"
-                    : note.targetDate
-                      ? "from-amber-400 via-orange-300 to-rose-300"
-                      : "from-slate-300 via-slate-200 to-transparent";
-                  const attachmentLabel = hasLoadedAttachments
-                    ? isFrench
-                      ? `${attachmentsForNote.length} document${attachmentsForNote.length > 1 ? "s" : ""}`
-                      : `${attachmentsForNote.length} document${attachmentsForNote.length === 1 ? "" : "s"}`
-                    : isFrench
+              <>
+                <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(280px,0.88fr)]">
+                  <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#100069] via-[#3525cd] to-[#8856e5] px-5 py-5 text-white shadow-[0_28px_56px_rgba(16,0,105,0.24)]">
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/72">
+                      <span>{isFrench ? "Atelier de notes" : "Notes studio"}</span>
+                      <span>•</span>
+                      <span>{formatDateOnlyForLocale(selectedDate, activeLocale)}</span>
+                    </div>
+                    <p className="mt-4 text-2xl font-black tracking-[-0.04em] sm:text-3xl">
+                      {latestUpdatedNote?.title?.trim() ||
+                        (isFrench ? "Gardez vos traces utiles a portee" : "Keep the useful signal close")}
+                    </p>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">
+                      {latestUpdatedNote
+                        ? `${isFrench ? "Derniere mise a jour" : "Latest update"}: ${formatDateTime(
+                            latestUpdatedNote.updatedAt,
+                            activeLocale,
+                            activeTimeZone
+                          )}`
+                        : isFrench
+                        ? "Centralisez vos notes libres et reliees aux evenements sans sortir du dashboard."
+                        : "Keep standalone notes and event-linked context in one dashboard surface."}
+                    </p>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                          {isFrench ? "Total" : "Total"}
+                        </p>
+                        <p className="mt-2 text-xl font-bold">{notes.length}</p>
+                      </div>
+                      <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                          {isFrench ? "Liees au calendrier" : "Calendar linked"}
+                        </p>
+                        <p className="mt-2 text-xl font-bold">{noteLinkedCount}</p>
+                      </div>
+                      <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                          {isFrench ? "Planifiees" : "Scheduled"}
+                        </p>
+                        <p className="mt-2 text-xl font-bold">{noteScheduledCount}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                    <article className={`${dashboardMetricCardClass} flex-col items-start`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Notes libres" : "Standalone notes"}
+                      </p>
+                      <p className="text-2xl font-black tracking-[-0.04em] text-foreground">{noteStandaloneCount}</p>
+                      <p className="text-sm leading-6 text-muted">
+                        {isFrench
+                          ? "Captures rapides sans dependance a un evenement."
+                          : "Fast captures without depending on an event."}
+                      </p>
+                    </article>
+
+                    <article className={`${dashboardMetricCardClass} flex-col items-start`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Contextes relies" : "Linked context"}
+                      </p>
+                      <p className="text-lg font-semibold text-foreground">
+                        {noteLinkedCount > 0
+                          ? isFrench
+                            ? `${noteLinkedCount} notes reliees`
+                            : `${noteLinkedCount} linked notes`
+                          : isFrench
+                          ? "Aucune liaison active"
+                          : "No active links"}
+                      </p>
+                      <p className="text-sm leading-6 text-muted">
+                        {isFrench
+                          ? "Les notes calendrier restent accessibles depuis le meme flux."
+                          : "Calendar notes stay reachable from the same working flow."}
+                      </p>
+                    </article>
+
+                    <article className={`${dashboardMetricCardClass} flex-col items-start`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Rythme" : "Cadence"}
+                      </p>
+                      <p className="text-lg font-semibold text-foreground">
+                        {latestUpdatedNote
+                          ? formatDateTime(latestUpdatedNote.updatedAt, activeLocale, activeTimeZone)
+                          : "—"}
+                      </p>
+                      <p className="text-sm leading-6 text-muted">
+                        {isFrench
+                          ? "Repere rapide pour voir si votre base de notes est encore vivante."
+                          : "Quick signal to see whether your note base is still active."}
+                      </p>
+                    </article>
+                  </div>
+                </div>
+
+                <ul className="mt-5 grid gap-4 md:grid-cols-2">
+                  {notes.map((note) => {
+                    const isExpanded = expandedNoteId === note.id;
+                    const attachmentsForNote = noteAttachments[note.id] ?? [];
+                    const hasLoadedAttachments = Object.prototype.hasOwnProperty.call(noteAttachments, note.id);
+                    const previewText = getRichTextPreviewText(note.body);
+                    const noteTitle = note.title?.trim() || (isFrench ? "Note sans titre" : "Untitled note");
+                    const noteAccentClass = note.linkedCalendarEvent
+                      ? "from-[#4f46e5] via-[#8856e5] to-[#dbe8ff]"
+                      : note.targetDate
+                      ? "from-[#91db2a] via-[#c2ee83] to-[#fff1d1]"
+                      : "from-[#c7c4d8] via-[#ddd8ee] to-[#f7f4ff]";
+                    const attachmentLabel = hasLoadedAttachments
+                      ? isFrench
+                        ? `${attachmentsForNote.length} document${attachmentsForNote.length > 1 ? "s" : ""}`
+                        : `${attachmentsForNote.length} document${attachmentsForNote.length === 1 ? "" : "s"}`
+                      : isFrench
                       ? "Documents"
                       : "Documents";
 
-                  return (
-                    <li
-                      key={note.id}
-                      className={`group relative overflow-hidden rounded-2xl border border-line bg-white/90 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                        isExpanded ? "md:col-span-2" : ""
-                      }`}
-                    >
-                      <div className={`h-1.5 w-full bg-gradient-to-r ${noteAccentClass}`} />
+                    return (
+                      <li
+                        key={note.id}
+                        className={`metric-card group relative overflow-hidden rounded-[28px] p-0 transition-all duration-200 hover:-translate-y-0.5 ${
+                          isExpanded ? "md:col-span-2" : ""
+                        }`}
+                      >
+                        <div className={`h-1.5 w-full bg-gradient-to-r ${noteAccentClass}`} />
 
-                      <div className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {note.linkedCalendarEvent ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
-                                  <CalendarIcon />
-                                  <span className="truncate max-w-[220px]">
-                                    {note.linkedCalendarEvent.title}
+                        <div className="px-4 py-4 sm:px-5 sm:py-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {note.linkedCalendarEvent ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-[#c3c0ff] bg-[#f2efff] px-3 py-1 text-[11px] font-semibold text-[#3323cc]">
+                                    <CalendarIcon />
+                                    <span className="truncate max-w-[220px]">{note.linkedCalendarEvent.title}</span>
                                   </span>
+                                ) : null}
+                                {note.targetDate ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-[#cfe8a8] bg-[#edf8d6] px-3 py-1 text-[11px] font-semibold text-[#304f00]">
+                                    <CalendarIcon />
+                                    {formatDateOnlyForLocale(note.targetDate, activeLocale)}
+                                  </span>
+                                ) : null}
+                                <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface-elevated px-3 py-1 text-[11px] font-semibold text-muted">
+                                  {attachmentLabel}
                                 </span>
-                              ) : null}
-                              {note.targetDate ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                                  <CalendarIcon />
-                                  {formatDateOnlyForLocale(note.targetDate, activeLocale)}
-                                </span>
-                              ) : null}
-                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                                <span className="font-semibold">{attachmentLabel}</span>
-                              </span>
-                            </div>
-
-                            <div className="mt-3">
-                              <p className="truncate text-base font-semibold text-foreground transition-colors group-hover:text-accent">
-                                {noteTitle}
-                              </p>
-                              <p className="mt-1 text-xs text-muted">
-                                {isFrench ? "Mis a jour" : "Updated"}{" "}
-                                {formatDateTime(note.updatedAt, activeLocale, activeTimeZone)}
-                              </p>
-                            </div>
-
-                            <div className="mt-3 rounded-2xl border border-line/80 bg-gradient-to-br from-surface-soft/90 to-white px-4 py-3">
-                              <p className="text-sm leading-6 text-foreground/85 line-clamp-4">
-                                {previewText || (isFrench ? "Note vide." : "Empty note.")}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
-                              onClick={() => { void handleExpandNote(note.id); }}
-                              title={isExpanded
-                                ? (isFrench ? "Replier la note" : "Collapse note")
-                                : (isFrench ? "Afficher les details" : "Show details")}
-                              aria-label={isExpanded
-                                ? (isFrench ? "Replier la note" : "Collapse note")
-                                : (isFrench ? "Afficher les details" : "Show details")}
-                            >
-                              <CollapseChevronIcon isCollapsed={!isExpanded} />
-                            </button>
-                            <button
-                              type="button"
-                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
-                              onClick={() => openEditNoteDialog(note)}
-                              title={isFrench ? "Modifier la note" : "Edit note"}
-                              aria-label={isFrench ? "Modifier la note" : "Edit note"}
-                            >
-                              <PencilIcon />
-                            </button>
-                            <button
-                              type="button"
-                              className={`${iconButtonClass} h-9 w-9 rounded-xl border border-red-100 bg-red-50/80 px-0 text-rose-500 hover:border-red-200 hover:bg-rose-50 hover:text-rose-600`}
-                              onClick={() => { void handleDeleteNote(note.id); }}
-                              title={isFrench ? "Supprimer la note" : "Delete note"}
-                              aria-label={isFrench ? "Supprimer la note" : "Delete note"}
-                            >
-                              <TrashIcon />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/80 pt-3">
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                            {note.linkedCalendarEvent ? (
-                              <span>
-                                {isFrench ? "Lie a un evenement" : "Linked to an event"}
-                              </span>
-                            ) : (
-                              <span>
-                                {isFrench ? "Note libre" : "Standalone note"}
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            className={`${controlButtonClass} px-3 py-1.5 text-xs`}
-                            onClick={() => { void handleExpandNote(note.id); }}
-                          >
-                            {isExpanded
-                              ? isFrench ? "Masquer les details" : "Hide details"
-                              : isFrench ? "Voir les details" : "View details"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {isExpanded ? (
-                        <div className="border-t border-line bg-surface-soft/55 px-4 py-4 sm:px-5">
-                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
-                            <section>
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                                {isFrench ? "Contenu complet" : "Full content"}
-                              </p>
-                              <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
-                                <RichTextContent
-                                  value={note.body}
-                                  className="rich-text-render text-sm leading-6 text-foreground"
-                                />
                               </div>
-                            </section>
 
-                            <section className="rounded-2xl border border-line bg-surface px-4 py-4 shadow-sm">
-                              <div className="flex items-center justify-between gap-2">
+                              <div className="mt-3">
+                                <p className="truncate text-lg font-semibold tracking-[-0.02em] text-foreground transition-colors group-hover:text-accent">
+                                  {noteTitle}
+                                </p>
+                                <p className="mt-1 text-xs text-muted">
+                                  {isFrench ? "Mis a jour" : "Updated"} {formatDateTime(note.updatedAt, activeLocale, activeTimeZone)}
+                                </p>
+                              </div>
+
+                              <div className={`mt-3 ${dashboardInsetPanelClass}`}>
+                                <p className="text-sm leading-6 text-foreground/85 line-clamp-4">
+                                  {previewText || (isFrench ? "Note vide." : "Empty note.")}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                className={`${iconButtonClass} h-10 w-10 rounded-2xl border border-line/70 bg-surface-elevated px-0`}
+                                onClick={() => {
+                                  void handleExpandNote(note.id);
+                                }}
+                                title={
+                                  isExpanded
+                                    ? isFrench
+                                      ? "Replier la note"
+                                      : "Collapse note"
+                                    : isFrench
+                                    ? "Afficher les details"
+                                    : "Show details"
+                                }
+                                aria-label={
+                                  isExpanded
+                                    ? isFrench
+                                      ? "Replier la note"
+                                      : "Collapse note"
+                                    : isFrench
+                                    ? "Afficher les details"
+                                    : "Show details"
+                                }
+                              >
+                                <CollapseChevronIcon isCollapsed={!isExpanded} />
+                              </button>
+                              <button
+                                type="button"
+                                className={`${iconButtonClass} h-10 w-10 rounded-2xl border border-line/70 bg-surface-elevated px-0`}
+                                onClick={() => openEditNoteDialog(note)}
+                                title={isFrench ? "Modifier la note" : "Edit note"}
+                                aria-label={isFrench ? "Modifier la note" : "Edit note"}
+                              >
+                                <PencilIcon />
+                              </button>
+                              <button
+                                type="button"
+                                className={`${iconButtonClass} h-10 w-10 rounded-2xl border border-red-100 bg-red-50/80 px-0 text-rose-500 hover:border-red-200 hover:bg-rose-50 hover:text-rose-600`}
+                                onClick={() => {
+                                  void handleDeleteNote(note.id);
+                                }}
+                                title={isFrench ? "Supprimer la note" : "Delete note"}
+                                aria-label={isFrench ? "Supprimer la note" : "Delete note"}
+                              >
+                                <TrashIcon />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line/70 pt-4">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                              <span className="rounded-full border border-line bg-surface-elevated px-3 py-1.5">
+                                {note.linkedCalendarEvent
+                                  ? isFrench
+                                    ? "Lie a un evenement"
+                                    : "Linked to an event"
+                                  : isFrench
+                                  ? "Note libre"
+                                  : "Standalone note"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className={`${controlButtonClass} px-3 py-2 text-xs`}
+                              onClick={() => {
+                                void handleExpandNote(note.id);
+                              }}
+                            >
+                              {isExpanded
+                                ? isFrench
+                                  ? "Masquer les details"
+                                  : "Hide details"
+                                : isFrench
+                                ? "Voir les details"
+                                : "View details"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {isExpanded ? (
+                          <div className="border-t border-line/70 bg-surface-soft/55 px-4 py-4 sm:px-5">
+                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
+                              <section className={dialogSectionClass}>
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                                  {isFrench ? "Documents" : "Documents"}
+                                  {isFrench ? "Contenu complet" : "Full content"}
                                 </p>
-                                <span className="rounded-full bg-surface-soft px-2 py-1 text-[11px] font-semibold text-muted">
-                                  {attachmentsForNote.length}
-                                </span>
-                              </div>
+                                <div className="mt-3 rounded-[22px] bg-surface-elevated px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.74)]">
+                                  <RichTextContent
+                                    value={note.body}
+                                    className="rich-text-render text-sm leading-6 text-foreground"
+                                  />
+                                </div>
+                              </section>
 
-                              {attachmentsForNote.length > 0 ? (
-                                <ul className="mt-3 flex flex-col gap-1.5">
-                                  {attachmentsForNote.map((attachment) => (
-                                    <li
-                                      key={attachment.id}
-                                      className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-soft/60 px-3 py-2"
-                                    >
-                                      <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                                        <a
-                                          href={attachment.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                                          download={isDataUrl(attachment.url) ? attachment.name : undefined}
-                                        >
-                                          {isDataUrl(attachment.url)
-                                            ? isFrench ? "Ouvrir le fichier" : "Open file"
-                                            : attachment.url}
-                                        </a>
-                                        {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
-                                          <p className="mt-0.5 text-[11px] text-muted">
-                                            {[
-                                              attachment.contentType ?? null,
-                                              typeof attachment.sizeBytes === "number"
-                                                ? formatFileSize(attachment.sizeBytes)
-                                                : null,
-                                            ]
-                                              .filter((value): value is string => Boolean(value))
-                                              .join(" · ")}
-                                          </p>
-                                        ) : null}
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className={`${iconButtonClass} h-8 w-8 rounded-lg px-0 text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50`}
-                                        disabled={pendingNoteAttachmentIds.includes(attachment.id)}
-                                        onClick={() => { void handleDeleteNoteAttachment(note.id, attachment.id); }}
-                                        aria-label={isFrench ? "Supprimer" : "Delete"}
+                              <section className={`${dialogSectionClass} space-y-3`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                    {isFrench ? "Documents" : "Documents"}
+                                  </p>
+                                  <span className="rounded-full border border-line bg-surface-elevated px-2.5 py-1 text-[11px] font-semibold text-muted">
+                                    {attachmentsForNote.length}
+                                  </span>
+                                </div>
+
+                                {attachmentsForNote.length > 0 ? (
+                                  <ul className="flex flex-col gap-2">
+                                    {attachmentsForNote.map((attachment) => (
+                                      <li
+                                        key={attachment.id}
+                                        className="dialog-section-shell flex items-center justify-between gap-2 rounded-[20px] px-3 py-3"
                                       >
-                                        {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
-                                      </button>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-3 rounded-xl border border-dashed border-line bg-surface-soft/40 px-3 py-3 text-sm text-muted">
-                                  {isFrench ? "Aucun document pour le moment." : "No documents yet."}
-                                </p>
-                              )}
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                          <a
+                                            href={attachment.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                            download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                          >
+                                            {isDataUrl(attachment.url)
+                                              ? isFrench
+                                                ? "Ouvrir le fichier"
+                                                : "Open file"
+                                              : attachment.url}
+                                          </a>
+                                          {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                            <p className="mt-0.5 text-[11px] text-muted">
+                                              {[
+                                                attachment.contentType ?? null,
+                                                typeof attachment.sizeBytes === "number"
+                                                  ? formatFileSize(attachment.sizeBytes)
+                                                  : null,
+                                              ]
+                                                .filter((value): value is string => Boolean(value))
+                                                .join(" · ")}
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className={`${iconButtonClass} h-9 w-9 rounded-2xl px-0 text-rose-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50`}
+                                          disabled={pendingNoteAttachmentIds.includes(attachment.id)}
+                                          onClick={() => {
+                                            void handleDeleteNoteAttachment(note.id, attachment.id);
+                                          }}
+                                          aria-label={isFrench ? "Supprimer" : "Delete"}
+                                        >
+                                          {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="rounded-[22px] border border-dashed border-line bg-surface-elevated px-3 py-3 text-sm text-muted">
+                                    {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                                  </p>
+                                )}
 
-                              <div className="mt-3 grid gap-2">
-                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                                  {isFrench ? "Nom du fichier" : "File name"}
-                                  <input
-                                    type="text"
-                                    value={noteAttachmentNameDraft}
-                                    onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
-                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                    placeholder={isFrench ? "Nom du fichier" : "File name"}
+                                <div className="grid gap-2">
+                                  <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                                    {isFrench ? "Nom du fichier" : "File name"}
+                                    <input
+                                      type="text"
+                                      value={noteAttachmentNameDraft}
+                                      onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
+                                      className={textFieldClass}
+                                      placeholder={isFrench ? "Nom du fichier" : "File name"}
+                                      disabled={isCreatingNoteAttachment}
+                                    />
+                                  </label>
+                                  <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                                    {isFrench ? "Fichier" : "File"}
+                                    <input
+                                      ref={noteAttachmentFileInputRef}
+                                      type="file"
+                                      onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
+                                      className={textFieldClass}
+                                      disabled={isCreatingNoteAttachment}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className={`${controlButtonClass} justify-center`}
                                     disabled={isCreatingNoteAttachment}
-                                  />
-                                </label>
-                                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                                  {isFrench ? "Fichier" : "File"}
-                                  <input
-                                    ref={noteAttachmentFileInputRef}
-                                    type="file"
-                                    onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
-                                    className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                                    disabled={isCreatingNoteAttachment}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  className={`${controlButtonClass} justify-center rounded-xl border-line bg-surface-soft/70`}
-                                  disabled={isCreatingNoteAttachment}
-                                  onClick={() => { void handleCreateNoteAttachment(note.id); }}
-                                >
-                                  <PlusIcon />
-                                  {isCreatingNoteAttachment
-                                    ? isFrench ? "Envoi..." : "Uploading..."
-                                    : isFrench ? "Ajouter un document" : "Add document"}
-                                </button>
-                              </div>
+                                    onClick={() => {
+                                      void handleCreateNoteAttachment(note.id);
+                                    }}
+                                  >
+                                    <PlusIcon />
+                                    {isCreatingNoteAttachment
+                                      ? isFrench
+                                        ? "Envoi..."
+                                        : "Uploading..."
+                                      : isFrench
+                                      ? "Ajouter un document"
+                                      : "Add document"}
+                                  </button>
+                                </div>
 
-                              {noteAttachmentErrorMessage ? (
-                                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                  {noteAttachmentErrorMessage}
-                                </p>
-                              ) : null}
-                            </section>
+                                {noteAttachmentErrorMessage ? (
+                                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                    {noteAttachmentErrorMessage}
+                                  </p>
+                                ) : null}
+                              </section>
+                            </div>
                           </div>
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
             )}
           </>
         )}
@@ -12366,10 +11647,8 @@ export function AppShell() {
 
       <section
         id="gaming"
-        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getDashboardDropClassName("gamingTrack")}`}
-        style={{ order: getDashboardBlockVisualOrder("gamingTrack"), animationDelay: "0.05s" }}
-        onDragOver={(event) => handleDashboardBlockDragOver("gamingTrack", event)}
-        onDrop={(event) => handleDashboardBlockDrop("gamingTrack", event)}
+        className={dashboardSectionClass}
+        style={{ animationDelay: "0.05s" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -12385,13 +11664,13 @@ export function AppShell() {
 
           <div className="flex flex-wrap items-center gap-2">
             {!dashboardBlockCollapsed.gamingTrack ? (
-              <div className="inline-flex items-center gap-0.5 rounded-lg bg-surface-soft p-1">
+              <div className={segmentedControlClass}>
                 {gamingTrackPeriodOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
-                      gamingTrackPeriod === option.value ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+                      gamingTrackPeriod === option.value ? "bg-surface-elevated text-foreground shadow-sm" : "text-muted hover:text-foreground"
                     }`}
                     onClick={() => {
                       setGamingTrackPeriod(option.value);
@@ -12405,27 +11684,6 @@ export function AppShell() {
                 ))}
               </div>
             ) : null}
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              draggable
-              onDragStart={(event) => handleDashboardBlockDragStart("gamingTrack", event)}
-              onDragEnd={handleDashboardBlockDragEnd}
-              aria-label={getDashboardDragHandleLabel("gamingTrack")}
-              title={getDashboardDragHandleLabel("gamingTrack")}
-            >
-              <DragHandleIcon />
-            </button>
-            <button
-              type="button"
-              className={dashboardIconButtonClass}
-              onClick={() => toggleDashboardBlock("gamingTrack")}
-              aria-expanded={!dashboardBlockCollapsed.gamingTrack}
-              aria-label={getCollapseToggleAriaLabel("gamingTrack", dashboardBlockCollapsed.gamingTrack)}
-              title={getCollapseToggleAriaLabel("gamingTrack", dashboardBlockCollapsed.gamingTrack)}
-            >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.gamingTrack} />
-            </button>
           </div>
         </div>
 
@@ -12629,7 +11887,7 @@ export function AppShell() {
 
       {isNoteDialogOpen ? (
         <div
-          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className={`${dialogOverlayClass} max-sm:p-0`}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeNoteDialog();
@@ -12640,9 +11898,9 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={noteDialogTitle}
-            className={`animate-scale-in flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${noteDialogHeightClass}`}
+            className={`${dialogShellClass} flex w-full max-w-3xl flex-col overflow-hidden ${noteDialogHeightClass} max-sm:h-full max-sm:max-h-none max-sm:rounded-none`}
           >
-            <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
+            <header className="mb-4 flex shrink-0 items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">{noteDialogTitle}</h2>
                 <p className="mt-1 text-sm text-muted">
@@ -12670,100 +11928,274 @@ export function AppShell() {
                 void handleSubmitNote();
               }}
             >
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Titre (facultatif)" : "Title (optional)"}
-                <input
-                  type="text"
-                  className={textFieldClass}
-                  placeholder={isFrench ? "Titre..." : "Title..."}
-                  value={noteFormValues.title}
-                  onChange={(event) => setNoteFormValues((prev) => ({ ...prev, title: event.target.value }))}
-                  maxLength={300}
-                  disabled={isSubmittingNote}
-                />
-              </label>
+              <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#100069] via-[#3525cd] to-[#8856e5] px-5 py-5 text-white shadow-[0_28px_56px_rgba(16,0,105,0.22)]">
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/72">
+                  <span>{noteDialogMode === "edit" ? (isFrench ? "Note active" : "Active note") : isFrench ? "Nouvelle capture" : "New capture"}</span>
+                  {selectedNoteCalendarEventTitle ? (
+                    <>
+                      <span>•</span>
+                      <span>{isFrench ? "Calendrier relie" : "Calendar linked"}</span>
+                    </>
+                  ) : null}
+                </div>
+                <p className="mt-4 text-2xl font-black tracking-[-0.04em] sm:text-3xl">
+                  {noteFormValues.title.trim() || (isFrench ? "Structurer une note utile" : "Shape a useful note")}
+                </p>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">
+                  {noteDialogPreview ||
+                    (isFrench
+                      ? "Ajoutez une trace claire, puis reliez-la si besoin a une date ou un evenement calendrier."
+                      : "Capture clear context, then optionally connect it to a date or calendar event.")}
+                </p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                      {isFrench ? "Date cible" : "Target date"}
+                    </p>
+                    <p className="mt-2 text-base font-bold">
+                      {noteFormValues.targetDate ? formatDateOnlyForLocale(noteFormValues.targetDate, activeLocale) : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                      {isFrench ? "Evenement" : "Event"}
+                    </p>
+                    <p className="mt-2 text-base font-bold">{selectedNoteCalendarEventTitle || "—"}</p>
+                  </div>
+                  <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                      {isFrench ? "Documents" : "Documents"}
+                    </p>
+                    <p className="mt-2 text-base font-bold">{noteDialogAttachmentCount}</p>
+                  </div>
+                </div>
+              </section>
 
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Contenu" : "Body"}
-                <RichTextEditor
-                  locale={activeLocale}
-                  value={noteFormValues.body}
-                  disabled={isSubmittingNote}
-                  onChange={(nextValue) => setNoteFormValues((prev) => ({ ...prev, body: nextValue }))}
-                />
-              </label>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
+                <div className="space-y-4">
+                  <section className={`${dialogSectionClass} space-y-4`}>
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Titre (facultatif)" : "Title (optional)"}
+                      <input
+                        type="text"
+                        className={textFieldClass}
+                        placeholder={isFrench ? "Titre..." : "Title..."}
+                        value={noteFormValues.title}
+                        onChange={(event) => setNoteFormValues((prev) => ({ ...prev, title: event.target.value }))}
+                        maxLength={300}
+                        disabled={isSubmittingNote}
+                      />
+                    </label>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm font-semibold text-foreground">
-                  {isFrench ? "Date cible (facultatif)" : "Target date (optional)"}
-                  <input
-                    type="date"
-                    className={textFieldClass}
-                    value={noteFormValues.targetDate}
-                    onChange={(event) => setNoteFormValues((prev) => ({ ...prev, targetDate: event.target.value }))}
-                    disabled={isSubmittingNote}
-                  />
-                </label>
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Contenu" : "Body"}
+                      <RichTextEditor
+                        locale={activeLocale}
+                        value={noteFormValues.body}
+                        disabled={isSubmittingNote}
+                        onChange={(nextValue) => setNoteFormValues((prev) => ({ ...prev, body: nextValue }))}
+                      />
+                    </label>
+                  </section>
 
-                <label className="block text-sm font-semibold text-foreground">
-                  {isFrench ? "Evenement lie (facultatif)" : "Linked event (optional)"}
-                  <select
-                    className={textFieldClass}
-                    value={noteFormValues.calendarEventId}
-                    onChange={(event) => {
-                      const nextCalendarEventId = event.target.value;
-                      const selectedEvent = noteCalendarEventOptions.find(
-                        (eventOption) => eventOption.id === nextCalendarEventId
-                      );
-                      setNoteFormValues((prev) => ({
-                        ...prev,
-                        calendarEventId: nextCalendarEventId,
-                        targetDate:
-                          !prev.targetDate && selectedEvent
-                            ? selectedEvent.startTime.substring(0, 10)
-                            : prev.targetDate,
-                      }));
-                    }}
-                    disabled={isSubmittingNote}
-                  >
-                    <option value="">
-                      {isFrench ? "Aucun evenement" : "No event"}
-                    </option>
-                    {noteCalendarEventOptions.map((eventOption) => {
-                      const isDisabled =
-                        linkedCalendarEventIdsInUse.has(eventOption.id) &&
-                        eventOption.id !== editingNote?.calendarEventId;
+                  {noteDialogMode === "edit" && editingNoteId ? (
+                    <section className={`${dialogSectionClass} space-y-3`}>
+                      <header>
+                        <h3 className="text-sm font-semibold text-foreground">
+                          {isFrench ? "Documents" : "Documents"} ({(noteAttachments[editingNoteId] ?? []).length})
+                        </h3>
+                        <p className="text-xs text-muted">
+                          {isFrench
+                            ? "Ajoutez ou retirez des fichiers lies a cette note."
+                            : "Add or remove files linked to this note."}
+                        </p>
+                      </header>
 
-                      return (
-                        <option
-                          key={eventOption.id}
-                          value={eventOption.id}
-                          disabled={isDisabled}
+                      {(noteAttachments[editingNoteId] ?? []).length > 0 ? (
+                        <ul className="flex flex-col gap-2">
+                          {(noteAttachments[editingNoteId] ?? []).map((attachment) => (
+                            <li key={attachment.id} className="dialog-section-shell flex items-center justify-between gap-2 rounded-[20px] px-3 py-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                <a
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                  download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                >
+                                  {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
+                                </a>
+                                {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                  <p className="mt-0.5 text-[11px] text-muted">
+                                    {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null]
+                                      .filter((value): value is string => Boolean(value))
+                                      .join(" · ")}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                className={`${iconButtonClass} h-9 w-9 rounded-2xl px-0 text-rose-500 hover:bg-rose-50 disabled:opacity-50`}
+                                disabled={pendingNoteAttachmentIds.includes(attachment.id)}
+                                onClick={() => {
+                                  void handleDeleteNoteAttachment(editingNoteId, attachment.id);
+                                }}
+                              >
+                                {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="rounded-[22px] border border-dashed border-line bg-surface-elevated px-3 py-3 text-sm text-muted">
+                          {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                        </p>
+                      )}
+
+                      {noteAttachmentErrorMessage ? (
+                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                          {noteAttachmentErrorMessage}
+                        </p>
+                      ) : null}
+
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                        <label className="block text-sm font-semibold text-foreground">
+                          {isFrench ? "Nom" : "Name"}
+                          <input
+                            type="text"
+                            value={noteAttachmentNameDraft}
+                            onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
+                            className={textFieldClass}
+                            placeholder={isFrench ? "Nom du fichier" : "File name"}
+                            disabled={isCreatingNoteAttachment}
+                          />
+                        </label>
+                        <label className="block text-sm font-semibold text-foreground">
+                          {isFrench ? "Fichier" : "File"}
+                          <input
+                            ref={noteAttachmentFileInputRef}
+                            type="file"
+                            onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
+                            className={textFieldClass}
+                            disabled={isCreatingNoteAttachment}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className={controlButtonClass}
+                          disabled={isCreatingNoteAttachment}
+                          onClick={() => {
+                            void handleCreateNoteAttachment(editingNoteId);
+                          }}
                         >
-                          {`${formatCalendarEventTimeLabel(
-                            {
-                              id: eventOption.id,
-                              connectionId: "",
-                              title: eventOption.title,
-                              description: null,
-                              startTime: eventOption.startTime,
-                              endTime: eventOption.endTime,
-                              isAllDay: eventOption.isAllDay,
-                              startDate: eventOption.startDate,
-                              endDate: eventOption.endDate,
-                              location: null,
-                              htmlLink: eventOption.htmlLink,
-                              note: null,
-                              linkedTasks: [],
-                            },
-                            activeLocale,
-                            activeTimeZone
-                          )} - ${eventOption.title}${isDisabled ? isFrench ? " (deja lie)" : " (already linked)" : ""}`}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
+                          <PlusIcon />
+                          {isCreatingNoteAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
+
+                <aside className="space-y-4">
+                  <section className={`${dialogSectionClass} space-y-4`}>
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Date cible (facultatif)" : "Target date (optional)"}
+                      <input
+                        type="date"
+                        className={textFieldClass}
+                        value={noteFormValues.targetDate}
+                        onChange={(event) => setNoteFormValues((prev) => ({ ...prev, targetDate: event.target.value }))}
+                        disabled={isSubmittingNote}
+                      />
+                    </label>
+
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Evenement lie (facultatif)" : "Linked event (optional)"}
+                      <select
+                        className={textFieldClass}
+                        value={noteFormValues.calendarEventId}
+                        onChange={(event) => {
+                          const nextCalendarEventId = event.target.value;
+                          const selectedEvent = noteCalendarEventOptions.find(
+                            (eventOption) => eventOption.id === nextCalendarEventId
+                          );
+                          setNoteFormValues((prev) => ({
+                            ...prev,
+                            calendarEventId: nextCalendarEventId,
+                            targetDate:
+                              !prev.targetDate && selectedEvent
+                                ? selectedEvent.startTime.substring(0, 10)
+                                : prev.targetDate,
+                          }));
+                        }}
+                        disabled={isSubmittingNote}
+                      >
+                        <option value="">{isFrench ? "Aucun evenement" : "No event"}</option>
+                        {noteCalendarEventOptions.map((eventOption) => {
+                          const isDisabled =
+                            linkedCalendarEventIdsInUse.has(eventOption.id) &&
+                            eventOption.id !== editingNote?.calendarEventId;
+
+                          return (
+                            <option key={eventOption.id} value={eventOption.id} disabled={isDisabled}>
+                              {`${formatCalendarEventTimeLabel(
+                                {
+                                  id: eventOption.id,
+                                  connectionId: "",
+                                  title: eventOption.title,
+                                  description: null,
+                                  startTime: eventOption.startTime,
+                                  endTime: eventOption.endTime,
+                                  isAllDay: eventOption.isAllDay,
+                                  startDate: eventOption.startDate,
+                                  endDate: eventOption.endDate,
+                                  location: null,
+                                  htmlLink: eventOption.htmlLink,
+                                  note: null,
+                                  linkedTasks: [],
+                                },
+                                activeLocale,
+                                activeTimeZone
+                              )} - ${eventOption.title}${isDisabled ? isFrench ? " (deja lie)" : " (already linked)" : ""}`}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </label>
+                  </section>
+
+                  <section className={`${dialogSectionClass} space-y-3`}>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {isFrench ? "Usage" : "Usage"}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-foreground/82">
+                        {isFrench
+                          ? "Utilisez une date pour faire remonter la note au bon jour, ou reliez-la a un evenement pour garder le contexte vivant."
+                          : "Use a date to resurface the note on the right day, or link it to an event to keep the context alive."}
+                      </p>
+                    </div>
+                    <div className="rounded-[20px] bg-surface-elevated px-4 py-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                        {isFrench ? "Etat de la note" : "Note state"}
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-foreground">
+                        {selectedNoteCalendarEventTitle
+                          ? isFrench
+                            ? "Contexte calendrier attache"
+                            : "Calendar context attached"
+                          : noteFormValues.targetDate
+                          ? isFrench
+                            ? "Repere journalier actif"
+                            : "Daily anchor active"
+                          : isFrench
+                          ? "Capture libre"
+                          : "Free capture"}
+                      </p>
+                    </div>
+                  </section>
+                </aside>
               </div>
 
               {noteErrorMessage ? (
@@ -12772,100 +12204,10 @@ export function AppShell() {
                 </p>
               ) : null}
 
-              {noteDialogMode === "edit" && editingNoteId ? (
-                <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
-                  <header>
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {isFrench ? "Documents" : "Documents"} ({(noteAttachments[editingNoteId] ?? []).length})
-                    </h3>
-                    <p className="text-xs text-muted">
-                      {isFrench ? "Ajoutez ou retirez des fichiers lies a cette note." : "Add or remove files linked to this note."}
-                    </p>
-                  </header>
-
-                  {(noteAttachments[editingNoteId] ?? []).length > 0 ? (
-                    <ul className="mt-3 flex flex-col gap-1.5">
-                      {(noteAttachments[editingNoteId] ?? []).map((attachment) => (
-                        <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                            <a
-                              href={attachment.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                              download={isDataUrl(attachment.url) ? attachment.name : undefined}
-                            >
-                              {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
-                            </a>
-                            {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
-                              <p className="mt-0.5 text-[11px] text-muted">
-                                {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((value): value is string => Boolean(value)).join(" · ")}
-                              </p>
-                            ) : null}
-                          </div>
-                          <button
-                            type="button"
-                            className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
-                            disabled={pendingNoteAttachmentIds.includes(attachment.id)}
-                            onClick={() => { void handleDeleteNoteAttachment(editingNoteId, attachment.id); }}
-                          >
-                            {pendingNoteAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                      {isFrench ? "Aucun document pour le moment." : "No documents yet."}
-                    </p>
-                  )}
-
-                  {noteAttachmentErrorMessage ? (
-                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      {noteAttachmentErrorMessage}
-                    </p>
-                  ) : null}
-
-                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
-                    <label className="block text-sm font-semibold text-foreground">
-                      {isFrench ? "Nom" : "Name"}
-                      <input
-                        type="text"
-                        value={noteAttachmentNameDraft}
-                        onChange={(event) => setNoteAttachmentNameDraft(event.target.value)}
-                        className={textFieldClass}
-                        placeholder={isFrench ? "Nom du fichier" : "File name"}
-                        disabled={isCreatingNoteAttachment}
-                      />
-                    </label>
-                    <label className="block text-sm font-semibold text-foreground">
-                      {isFrench ? "Fichier" : "File"}
-                      <input
-                        ref={noteAttachmentFileInputRef}
-                        type="file"
-                        onChange={(event) => setNoteAttachmentFileDraft(event.target.files?.[0] ?? null)}
-                        className={textFieldClass}
-                        disabled={isCreatingNoteAttachment}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className={controlButtonClass}
-                      disabled={isCreatingNoteAttachment}
-                      onClick={() => { void handleCreateNoteAttachment(editingNoteId); }}
-                    >
-                      <PlusIcon />
-                      {isCreatingNoteAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
-                    </button>
-                  </div>
-                </section>
-              ) : null}
-
               <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
                 <button
                   type="button"
-                  className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+                  className={controlButtonClass}
                   onClick={closeNoteDialog}
                 >
                   {isFrench ? "Annuler" : "Cancel"}
@@ -12886,7 +12228,7 @@ export function AppShell() {
 
       {isTaskDialogOpen ? (
         <div
-          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className={`${dialogOverlayClass} max-sm:p-0 lg:items-stretch lg:justify-end lg:p-0`}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeTaskDialog();
@@ -12897,12 +12239,27 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={taskDialogTitle}
-            className={`animate-scale-in flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${taskDialogHeightClass}`}
+            className={`${dialogShellClass} flex w-full max-w-2xl flex-col overflow-hidden ${taskDialogHeightClass} max-sm:h-full max-sm:max-h-none max-sm:rounded-none lg:h-full lg:max-h-none lg:max-w-[42rem] lg:rounded-none lg:border-l lg:border-line/20 lg:p-8 lg:shadow-[-40px_0_80px_-20px_rgba(16,0,105,0.15)]`}
           >
-            <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
+            <header className="mb-4 flex shrink-0 items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold text-foreground">{taskDialogTitle}</h2>
-                <p className="mt-1 text-sm text-muted">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${priorityChipClassByPriority[taskFormValues.priority]}`}>
+                    {formatPriority(taskFormValues.priority, activeLocale)}
+                  </span>
+                  {taskFormValues.project ? (
+                    <span className="rounded-full bg-accent-soft px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
+                      {taskFormValues.project}
+                    </span>
+                  ) : null}
+                  {taskFormValues.calendarEventId ? (
+                    <span className="rounded-full bg-reward-soft px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-success">
+                      {isFrench ? "Calendrier lie" : "Calendar linked"}
+                    </span>
+                  ) : null}
+                </div>
+                <h2 className="mt-4 text-2xl font-black tracking-[-0.04em] text-foreground sm:text-3xl">{taskDialogTitle}</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-muted">
                   {isFrench
                     ? "Precisez bien les details pour faciliter l'execution."
                     : "Set details clearly so this task is easy to complete."}
@@ -12921,6 +12278,34 @@ export function AppShell() {
             </header>
 
             <form className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" onSubmit={handleTaskFormSubmit}>
+              <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-accent via-accent-strong to-[#6e3aca] px-5 py-5 text-white shadow-[0_28px_56px_rgba(53,37,205,0.2)]">
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">
+                  <span>{taskDialogMode === "edit" ? (isFrench ? "Tache active" : "Active Task") : (isFrench ? "Nouvelle entree" : "New Entry")}</span>
+                  {taskFormValues.project ? <span>• {taskFormValues.project}</span> : null}
+                </div>
+                <p className="mt-4 text-2xl font-black tracking-[-0.04em] sm:text-3xl">
+                  {taskFormValues.title || (isFrench ? "Definir l'action prioritaire" : "Define the next high-leverage action")}
+                </p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/58">{isFrench ? "Statut" : "Status"}</p>
+                    <p className="mt-2 text-base font-bold">{formatTaskStatus(taskFormValues.status, activeLocale)}</p>
+                  </div>
+                  <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/58">{isFrench ? "Echeance" : "Due Date"}</p>
+                    <p className="mt-2 text-base font-bold">
+                      {taskFormValues.dueDate ? formatDateOnlyForLocale(taskFormValues.dueDate, activeLocale) : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/58">{isFrench ? "Temps planifie" : "Planned Time"}</p>
+                    <p className="mt-2 text-base font-bold">
+                      {taskFormValues.plannedTime ? formatPlannedTime(Number(taskFormValues.plannedTime) || 0) : "—"}
+                    </p>
+                  </div>
+                </div>
+              </section>
+
               <label className="block text-sm font-semibold text-foreground">
                 {isFrench ? "Titre" : "Title"}
                 <input
@@ -13068,7 +12453,7 @@ export function AppShell() {
                 </label>
               ) : null}
 
-              <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
+              <section className={dialogSectionClass}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">{isFrench ? "Projet" : "Project"}</h3>
@@ -13541,7 +12926,7 @@ export function AppShell() {
 
       {reminderDialogMode ? (
         <div
-          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className={`${dialogOverlayClass} max-sm:p-0`}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeReminderDialog();
@@ -13556,9 +12941,9 @@ export function AppShell() {
                 ? isFrench ? "Modifier le rappel" : "Edit Reminder"
                 : isFrench ? "Ajouter un rappel" : "Add Reminder"
             }
-            className="animate-scale-in flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+            className={`${dialogShellClass} flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden max-sm:h-full max-sm:max-h-none max-sm:rounded-none`}
           >
-            <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
+            <header className="mb-4 flex shrink-0 items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">
                   {reminderDialogMode === "edit"
@@ -13584,172 +12969,268 @@ export function AppShell() {
             </header>
 
             <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleReminderFormSubmit}>
-            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Titre" : "Title"}
-                <input
-                  type="text"
-                  value={reminderFormValues.title}
-                  onChange={(event) => {
-                    setReminderFormValues((v) => ({ ...v, title: event.target.value }));
-                    setReminderErrorMessage(null);
-                  }}
-                  className={textFieldClass}
-                  maxLength={200}
-                  placeholder={isFrench ? "Titre du rappel" : "Reminder title"}
-                  required
-                  disabled={isSubmittingReminder}
-                />
-              </label>
-
-              <div className="block text-sm font-semibold text-foreground">
-                <span>{isFrench ? "Description (optionnel)" : "Description (optional)"}</span>
-                <RichTextEditor
-                  locale={activeLocale}
-                  value={reminderFormValues.description}
-                  onChange={(nextValue) => {
-                    setReminderFormValues((v) => ({ ...v, description: nextValue }));
-                  }}
-                  disabled={isSubmittingReminder}
-                />
-              </div>
-
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Projet (optionnel)" : "Project (optional)"}
-                <select
-                  value={reminderFormValues.project}
-                  onChange={(event) => {
-                    setReminderFormValues((v) => ({ ...v, project: event.target.value }));
-                  }}
-                  className={textFieldClass}
-                  disabled={isSubmittingReminder}
-                >
-                  <option value="">{isFrench ? "Aucun projet" : "No project"}</option>
-                  {projectSelectOptions.map((projectName) => (
-                    <option key={projectName} value={projectName}>
-                      {projectName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Assignes (optionnel)" : "Assignees (optional)"}
-                <input
-                  type="text"
-                  value={reminderFormValues.assignees}
-                  onChange={(event) => {
-                    setReminderFormValues((v) => ({ ...v, assignees: event.target.value }));
-                  }}
-                  className={textFieldClass}
-                  maxLength={500}
-                  placeholder={isFrench ? "Noms ou emails, separes par des virgules" : "Names or emails, comma-separated"}
-                  disabled={isSubmittingReminder}
-                />
-              </label>
-
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Date et heure" : "Date & Time"}
-                <input
-                  type="datetime-local"
-                  value={reminderFormValues.remindAt}
-                  onChange={(event) => {
-                    setReminderFormValues((v) => ({ ...v, remindAt: event.target.value }));
-                    setReminderErrorMessage(null);
-                  }}
-                  className={textFieldClass}
-                  required
-                  disabled={isSubmittingReminder}
-                />
-              </label>
-
-              {reminderErrorMessage ? (
-                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  {reminderErrorMessage}
-                </p>
-              ) : null}
-
-              {/* Attachment section — visible when editing an existing reminder */}
-              {reminderDialogMode === "edit" && editingReminderId ? (
-                <div className="border-t border-line pt-4">
-                  <p className="mb-2 text-sm font-semibold text-foreground">
-                    {isFrench ? "Documents" : "Documents"} ({(reminderAttachments[editingReminderId] ?? []).length})
+              <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+                <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#3525cd] via-[#6e3aca] to-[#91db2a] px-5 py-5 text-white shadow-[0_28px_56px_rgba(53,37,205,0.22)]">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/72">
+                    <span>{reminderDialogMode === "edit" ? (isFrench ? "Rappel actif" : "Active reminder") : isFrench ? "Nouvelle alerte" : "New alert"}</span>
+                    {reminderFormValues.project ? (
+                      <>
+                        <span>•</span>
+                        <span>{reminderFormValues.project}</span>
+                      </>
+                    ) : null}
+                  </div>
+                  <p className="mt-4 text-2xl font-black tracking-[-0.04em] sm:text-3xl">
+                    {reminderFormValues.title.trim() || (isFrench ? "Definir le prochain signal utile" : "Define the next useful signal")}
                   </p>
-                  {(reminderAttachments[editingReminderId] ?? []).length > 0 ? (
-                    <ul className="mb-3 flex flex-col gap-1.5">
-                      {(reminderAttachments[editingReminderId] ?? []).map((attachment) => (
-                        <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                            <a
-                              href={attachment.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                              download={isDataUrl(attachment.url) ? attachment.name : undefined}
-                            >
-                              {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
-                            </a>
-                            {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
-                              <p className="mt-0.5 text-[11px] text-muted">
-                                {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null].filter((v): v is string => Boolean(v)).join(" · ")}
-                              </p>
-                            ) : null}
-                          </div>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">
+                    {reminderDialogScheduleLabel
+                      ? `${isFrench ? "Programmé pour" : "Scheduled for"} ${reminderDialogScheduleLabel}`
+                      : isFrench
+                      ? "Placez une heure claire pour faire remonter la bonne action au bon moment."
+                      : "Set a clear time so the right action resurfaces at the right moment."}
+                  </p>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                        {isFrench ? "Echeance" : "Schedule"}
+                      </p>
+                      <p className="mt-2 text-base font-bold">{reminderDialogScheduleLabel || "—"}</p>
+                    </div>
+                    <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                        {isFrench ? "Participants" : "Assignees"}
+                      </p>
+                      <p className="mt-2 text-base font-bold">
+                        {reminderDialogAssigneePreview.length > 0 ? reminderDialogAssigneePreview.join(", ") : "—"}
+                      </p>
+                    </div>
+                    <div className="rounded-[22px] bg-white/12 px-4 py-3 backdrop-blur-sm">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                        {isFrench ? "Documents" : "Documents"}
+                      </p>
+                      <p className="mt-2 text-base font-bold">{reminderDialogAttachmentCount}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
+                  <div className="space-y-4">
+                    <section className={`${dialogSectionClass} space-y-4`}>
+                      <label className="block text-sm font-semibold text-foreground">
+                        {isFrench ? "Titre" : "Title"}
+                        <input
+                          type="text"
+                          value={reminderFormValues.title}
+                          onChange={(event) => {
+                            setReminderFormValues((v) => ({ ...v, title: event.target.value }));
+                            setReminderErrorMessage(null);
+                          }}
+                          className={textFieldClass}
+                          maxLength={200}
+                          placeholder={isFrench ? "Titre du rappel" : "Reminder title"}
+                          required
+                          disabled={isSubmittingReminder}
+                        />
+                      </label>
+
+                      <div className="block text-sm font-semibold text-foreground">
+                        <span>{isFrench ? "Description (optionnel)" : "Description (optional)"}</span>
+                        <RichTextEditor
+                          locale={activeLocale}
+                          value={reminderFormValues.description}
+                          onChange={(nextValue) => {
+                            setReminderFormValues((v) => ({ ...v, description: nextValue }));
+                          }}
+                          disabled={isSubmittingReminder}
+                        />
+                      </div>
+                    </section>
+
+                    {reminderDialogMode === "edit" && editingReminderId ? (
+                      <section className={`${dialogSectionClass} space-y-3`}>
+                        <header>
+                          <h3 className="text-sm font-semibold text-foreground">
+                            {isFrench ? "Documents" : "Documents"} ({(reminderAttachments[editingReminderId] ?? []).length})
+                          </h3>
+                          <p className="text-xs text-muted">
+                            {isFrench
+                              ? "Ajoutez ou retirez des fichiers lies a ce rappel."
+                              : "Add or remove files linked to this reminder."}
+                          </p>
+                        </header>
+
+                        {(reminderAttachments[editingReminderId] ?? []).length > 0 ? (
+                          <ul className="flex flex-col gap-2">
+                            {(reminderAttachments[editingReminderId] ?? []).map((attachment) => (
+                              <li key={attachment.id} className="dialog-section-shell flex items-center justify-between gap-2 rounded-[20px] px-3 py-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                                  <a
+                                    href={attachment.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                                    download={isDataUrl(attachment.url) ? attachment.name : undefined}
+                                  >
+                                    {isDataUrl(attachment.url) ? (isFrench ? "Ouvrir le fichier" : "Open file") : attachment.url}
+                                  </a>
+                                  {attachment.contentType || typeof attachment.sizeBytes === "number" ? (
+                                    <p className="mt-0.5 text-[11px] text-muted">
+                                      {[attachment.contentType ?? null, typeof attachment.sizeBytes === "number" ? formatFileSize(attachment.sizeBytes) : null]
+                                        .filter((v): v is string => Boolean(v))
+                                        .join(" · ")}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  className={`${iconButtonClass} h-9 w-9 rounded-2xl px-0 text-rose-500 hover:bg-rose-50 disabled:opacity-50`}
+                                  disabled={pendingReminderAttachmentIds.includes(attachment.id)}
+                                  onClick={() => {
+                                    void handleDeleteReminderAttachment(editingReminderId, attachment.id);
+                                  }}
+                                >
+                                  {pendingReminderAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="rounded-[22px] border border-dashed border-line bg-surface-elevated px-3 py-3 text-sm text-muted">
+                            {isFrench ? "Aucun document pour le moment." : "No documents yet."}
+                          </p>
+                        )}
+                        {reminderAttachmentErrorMessage ? (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            {reminderAttachmentErrorMessage}
+                          </p>
+                        ) : null}
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+                          <label className="block text-sm font-semibold text-foreground">
+                            {isFrench ? "Nom" : "Name"}
+                            <input
+                              type="text"
+                              value={reminderAttachmentNameDraft}
+                              onChange={(e) => setReminderAttachmentNameDraft(e.target.value)}
+                              className={textFieldClass}
+                              placeholder={isFrench ? "Nom du fichier" : "File name"}
+                              disabled={isCreatingReminderAttachment}
+                            />
+                          </label>
+                          <label className="block text-sm font-semibold text-foreground">
+                            {isFrench ? "Fichier" : "File"}
+                            <input
+                              ref={reminderAttachmentFileInputRef}
+                              type="file"
+                              onChange={(e) => setReminderAttachmentFileDraft(e.target.files?.[0] ?? null)}
+                              className={textFieldClass}
+                              disabled={isCreatingReminderAttachment}
+                            />
+                          </label>
                           <button
                             type="button"
-                            className="shrink-0 rounded-md px-2 py-1 text-xs text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50"
-                            disabled={pendingReminderAttachmentIds.includes(attachment.id)}
-                            onClick={() => { void handleDeleteReminderAttachment(editingReminderId, attachment.id); }}
+                            className={controlButtonClass}
+                            disabled={isCreatingReminderAttachment}
+                            onClick={() => {
+                              void handleCreateReminderAttachment(editingReminderId);
+                            }}
                           >
-                            {pendingReminderAttachmentIds.includes(attachment.id) ? "…" : <TrashIcon />}
+                            <PlusIcon />
+                            {isCreatingReminderAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
                           </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mb-3 rounded-xl border border-dashed border-line bg-surface px-3 py-2 text-sm text-muted">
-                      {isFrench ? "Aucun document pour le moment." : "No documents yet."}
-                    </p>
-                  )}
-                  {reminderAttachmentErrorMessage ? (
-                    <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{reminderAttachmentErrorMessage}</p>
-                  ) : null}
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
-                    <label className="block text-xs font-medium text-muted">
-                      {isFrench ? "Nom" : "Name"}
-                      <input
-                        type="text"
-                        value={reminderAttachmentNameDraft}
-                        onChange={(e) => setReminderAttachmentNameDraft(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                        placeholder={isFrench ? "Nom du fichier" : "File name"}
-                        disabled={isCreatingReminderAttachment}
-                      />
-                    </label>
-                    <label className="block text-xs font-medium text-muted">
-                      {isFrench ? "Fichier" : "File"}
-                      <input
-                        ref={reminderAttachmentFileInputRef}
-                        type="file"
-                        onChange={(e) => setReminderAttachmentFileDraft(e.target.files?.[0] ?? null)}
-                        className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-                        disabled={isCreatingReminderAttachment}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
-                      disabled={isCreatingReminderAttachment}
-                      onClick={() => { void handleCreateReminderAttachment(editingReminderId); }}
-                    >
-                      {isCreatingReminderAttachment ? "…" : isFrench ? "Ajouter" : "Add"}
-                    </button>
+                        </div>
+                      </section>
+                    ) : null}
                   </div>
-                </div>
-              ) : null}
 
-            </div>
+                  <aside className="space-y-4">
+                    <section className={`${dialogSectionClass} space-y-4`}>
+                      <label className="block text-sm font-semibold text-foreground">
+                        {isFrench ? "Projet (optionnel)" : "Project (optional)"}
+                        <select
+                          value={reminderFormValues.project}
+                          onChange={(event) => {
+                            setReminderFormValues((v) => ({ ...v, project: event.target.value }));
+                          }}
+                          className={textFieldClass}
+                          disabled={isSubmittingReminder}
+                        >
+                          <option value="">{isFrench ? "Aucun projet" : "No project"}</option>
+                          {projectSelectOptions.map((projectName) => (
+                            <option key={projectName} value={projectName}>
+                              {projectName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="block text-sm font-semibold text-foreground">
+                        {isFrench ? "Assignes (optionnel)" : "Assignees (optional)"}
+                        <input
+                          type="text"
+                          value={reminderFormValues.assignees}
+                          onChange={(event) => {
+                            setReminderFormValues((v) => ({ ...v, assignees: event.target.value }));
+                          }}
+                          className={textFieldClass}
+                          maxLength={500}
+                          placeholder={isFrench ? "Noms ou emails, separes par des virgules" : "Names or emails, comma-separated"}
+                          disabled={isSubmittingReminder}
+                        />
+                      </label>
+
+                      <label className="block text-sm font-semibold text-foreground">
+                        {isFrench ? "Date et heure" : "Date & Time"}
+                        <input
+                          type="datetime-local"
+                          value={reminderFormValues.remindAt}
+                          onChange={(event) => {
+                            setReminderFormValues((v) => ({ ...v, remindAt: event.target.value }));
+                            setReminderErrorMessage(null);
+                          }}
+                          className={textFieldClass}
+                          required
+                          disabled={isSubmittingReminder}
+                        />
+                      </label>
+                    </section>
+
+                    <section className={`${dialogSectionClass} space-y-3`}>
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                          {isFrench ? "Usage" : "Usage"}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-foreground/82">
+                          {isFrench
+                            ? "Programmez un point d'action concret: projet, personnes concernees et heure de declenchement."
+                            : "Schedule a concrete action point: project, people involved, and trigger time."}
+                        </p>
+                      </div>
+                      <div className="rounded-[20px] bg-surface-elevated px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                          {isFrench ? "Etat du rappel" : "Reminder state"}
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-foreground">
+                          {reminderDialogScheduleLabel
+                            ? isFrench
+                              ? "Pret a declencher"
+                              : "Ready to trigger"
+                            : isFrench
+                            ? "Brouillon de rappel"
+                            : "Reminder draft"}
+                        </p>
+                      </div>
+                    </section>
+                  </aside>
+                </div>
+
+                {reminderErrorMessage ? (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {reminderErrorMessage}
+                  </p>
+                ) : null}
+              </div>
               <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-line pt-3 mt-3">
                 <button
                   type="button"
@@ -13776,7 +13257,7 @@ export function AppShell() {
 
       {isProfileDialogOpen ? (
         <div
-          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className={`${dialogOverlayClass} max-sm:p-0`}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeProfileDialog();
@@ -13787,256 +13268,416 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={isFrench ? "Parametres du profil" : "Profile settings"}
-            className="animate-scale-in w-full max-w-lg rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+            className={`${dialogShellClass} flex max-h-[calc(100vh-2rem)] max-w-3xl flex-col overflow-hidden p-0 max-sm:h-full max-sm:max-h-none max-sm:rounded-none sm:p-0`}
           >
-            <header>
-              <h3 className="text-lg font-semibold text-foreground">
-                {isFrench ? "Parametres du profil" : "Profile Settings"}
-              </h3>
-              <p className="mt-1 text-sm text-muted">
-                {isFrench
-                  ? "Personnalisez vos preferences et la langue par defaut de l'assistant."
-                  : "Personalize your workspace preferences and default assistant language."}
-              </p>
+            <header className="workspace-header-shell px-5 py-5 sm:px-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[20px] bg-gradient-to-br from-accent to-secondary text-white shadow-[0_20px_36px_rgba(53,37,205,0.24)]">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9">
+                      <circle cx="12" cy="8" r="3.2" />
+                      <path d="M5 19c1.2-3.1 3.8-4.7 7-4.7s5.8 1.6 7 4.7" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {isFrench ? "Parametres du profil" : "Profile Settings"}
+                    </h3>
+                    <p className="mt-1 max-w-xl text-sm text-muted">
+                      {isFrench
+                        ? "Ajustez votre identite, vos integrations et les sections requises avec la meme surface glass que le reste du workspace."
+                        : "Tune your identity, integrations, and required sections with the same glass workspace treatment as the rest of the product."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
+                  <span className="rounded-full border border-line/70 bg-white/65 px-3 py-1 text-[11px] font-semibold text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                    {profileFormValues.displayName.trim() ||
+                      authUser?.displayName ||
+                      authUser?.email ||
+                      (isFrench ? "Profil Jotly" : "Jotly Profile")}
+                  </span>
+                  <span className="rounded-full border border-line/70 bg-accent-soft px-3 py-1 text-[11px] font-semibold text-accent">
+                    {profileFormValues.preferredLocale === "fr"
+                      ? isFrench ? "Francais" : "French"
+                      : isFrench ? "Anglais" : "English"}
+                  </span>
+                  <span className="rounded-full border border-[#cfe8a8] bg-[#edf8d6] px-3 py-1 text-[11px] font-semibold text-[#304f00]">
+                    {profileFormValues.preferredTimeZone || "UTC"}
+                  </span>
+                </div>
+              </div>
             </header>
 
-            <form className="mt-4 space-y-3" onSubmit={handleProfileSubmit}>
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Nom affiche" : "Display Name"}
-                <input
-                  type="text"
-                  value={profileFormValues.displayName}
-                  onChange={(event) => handleProfileFieldChange("displayName", event.target.value)}
-                  className={textFieldClass}
-                  disabled={isProfileSaving}
-                  placeholder={isFrench ? "Comment devons-nous vous appeler ?" : "How should we address you?"}
-                />
-              </label>
-
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Langue preferee" : "Preferred Language"}
-                <select
-                  value={profileFormValues.preferredLocale}
-                  onChange={(event) =>
-                    handleProfileFieldChange("preferredLocale", getPreferredLocale(event.target.value))
-                  }
-                  className={textFieldClass}
-                  disabled={isProfileSaving}
-                >
-                  {userLocaleOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Fuseau horaire prefere" : "Preferred Time Zone"}
-                <input
-                  type="text"
-                  value={profileFormValues.preferredTimeZone}
-                  onChange={(event) => handleProfileFieldChange("preferredTimeZone", event.target.value)}
-                  className={textFieldClass}
-                  disabled={isProfileSaving}
-                  placeholder="Europe/Paris"
-                />
-              </label>
-
-              <button
-                type="button"
-                className={controlButtonClass}
-                onClick={() => handleProfileFieldChange("preferredTimeZone", getBrowserTimeZone())}
-                disabled={isProfileSaving}
-              >
-                <TimeZoneIcon />
-                {isFrench ? "Utiliser le fuseau du navigateur" : "Use Browser Time Zone"}
-              </button>
-
-              <div className="border-t border-line pt-3">
-                <h4 className="text-sm font-semibold text-foreground">
-                  Google Calendar
-                </h4>
-                {!isGoogleCalendarAvailable ? (
-                  <p className="mt-2 text-sm text-muted">
-                    {getGoogleCalendarUnavailableMessage(isFrench)}
-                  </p>
-                ) : isGoogleCalendarLoading ? (
-                  <p className="mt-2 text-sm text-muted">
-                    {isFrench ? "Chargement..." : "Loading..."}
-                  </p>
-                ) : (
-                  <div className="mt-2 space-y-2">
-                    {googleCalendarConnections.map((conn) => (
-                      <div key={conn.id} className="rounded-lg border border-line px-3 py-2 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="color"
-                              value={conn.color}
-                              onChange={(e) => handleUpdateConnectionColor(conn.id, e.target.value)}
-                              className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
-                              title={isFrench ? "Couleur du calendrier" : "Calendar color"}
-                            />
-                            <div>
-                              <p className="text-sm font-medium text-foreground">{conn.email}</p>
-                              {conn.lastSyncedAt ? (
-                                <p className="text-xs text-muted">
-                                  {isFrench ? "Derniere synchronisation :" : "Last synced:"}{" "}
-                                  {new Date(conn.lastSyncedAt).toLocaleString()}
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="text-xs text-muted hover:text-foreground"
-                            onClick={() => handleDisconnectGoogleCalendar(conn.id)}
-                          >
-                            {isFrench ? "Deconnecter" : "Disconnect"}
-                          </button>
-                        </div>
-                        <select
-                          value={conn.calendarId}
-                          onFocus={() => {
-                            if (!connectionCalendarOptions[conn.id]) {
-                              fetchConnectionCalendars(conn.id);
-                            }
-                          }}
-                          onChange={(e) => handleUpdateCalendarId(conn.id, e.target.value)}
-                          className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent/15"
-                        >
-                          {connectionCalendarOptions[conn.id] ? (
-                            connectionCalendarOptions[conn.id].map((cal) => (
-                              <option key={cal.id} value={cal.id}>
-                                {cal.summary}{cal.primary ? (isFrench ? " (principal)" : " (primary)") : ""}
-                              </option>
-                            ))
-                          ) : (
-                            <option value={conn.calendarId}>
-                              {conn.calendarId === "primary"
-                                ? (isFrench ? "Calendrier principal" : "Primary calendar")
-                                : conn.calendarId}
-                            </option>
-                          )}
-                        </select>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className={controlButtonClass}
-                        onClick={handleConnectGoogleCalendar}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleProfileSubmit}>
+              <div className="min-h-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+                <section className="dialog-section-shell rounded-[28px] p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted">
+                        {isFrench ? "Identite" : "Identity"}
+                      </p>
+                      <h4 className="mt-2 text-base font-semibold text-foreground">
+                        {isFrench ? "Preferences personnelles" : "Personal Preferences"}
+                      </h4>
+                      <p className="mt-1 text-sm text-muted">
                         {isFrench
-                          ? (googleCalendarConnections.length > 0 ? "Ajouter un compte Google" : "Connecter Google Calendar")
-                          : (googleCalendarConnections.length > 0 ? "Add Google Account" : "Connect Google Calendar")}
-                      </button>
+                          ? "Ces valeurs pilotent la langue de l'assistant, le rendu des dates et votre etiquette de profil."
+                          : "These values drive assistant language, date rendering, and your profile label."}
+                      </p>
+                    </div>
+
+                    <div className="toolbar-surface inline-flex items-center gap-2 rounded-full px-3 py-2 text-[11px] font-semibold text-muted">
+                      <LightningIcon />
+                      {isFrench ? "Applique partout dans Jotly" : "Applies across Jotly"}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Nom affiche" : "Display Name"}
+                      <input
+                        type="text"
+                        value={profileFormValues.displayName}
+                        onChange={(event) => handleProfileFieldChange("displayName", event.target.value)}
+                        className={textFieldClass}
+                        disabled={isProfileSaving}
+                        placeholder={isFrench ? "Comment devons-nous vous appeler ?" : "How should we address you?"}
+                      />
+                    </label>
+
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Langue preferee" : "Preferred Language"}
+                      <select
+                        value={profileFormValues.preferredLocale}
+                        onChange={(event) =>
+                          handleProfileFieldChange("preferredLocale", getPreferredLocale(event.target.value))
+                        }
+                        className={textFieldClass}
+                        disabled={isProfileSaving}
+                      >
+                        {userLocaleOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block text-sm font-semibold text-foreground sm:col-span-2">
+                      {isFrench ? "Fuseau horaire prefere" : "Preferred Time Zone"}
+                      <input
+                        type="text"
+                        value={profileFormValues.preferredTimeZone}
+                        onChange={(event) => handleProfileFieldChange("preferredTimeZone", event.target.value)}
+                        className={textFieldClass}
+                        disabled={isProfileSaving}
+                        placeholder="Europe/Paris"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      onClick={() => handleProfileFieldChange("preferredTimeZone", getBrowserTimeZone())}
+                      disabled={isProfileSaving}
+                    >
+                      <TimeZoneIcon />
+                      {isFrench ? "Utiliser le fuseau du navigateur" : "Use Browser Time Zone"}
+                    </button>
+                  </div>
+                </section>
+
+                <section className="dialog-section-shell rounded-[28px] p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted">
+                        Google Calendar
+                      </p>
+                      <h4 className="mt-2 text-base font-semibold text-foreground">
+                        {isFrench ? "Comptes relies" : "Connected Accounts"}
+                      </h4>
+                      <p className="mt-1 text-sm text-muted">
+                        {isFrench
+                          ? "Conservez une vue dense de vos comptes, couleurs et calendriers actifs sans quitter le panneau."
+                          : "Keep a dense view of connected accounts, colors, and active calendars without leaving the panel."}
+                      </p>
+                    </div>
+
+                    <div className="rounded-full border border-[#cfe8a8] bg-[#edf8d6] px-3 py-1.5 text-[11px] font-semibold text-[#304f00]">
+                      {googleCalendarConnections.length > 0
+                        ? isFrench
+                          ? `${googleCalendarConnections.length} compte(s) actif(s)`
+                          : `${googleCalendarConnections.length} active account(s)`
+                        : isFrench
+                        ? "Aucun compte connecte"
+                        : "No account connected"}
+                    </div>
+                  </div>
+
+                  {!isGoogleCalendarAvailable ? (
+                    <div className="mt-4 rounded-[24px] border border-dashed border-line bg-white/50 px-4 py-4 text-sm text-muted">
+                      {getGoogleCalendarUnavailableMessage(isFrench)}
+                    </div>
+                  ) : isGoogleCalendarLoading ? (
+                    <div className="mt-4 flex items-center gap-3 rounded-[24px] border border-line/60 bg-white/55 px-4 py-4 text-sm text-muted">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                      {isFrench ? "Chargement des connexions..." : "Loading connections..."}
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-3">
                       {googleCalendarConnections.length > 0 ? (
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {googleCalendarConnections.map((conn) => (
+                            <div
+                              key={conn.id}
+                              className="dialog-section-shell relative overflow-hidden rounded-[24px] px-4 py-4"
+                            >
+                              <div className="pointer-events-none absolute -right-6 top-0 h-16 w-16 rounded-full bg-accent-soft/80 blur-2xl" />
+                              <div className="relative">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex min-w-0 items-start gap-3">
+                                    <input
+                                      type="color"
+                                      value={conn.color}
+                                      onChange={(e) => handleUpdateConnectionColor(conn.id, e.target.value)}
+                                      className="mt-0.5 h-8 w-8 cursor-pointer rounded-full border border-white/70 bg-transparent p-0 shadow-[0_8px_18px_rgba(16,0,105,0.08)]"
+                                      title={isFrench ? "Couleur du calendrier" : "Calendar color"}
+                                    />
+                                    <div className="min-w-0">
+                                      <p className="truncate text-sm font-semibold text-foreground">{conn.email}</p>
+                                      <p className="mt-1 text-[11px] text-muted">
+                                        {conn.lastSyncedAt
+                                          ? `${isFrench ? "Derniere synchro" : "Last sync"} · ${new Date(conn.lastSyncedAt).toLocaleString()}`
+                                          : isFrench
+                                          ? "Jamais synchronise"
+                                          : "Never synced"}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    className="rounded-full border border-line bg-white/70 px-3 py-1.5 text-[11px] font-semibold text-muted transition-colors hover:text-foreground"
+                                    onClick={() => handleDisconnectGoogleCalendar(conn.id)}
+                                  >
+                                    {isFrench ? "Deconnecter" : "Disconnect"}
+                                  </button>
+                                </div>
+
+                                <label className="mt-4 block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                  {isFrench ? "Calendrier principal" : "Primary calendar"}
+                                  <select
+                                    value={conn.calendarId}
+                                    onFocus={() => {
+                                      if (!connectionCalendarOptions[conn.id]) {
+                                        fetchConnectionCalendars(conn.id);
+                                      }
+                                    }}
+                                    onChange={(e) => handleUpdateCalendarId(conn.id, e.target.value)}
+                                    className="mt-2 w-full rounded-2xl border border-line bg-surface-elevated px-3 py-2.5 text-xs text-foreground outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
+                                  >
+                                    {connectionCalendarOptions[conn.id] ? (
+                                      connectionCalendarOptions[conn.id].map((cal) => (
+                                        <option key={cal.id} value={cal.id}>
+                                          {cal.summary}{cal.primary ? (isFrench ? " (principal)" : " (primary)") : ""}
+                                        </option>
+                                      ))
+                                    ) : (
+                                      <option value={conn.calendarId}>
+                                        {conn.calendarId === "primary"
+                                          ? (isFrench ? "Calendrier principal" : "Primary calendar")
+                                          : conn.calendarId}
+                                      </option>
+                                    )}
+                                  </select>
+                                </label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-[24px] border border-dashed border-line bg-white/55 px-4 py-5 text-sm text-muted">
+                          {isFrench
+                            ? "Ajoutez un compte Google Calendar pour synchroniser vos evenements dans le dashboard Jotly."
+                            : "Add a Google Calendar account to sync events into the Jotly dashboard."}
+                        </div>
+                      )}
+
+                      <div className={`${toolbarSurfaceClass} flex flex-wrap items-center gap-2 rounded-[24px]`}>
                         <button
                           type="button"
                           className={controlButtonClass}
-                          onClick={handleSyncGoogleCalendar}
-                          disabled={isGoogleCalendarSyncing}
+                          onClick={handleConnectGoogleCalendar}
                         >
-                          {isGoogleCalendarSyncing
-                            ? (isFrench ? "Synchronisation..." : "Syncing...")
-                            : (isFrench ? "Synchroniser" : "Sync")}
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                          {isFrench
+                            ? (googleCalendarConnections.length > 0 ? "Ajouter un compte Google" : "Connecter Google Calendar")
+                            : (googleCalendarConnections.length > 0 ? "Add Google Account" : "Connect Google Calendar")}
                         </button>
-                      ) : null}
+                        {googleCalendarConnections.length > 0 ? (
+                          <button
+                            type="button"
+                            className={controlButtonClass}
+                            onClick={handleSyncGoogleCalendar}
+                            disabled={isGoogleCalendarSyncing}
+                          >
+                            <LightningIcon />
+                            {isGoogleCalendarSyncing
+                              ? (isFrench ? "Synchronisation..." : "Syncing...")
+                              : (isFrench ? "Synchroniser" : "Sync")}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+
+                  {googleCalendarError ? (
+                    <p className="mt-3 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      {googleCalendarError}
+                    </p>
+                  ) : null}
+                </section>
+
+                <section className="dialog-section-shell rounded-[28px] p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted">
+                        {isFrench ? "Validation" : "Validation"}
+                      </p>
+                      <h4 className="mt-2 text-base font-semibold text-foreground">
+                        {isFrench ? "Sections obligatoires" : "Required Sections"}
+                      </h4>
+                      <p className="mt-1 text-sm text-muted">
+                        {isFrench
+                          ? "Activez les blocs qui doivent compter dans vos routines quotidiennes et periodiques."
+                          : "Enable the blocks that must count toward your daily and periodic routines."}
+                      </p>
+                    </div>
+
+                    <div className="rounded-full border border-line/70 bg-white/65 px-3 py-1.5 text-[11px] font-semibold text-muted">
+                      {isFrench
+                        ? `${Object.values({
+                            requireDailyAffirmation: profileFormValues.requireDailyAffirmation,
+                            requireDailyBilan: profileFormValues.requireDailyBilan,
+                            requireWeeklySynthesis: profileFormValues.requireWeeklySynthesis,
+                            requireMonthlySynthesis: profileFormValues.requireMonthlySynthesis,
+                          }).filter(Boolean).length} actifs`
+                        : `${Object.values({
+                            requireDailyAffirmation: profileFormValues.requireDailyAffirmation,
+                            requireDailyBilan: profileFormValues.requireDailyBilan,
+                            requireWeeklySynthesis: profileFormValues.requireWeeklySynthesis,
+                            requireMonthlySynthesis: profileFormValues.requireMonthlySynthesis,
+                          }).filter(Boolean).length} active`}
                     </div>
                   </div>
-                )}
-                {googleCalendarError ? (
-                  <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    {googleCalendarError}
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {(
+                      [
+                        {
+                          key: "requireDailyAffirmation" as const,
+                          labelFr: "Affirmation du jour",
+                          labelEn: "Daily Affirmation",
+                        },
+                        {
+                          key: "requireDailyBilan" as const,
+                          labelFr: "Bilan du jour",
+                          labelEn: "Daily Review (Bilan)",
+                        },
+                        {
+                          key: "requireWeeklySynthesis" as const,
+                          labelFr: "Synthese hebdomadaire (dimanche)",
+                          labelEn: "Weekly Synthesis (Sunday)",
+                        },
+                        {
+                          key: "requireMonthlySynthesis" as const,
+                          labelFr: "Synthese mensuelle",
+                          labelEn: "Monthly Synthesis",
+                        },
+                      ] as const
+                    ).map(({ key, labelFr, labelEn }) => (
+                      <label
+                        key={key}
+                        className={`dialog-section-shell flex cursor-pointer items-center justify-between gap-3 rounded-[22px] px-4 py-3 transition-colors ${
+                          isProfileSaving ? "opacity-70" : "hover:border-accent/20 hover:bg-white/60"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">
+                            {isFrench ? labelFr : labelEn}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {profileFormValues[key]
+                              ? isFrench ? "Actif" : "Active"
+                              : isFrench ? "Inactif" : "Inactive"}
+                          </p>
+                        </div>
+
+                        <span
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
+                            profileFormValues[key]
+                              ? "border-accent bg-accent"
+                              : "border-line bg-white/80"
+                          }`}
+                        >
+                          <span
+                            className={`absolute left-0.5 h-5 w-5 rounded-full bg-white shadow-[0_6px_14px_rgba(16,0,105,0.12)] transition-transform ${
+                              profileFormValues[key] ? "translate-x-5" : "translate-x-0"
+                            }`}
+                          />
+                        </span>
+
+                        <input
+                          type="checkbox"
+                          checked={profileFormValues[key]}
+                          onChange={(e) => handleProfileFieldChange(key, e.target.checked)}
+                          disabled={isProfileSaving}
+                          className="sr-only"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </section>
+
+                {profileErrorMessage ? (
+                  <p className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {profileErrorMessage}
+                  </p>
+                ) : null}
+
+                {profileSuccessMessage ? (
+                  <p className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    {profileSuccessMessage}
                   </p>
                 ) : null}
               </div>
 
-              <div className="border-t border-line pt-3">
-                <h4 className="text-sm font-semibold text-foreground">
-                  {isFrench ? "Sections obligatoires" : "Required Sections"}
-                </h4>
-                <p className="mt-1 text-xs text-muted">
-                  {isFrench
-                    ? "Les sections activees doivent etre completes chaque jour pour valider votre journee."
-                    : "Enabled sections must be completed each day to validate your day."}
-                </p>
-                <div className="mt-3 space-y-2">
-                  {(
-                    [
-                      {
-                        key: "requireDailyAffirmation" as const,
-                        labelFr: "Affirmation du jour",
-                        labelEn: "Daily Affirmation",
-                      },
-                      {
-                        key: "requireDailyBilan" as const,
-                        labelFr: "Bilan du jour",
-                        labelEn: "Daily Review (Bilan)",
-                      },
-                      {
-                        key: "requireWeeklySynthesis" as const,
-                        labelFr: "Synthese hebdomadaire (dimanche)",
-                        labelEn: "Weekly Synthesis (Sunday)",
-                      },
-                      {
-                        key: "requireMonthlySynthesis" as const,
-                        labelFr: "Synthese mensuelle",
-                        labelEn: "Monthly Synthesis",
-                      },
-                    ] as const
-                  ).map(({ key, labelFr, labelEn }) => (
-                    <label key={key} className="flex cursor-pointer items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={profileFormValues[key]}
-                        onChange={(e) => handleProfileFieldChange(key, e.target.checked)}
-                        disabled={isProfileSaving}
-                        className="h-4 w-4 rounded border-line accent-accent"
-                      />
-                      <span className="text-sm text-foreground">
-                        {isFrench ? labelFr : labelEn}
-                      </span>
-                    </label>
-                  ))}
+              <div className="border-t border-line/30 bg-white/20 px-5 py-4 sm:px-6">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className={controlButtonClass}
+                    onClick={closeProfileDialog}
+                    disabled={isProfileSaving}
+                  >
+                    <CloseIcon />
+                    {isFrench ? "Fermer" : "Close"}
+                  </button>
+                  <button type="submit" className={primaryButtonClass} disabled={isProfileSaving}>
+                    <SaveIcon />
+                    {isProfileSaving
+                      ? isFrench
+                        ? "Enregistrement..."
+                        : "Saving..."
+                      : isFrench
+                      ? "Enregistrer le profil"
+                      : "Save Profile"}
+                  </button>
                 </div>
-              </div>
-
-              {profileErrorMessage ? (
-                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  {profileErrorMessage}
-                </p>
-              ) : null}
-
-              {profileSuccessMessage ? (
-                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                  {profileSuccessMessage}
-                </p>
-              ) : null}
-
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  className={controlButtonClass}
-                  onClick={closeProfileDialog}
-                  disabled={isProfileSaving}
-                >
-                  <CloseIcon />
-                  {isFrench ? "Fermer" : "Close"}
-                </button>
-                <button type="submit" className={primaryButtonClass} disabled={isProfileSaving}>
-                  <SaveIcon />
-                  {isProfileSaving
-                    ? isFrench
-                      ? "Enregistrement..."
-                      : "Saving..."
-                    : isFrench
-                    ? "Enregistrer le profil"
-                    : "Save Profile"}
-                </button>
               </div>
             </form>
           </section>
@@ -14044,12 +13685,12 @@ export function AppShell() {
       ) : null}
 
       {navigationBlockers.length > 0 ? (
-        <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+        <div className={dialogOverlayClass}>
           <section
             role="dialog"
             aria-modal="true"
             aria-label={isFrench ? "Navigation bloquee" : "Navigation blocked"}
-            className="animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+            className={`${dialogShellClass} max-w-md`}
           >
             <h3 className="text-lg font-semibold text-foreground">
               {isFrench ? "Compléter les champs requis" : "Complete required fields"}
@@ -14070,7 +13711,7 @@ export function AppShell() {
             <div className="mt-5 flex justify-end">
               <button
                 type="button"
-                className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                className={primaryButtonClass}
                 onClick={() => setNavigationBlockers([])}
               >
                 {isFrench ? "Compris" : "Got it"}
@@ -14082,7 +13723,7 @@ export function AppShell() {
 
       {taskToDelete ? (
         <div
-          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className={dialogOverlayClass}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeDeleteDialog();
@@ -14093,7 +13734,7 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={isFrench ? "Confirmation de suppression de tache" : "Delete task confirmation"}
-            className="animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+            className={`${dialogShellClass} max-w-md`}
           >
             <h3 className="text-lg font-semibold text-foreground">
               {isFrench ? "Supprimer la tache ?" : "Delete task?"}
@@ -14140,46 +13781,77 @@ export function AppShell() {
       ) : null}
 
       {isTaskAlertsPanelOpen ? (
-        <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[380px]">
-          <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <div className="grid h-7 w-7 place-items-center rounded-lg bg-amber-50 text-amber-700">
-                <BellIcon />
+        <section className={`${floatingPanelClass} max-h-[76vh] max-sm:h-full max-sm:max-h-none sm:w-[430px]`}>
+          <header className="workspace-header-shell px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[20px] bg-gradient-to-br from-[#8856e5] to-[#3525cd] text-white shadow-[0_18px_34px_rgba(53,37,205,0.24)]">
+                  <BellIcon />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {isFrench ? "Alertes" : "Alerts"}
+                    </p>
+                    <span className="rounded-full border border-line/70 bg-white/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+                      {alertsSummary.count > 0
+                        ? isFrench ? `${alertsSummary.count} actives` : `${alertsSummary.count} active`
+                        : isFrench ? "Inbox propre" : "Clear inbox"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {alertsSummary.count > 0
+                      ? isFrench
+                        ? `${alertsSummary.overdueCount} en retard · ${alertsSummary.todayCount} aujourd'hui · ${alertsSummary.tomorrowCount} demain`
+                        : `${alertsSummary.overdueCount} overdue · ${alertsSummary.todayCount} today · ${alertsSummary.tomorrowCount} tomorrow`
+                      : isFrench
+                      ? "Rappels et echeances non resolus"
+                      : "Unresolved reminders and due dates"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {isFrench ? "Alertes" : "Alerts"}
-                </p>
-                <p className="text-[11px] text-muted">
-                  {alertsSummary.count > 0
-                    ? isFrench
-                      ? `${alertsSummary.overdueCount} en retard · ${alertsSummary.todayCount} aujourd'hui · ${alertsSummary.tomorrowCount} demain`
-                      : `${alertsSummary.overdueCount} overdue · ${alertsSummary.todayCount} today · ${alertsSummary.tomorrowCount} tomorrow`
-                    : isFrench
-                    ? "Rappels et echeances non resolus"
-                    : "Unresolved reminders and due dates"}
-                </p>
-              </div>
+              <button
+                type="button"
+                className={`${iconButtonClass} h-9 w-9 rounded-full px-0`}
+                onClick={() => setIsTaskAlertsPanelOpen(false)}
+                aria-label={isFrench ? "Fermer les alertes" : "Close alerts"}
+              >
+                <CloseIcon />
+              </button>
             </div>
-            <button
-              type="button"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-              onClick={() => setIsTaskAlertsPanelOpen(false)}
-              aria-label={isFrench ? "Fermer les alertes" : "Close alerts"}
-            >
-              <CloseIcon />
-            </button>
           </header>
+
+          <div className="grid grid-cols-3 gap-2 px-4 pt-4">
+            <div className="workspace-stat-card min-w-0 flex-col items-start gap-1 rounded-[22px] border border-rose-200/70 bg-white/72 px-3 py-3">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-600">
+                {isFrench ? "Retard" : "Overdue"}
+              </span>
+              <span className="text-lg font-semibold text-foreground">{alertsSummary.overdueCount}</span>
+            </div>
+            <div className="workspace-stat-card min-w-0 flex-col items-start gap-1 rounded-[22px] border border-[#d3bbff] bg-[#f5edff]/85 px-3 py-3">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#581db3]">
+                {isFrench ? "Jour" : "Today"}
+              </span>
+              <span className="text-lg font-semibold text-foreground">{alertsSummary.todayCount}</span>
+            </div>
+            <div className="workspace-stat-card min-w-0 flex-col items-start gap-1 rounded-[22px] border border-[#cfe8a8] bg-[#edf8d6]/85 px-3 py-3">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#304f00]">
+                {isFrench ? "Demain" : "Tomorrow"}
+              </span>
+              <span className="text-lg font-semibold text-foreground">{alertsSummary.tomorrowCount}</span>
+            </div>
+          </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {isTaskAlertsLoading ? (
-              <p className="rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
+              <div className="dialog-section-shell flex items-center gap-3 rounded-[24px] px-4 py-4 text-sm text-muted">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
                 {isFrench ? "Chargement des alertes..." : "Loading alerts..."}
-              </p>
+              </div>
             ) : null}
 
             {taskAlertsErrorMessage ? (
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
                 {taskAlertsErrorMessage}
               </p>
             ) : null}
@@ -14190,7 +13862,7 @@ export function AppShell() {
                   <button
                     key={item.task.id}
                     type="button"
-                    className="w-full rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3 text-left transition-colors hover:border-accent/30 hover:bg-surface-soft"
+                    className="dialog-section-shell group relative w-full overflow-hidden rounded-[24px] px-4 py-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent/25 hover:bg-white/60 hover:shadow-[0_18px_36px_rgba(16,0,105,0.08)]"
                     onClick={() => {
                       setIsTaskAlertsPanelOpen(false);
 
@@ -14202,100 +13874,123 @@ export function AppShell() {
                       handleDateChange(item.task.targetDate);
                     }}
                   >
+                    <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/80 to-transparent" />
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span
-                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertSourceChipClassByType.task}`}
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${alertSourceChipClassByType.task}`}
                           >
                             {formatAlertSourceLabel("task", activeLocale)}
                           </span>
                           <span
-                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertUrgencyChipClassByUrgency[item.urgency]}`}
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${alertUrgencyChipClassByUrgency[item.urgency]}`}
                           >
                             {formatAlertUrgencyLabel(item.urgency, activeLocale)}
                           </span>
                         </div>
-                        <p className="mt-2 truncate text-sm font-semibold text-foreground">{item.task.title}</p>
-                        <p className="mt-1 text-xs text-muted">
-                          {item.task.dueDate
-                            ? `${formatDateOnlyForLocale(item.task.dueDate, activeLocale)}`
-                            : isFrench
-                            ? "Aucune date d'echeance"
-                            : "No due date"}
+                        <p className="mt-3 text-sm font-semibold leading-5 text-foreground transition-colors group-hover:text-accent">
+                          {item.task.title}
                         </p>
-                        <p className="mt-1 text-[11px] text-muted">
-                          {isFrench ? "Planifiee" : "Scheduled"} {formatDateOnlyForLocale(item.task.targetDate, activeLocale)}
-                          {item.task.project ? ` · ${item.task.project}` : ""}
-                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
+                          <span className="rounded-full border border-line/60 bg-white/70 px-2.5 py-1">
+                            {item.task.dueDate
+                              ? `${isFrench ? "Echeance" : "Due"} · ${formatDateOnlyForLocale(item.task.dueDate, activeLocale)}`
+                              : isFrench
+                              ? "Sans echeance"
+                              : "No due date"}
+                          </span>
+                          <span className="rounded-full border border-line/60 bg-white/70 px-2.5 py-1">
+                            {isFrench ? "Planifiee" : "Scheduled"} · {formatDateOnlyForLocale(item.task.targetDate, activeLocale)}
+                          </span>
+                          {item.task.project ? (
+                            <span className="rounded-full border border-line/60 bg-white/70 px-2.5 py-1">
+                              {item.task.project}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[item.task.priority]}`}
-                      >
-                        {formatPriority(item.task.priority, activeLocale)}
-                      </span>
+
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${priorityChipClassByPriority[item.task.priority]}`}
+                        >
+                          {formatPriority(item.task.priority, activeLocale)}
+                        </span>
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line/70 bg-white/70 text-muted transition-colors group-hover:text-accent">
+                          <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.7">
+                            <path d="M5 3.5 9.5 8 5 12.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                      </div>
                     </div>
                   </button>
                 ) : (
                   <article
                     key={item.reminder.id}
-                    className="rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3"
+                    className="dialog-section-shell relative overflow-hidden rounded-[24px] px-4 py-4"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 text-left"
-                        onClick={() => {
-                          setIsTaskAlertsPanelOpen(false);
-                          openEditReminderDialog(item.reminder);
-                        }}
-                      >
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertSourceChipClassByType.reminder}`}
-                          >
-                            {formatAlertSourceLabel("reminder", activeLocale)}
-                          </span>
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertUrgencyChipClassByUrgency[item.urgency]}`}
-                          >
-                            {formatAlertUrgencyLabel(item.urgency, activeLocale)}
-                          </span>
-                        </div>
-                        <p className="mt-2 truncate text-sm font-semibold text-foreground">{item.reminder.title}</p>
-                        <p className="mt-1 text-xs text-muted">
-                          {`${formatTaskAlertDueLabel(
-                            formatDateInputForTimeZone(new Date(item.reminder.remindAt), activeTimeZone),
-                            taskAlertsAnchorDate,
-                            activeLocale
-                          )} · ${formatDateTime(item.reminder.remindAt, activeLocale, activeTimeZone)}`}
-                        </p>
-                        <p className="mt-1 text-[11px] text-muted">
-                          {[item.reminder.project, item.reminder.assignees].filter(Boolean).join(" · ") ||
-                            (isFrench ? "Rappel actif" : "Active reminder")}
-                        </p>
-                      </button>
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[item.reminder.status]}`}
-                      >
-                        {formatReminderStatus(item.reminder.status, activeLocale)}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex justify-end gap-1.5">
-                      <button
-                        type="button"
-                        className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
-                        onClick={() => { void handleCompleteReminder(item.reminder.id); }}
-                      >
-                        {isFrench ? "Traiter" : "Complete"}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-surface hover:text-foreground"
-                        onClick={() => { void handleCancelReminder(item.reminder.id); }}
-                      >
-                        {isFrench ? "Annuler" : "Cancel"}
-                      </button>
+                    <div className="pointer-events-none absolute -right-6 top-0 h-16 w-16 rounded-full bg-accent-soft/75 blur-2xl" />
+                    <div className="relative">
+                      <div className="flex items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => {
+                            setIsTaskAlertsPanelOpen(false);
+                            openEditReminderDialog(item.reminder);
+                          }}
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${alertSourceChipClassByType.reminder}`}
+                            >
+                              {formatAlertSourceLabel("reminder", activeLocale)}
+                            </span>
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${alertUrgencyChipClassByUrgency[item.urgency]}`}
+                            >
+                              {formatAlertUrgencyLabel(item.urgency, activeLocale)}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm font-semibold leading-5 text-foreground">{item.reminder.title}</p>
+                          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
+                            <span className="rounded-full border border-line/60 bg-white/70 px-2.5 py-1">
+                              {`${formatTaskAlertDueLabel(
+                                formatDateInputForTimeZone(new Date(item.reminder.remindAt), activeTimeZone),
+                                taskAlertsAnchorDate,
+                                activeLocale
+                              )} · ${formatDateTime(item.reminder.remindAt, activeLocale, activeTimeZone)}`}
+                            </span>
+                            <span className="rounded-full border border-line/60 bg-white/70 px-2.5 py-1">
+                              {[item.reminder.project, item.reminder.assignees].filter(Boolean).join(" · ") ||
+                                (isFrench ? "Rappel actif" : "Active reminder")}
+                            </span>
+                          </div>
+                        </button>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${reminderStatusChipClassByStatus[item.reminder.status]}`}
+                        >
+                          {formatReminderStatus(item.reminder.status, activeLocale)}
+                        </span>
+                      </div>
+
+                      <div className="toolbar-surface mt-4 flex items-center justify-end gap-2 rounded-[20px] px-2.5 py-2">
+                        <button
+                          type="button"
+                          className="rounded-full bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent transition-colors hover:bg-accent hover:text-white"
+                          onClick={() => { void handleCompleteReminder(item.reminder.id); }}
+                        >
+                          {isFrench ? "Traiter" : "Complete"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border border-line bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-surface hover:text-foreground"
+                          onClick={() => { void handleCancelReminder(item.reminder.id); }}
+                        >
+                          {isFrench ? "Annuler" : "Cancel"}
+                        </button>
+                      </div>
                     </div>
                   </article>
                 )
@@ -14303,162 +13998,236 @@ export function AppShell() {
             ) : null}
 
             {!isTaskAlertsLoading && !taskAlertsErrorMessage && alertPanelItems.length === 0 ? (
-              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                {isFrench
-                  ? "Aucune alerte active en retard, aujourd'hui ou demain."
-                  : "No active alerts overdue, today, or tomorrow."}
-              </p>
+              <div className="dialog-section-shell rounded-[24px] border border-[#cfe8a8] bg-[#edf8d6]/85 px-4 py-5 text-sm text-[#304f00]">
+                <p className="font-semibold">
+                  {isFrench ? "Tout est sous controle." : "Everything is under control."}
+                </p>
+                <p className="mt-1 text-[13px] text-[#426b00]">
+                  {isFrench
+                    ? "Aucune alerte active en retard, aujourd'hui ou demain."
+                    : "No active alerts overdue, today, or tomorrow."}
+                </p>
+              </div>
             ) : null}
           </div>
         </section>
       ) : null}
 
       {isAssistantPanelOpen ? (
-        <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[580px]">
-          <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <div className="grid h-7 w-7 place-items-center rounded-lg bg-accent-soft text-accent">
-                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2l1.5 3h3l-2.5 2.5.8 3L8 9l-2.8 1.5.8-3L3.5 5h3z"/></svg>
+        <section className={`${floatingPanelClass} max-h-[82vh] max-sm:h-full max-sm:max-h-none sm:w-[660px] lg:bottom-auto lg:top-0 lg:h-full lg:max-h-none lg:w-[400px] lg:rounded-none lg:border-l lg:border-line/30 2xl:w-[440px]`}>
+          <header className="workspace-header-shell px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[20px] bg-gradient-to-br from-accent to-secondary text-white shadow-[0_18px_36px_rgba(53,37,205,0.24)]">
+                  <svg viewBox="0 0 16 16" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M8 2l1.5 3h3l-2.5 2.5.8 3L8 9l-2.8 1.5.8-3L3.5 5h3z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {isFrench ? "Assistant IA" : "AI Assistant"}
+                    </p>
+                    <span className="rounded-full border border-line/70 bg-white/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+                      {isFrench ? "Workspace Jotly" : "Jotly Workspace"}
+                    </span>
+                    {assistantMessages.length > 0 ? (
+                      <span className="rounded-full border border-[#cfe8a8] bg-[#edf8d6] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#304f00]">
+                        {isFrench
+                          ? `${assistantMessages.length} messages`
+                          : `${assistantMessages.length} messages`}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {isFrench
+                      ? "Reponses basees sur vos taches, commentaires, rappels et contenus relies."
+                      : "Answers grounded in your tasks, comments, reminders, and connected content."}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {isFrench ? "Assistant IA" : "AI Assistant"}
-                </p>
-              </div>
+              <button
+                type="button"
+                className={`${iconButtonClass} h-9 w-9 rounded-full px-0`}
+                onClick={() => setIsAssistantPanelOpen(false)}
+                disabled={isAssistantLoading}
+                aria-label={isFrench ? "Fermer l'assistant IA" : "Close AI assistant"}
+              >
+                <CloseIcon />
+              </button>
             </div>
-            <button
-              type="button"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
-              onClick={() => setIsAssistantPanelOpen(false)}
-              disabled={isAssistantLoading}
-              aria-label={isFrench ? "Fermer l'assistant IA" : "Close AI assistant"}
-            >
-              <CloseIcon />
-            </button>
           </header>
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-            {assistantMessages.length === 0 ? (
-              <p className="text-center text-sm text-muted">
-                {isFrench
-                  ? "Posez vos questions sur vos taches, vos commentaires et vos priorites."
-                  : "Ask about your tasks, comments, and priorities."}
-              </p>
-            ) : (
-              <>
-                {assistantMessages.map((message) => {
-                  const isUserMessage = message.role === "user";
-                  const hasAssistantMetadata =
-                    !isUserMessage &&
-                    (Boolean(message.source) ||
-                      typeof message.usedTaskCount === "number" ||
-                      typeof message.usedCommentCount === "number");
+          <div className="flex-1 overflow-hidden">
+            <div className="h-full space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(145,219,42,0.12),transparent_28%),radial-gradient(circle_at_top_left,rgba(79,70,229,0.12),transparent_32%)] px-4 py-4">
+              <div className="dialog-section-shell flex items-start gap-3 rounded-[24px] px-4 py-4">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[18px] bg-accent-soft text-accent">
+                  <LightningIcon />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {isFrench ? "Contexte Jotly uniquement" : "Jotly-only context"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    {isFrench
+                      ? "L'assistant priorise ce qui existe deja dans votre espace: taches, commentaires, rappels, calendrier et recherche interne."
+                      : "The assistant prioritizes what already exists in your workspace: tasks, comments, reminders, calendar, and internal search."}
+                  </p>
+                </div>
+              </div>
 
-                  return (
-                    <article
-                      key={message.id}
-                      className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${
-                        isUserMessage
-                          ? "ml-auto bg-accent text-white rounded-br-md"
-                          : "bg-surface-soft text-foreground rounded-bl-md"
-                      }`}
-                    >
-                      {isUserMessage ? (
-                        <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
-                      ) : (
-                        <div className="space-y-2">
-                          <RichTextContent
-                            value={message.content}
-                            className="text-sm leading-6 [&_p]:m-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1 [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:text-muted [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mt-1 [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-1 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mt-1 [&_h3]:mb-1 [&_code]:rounded [&_code]:bg-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.92em] [&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2"
-                          />
+              {assistantMessages.length === 0 ? (
+                <div className="dialog-section-shell flex flex-col items-center gap-3 rounded-[28px] px-5 py-8 text-center">
+                  <div className="grid h-14 w-14 place-items-center rounded-[22px] bg-white/75 text-accent shadow-[0_16px_34px_rgba(16,0,105,0.08)]">
+                    <ChatIcon />
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold text-foreground">
+                      {isFrench ? "Pret pour une question precise" : "Ready for a precise question"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      {isFrench
+                        ? "Demandez une priorisation, une synthese ou un plan d'action sur votre workspace."
+                        : "Ask for prioritization, a synthesis, or an action plan on your workspace."}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3 pb-1">
+                    {assistantMessages.map((message) => {
+                      const isUserMessage = message.role === "user";
+                      const hasAssistantMetadata =
+                        !isUserMessage &&
+                        (Boolean(message.source) ||
+                          typeof message.usedTaskCount === "number" ||
+                          typeof message.usedCommentCount === "number");
 
-                          {message.warning ? (
-                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                              {message.warning}
+                      return (
+                        <article
+                          key={message.id}
+                          className={`max-w-[90%] rounded-[24px] px-4 py-3 ${
+                            isUserMessage
+                              ? "ml-auto rounded-br-md bg-gradient-to-br from-accent to-secondary text-white shadow-[0_18px_36px_rgba(53,37,205,0.24)]"
+                              : "dialog-section-shell rounded-bl-md text-foreground"
+                          }`}
+                        >
+                          {isUserMessage ? (
+                            <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                          ) : (
+                            <div className="space-y-2.5">
+                              <RichTextContent
+                                value={message.content}
+                                className="text-sm leading-6 [&_p]:m-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1 [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:text-muted [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mt-1 [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-1 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mt-1 [&_h3]:mb-1 [&_code]:rounded [&_code]:bg-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.92em] [&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2"
+                              />
+
+                              {message.warning ? (
+                                <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                                  {message.warning}
+                                </div>
+                              ) : null}
+
+                              {hasAssistantMetadata ? (
+                                <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
+                                  {message.source ? (
+                                    <span className="rounded-full border border-line bg-white/70 px-2.5 py-1 font-medium text-foreground">
+                                      {formatAssistantSourceLabel(message.source, activeLocale)}
+                                    </span>
+                                  ) : null}
+                                  {typeof message.usedTaskCount === "number" ? (
+                                    <span className="rounded-full border border-line bg-white/70 px-2.5 py-1">
+                                      {isFrench
+                                        ? `${message.usedTaskCount} taches`
+                                        : `${message.usedTaskCount} tasks`}
+                                    </span>
+                                  ) : null}
+                                  {typeof message.usedCommentCount === "number" ? (
+                                    <span className="rounded-full border border-line bg-white/70 px-2.5 py-1">
+                                      {isFrench
+                                        ? `${message.usedCommentCount} commentaires`
+                                        : `${message.usedCommentCount} comments`}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
+                          )}
 
-                          {hasAssistantMetadata ? (
-                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
-                              {message.source ? (
-                                <span className="rounded-full border border-line bg-surface px-2 py-0.5 font-medium text-foreground">
-                                  {formatAssistantSourceLabel(message.source, activeLocale)}
-                                </span>
-                              ) : null}
-                              {typeof message.usedTaskCount === "number" ? (
-                                <span className="rounded-full border border-line bg-surface px-2 py-0.5">
-                                  {isFrench
-                                    ? `${message.usedTaskCount} taches`
-                                    : `${message.usedTaskCount} tasks`}
-                                </span>
-                              ) : null}
-                              {typeof message.usedCommentCount === "number" ? (
-                                <span className="rounded-full border border-line bg-surface px-2 py-0.5">
-                                  {isFrench
-                                    ? `${message.usedCommentCount} commentaires`
-                                    : `${message.usedCommentCount} comments`}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
+                          <p className={`mt-2 text-[10px] ${isUserMessage ? "text-white/70" : "text-muted"}`}>
+                            {formatDateTime(message.timestamp, activeLocale, activeTimeZone)}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
 
-                      <p className={`mt-2 text-[10px] ${isUserMessage ? "text-white/60" : "text-muted"}`}>
-                        {formatDateTime(message.timestamp, activeLocale, activeTimeZone)}
-                      </p>
+                  {isAssistantLoading ? (
+                    <article className="dialog-section-shell max-w-[90%] rounded-[24px] rounded-bl-md px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "0ms" }} />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "150ms" }} />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "300ms" }} />
+                        <span className="text-xs text-muted">
+                          {isFrench ? "Analyse en cours..." : "Thinking..."}
+                        </span>
+                      </div>
                     </article>
-                  );
-                })}
-                {isAssistantLoading ? (
-                  <article className="max-w-[88%] rounded-2xl rounded-bl-md bg-surface-soft px-3.5 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "0ms" }} />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "150ms" }} />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60" style={{ animationDelay: "300ms" }} />
-                    </div>
-                  </article>
-                ) : null}
-                <div ref={assistantMessagesEndRef} />
-              </>
-            )}
+                  ) : null}
+
+                  <div ref={assistantMessagesEndRef} />
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="border-t border-line px-4 py-3">
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {assistantPromptSuggestions.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-full bg-surface-soft px-2.5 py-1 text-[11px] text-muted transition-colors hover:bg-accent-soft hover:text-accent"
-                  onClick={() => {
-                    setAssistantQuestion(prompt);
-                    setAssistantErrorMessage(null);
-                  }}
-                  disabled={isAssistantLoading}
-                >
-                  <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 1l1 2.5h2.5l-2 1.5.8 2.5L6 6l-2.3 1.5.8-2.5-2-1.5H5z"/></svg>
-                  {prompt.length > 40 ? prompt.slice(0, 40) + "..." : prompt}
-                </button>
-              ))}
+          <div className="border-t border-line/30 bg-white/18 px-4 py-4">
+            <div className={`${toolbarSurfaceClass} mb-3 rounded-[24px] p-3`}>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Prompts rapides" : "Quick prompts"}
+                </p>
+                <span className="text-[10px] text-muted">
+                  {assistantQuestion.length}/{ASSISTANT_QUESTION_MAX_LENGTH}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {assistantPromptSuggestions.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full border border-line bg-white/72 px-2.5 py-1.5 text-[11px] font-semibold text-muted transition-colors hover:bg-accent-soft hover:text-accent"
+                    onClick={() => {
+                      setAssistantQuestion(prompt);
+                      setAssistantErrorMessage(null);
+                    }}
+                    disabled={isAssistantLoading}
+                  >
+                    <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 1l1 2.5h2.5l-2 1.5.8 2.5L6 6l-2.3 1.5.8-2.5-2-1.5H5z"/></svg>
+                    {prompt.length > 40 ? prompt.slice(0, 40) + "..." : prompt}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <form className="flex items-center gap-2" onSubmit={handleAssistantSubmit}>
-              <input
-                type="text"
-                value={assistantQuestion}
-                onChange={(event) => {
-                  setAssistantQuestion(event.target.value);
-                  setAssistantErrorMessage(null);
-                }}
-                className="w-full rounded-lg border border-line bg-surface-soft px-3 py-2.5 text-sm text-foreground outline-none transition-all placeholder:text-muted/60 focus:border-accent focus:ring-2 focus:ring-accent/15"
-                maxLength={ASSISTANT_QUESTION_MAX_LENGTH}
-                placeholder={isFrench ? "Posez une question..." : "Ask a question..."}
-                disabled={isAssistantLoading}
-              />
+            <form className="flex items-end gap-2" onSubmit={handleAssistantSubmit}>
+              <div className="flex-1 rounded-[24px] border border-line bg-white/74 p-2 shadow-[0_12px_26px_rgba(16,0,105,0.05)]">
+                <input
+                  type="text"
+                  value={assistantQuestion}
+                  onChange={(event) => {
+                    setAssistantQuestion(event.target.value);
+                    setAssistantErrorMessage(null);
+                  }}
+                  className="w-full bg-transparent px-2 py-2.5 text-sm text-foreground outline-none placeholder:text-muted/60"
+                  maxLength={ASSISTANT_QUESTION_MAX_LENGTH}
+                  placeholder={isFrench ? "Posez une question..." : "Ask a question..."}
+                  disabled={isAssistantLoading}
+                />
+              </div>
               <button
                 type="submit"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-all hover:bg-accent-strong disabled:opacity-50"
+                className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] bg-gradient-to-br from-accent to-secondary text-white shadow-[0_18px_36px_rgba(53,37,205,0.24)] transition-all hover:-translate-y-0.5 hover:brightness-105 disabled:opacity-50"
                 disabled={isAssistantLoading}
               >
                 <SendIcon />
@@ -14466,7 +14235,7 @@ export function AppShell() {
             </form>
 
             {assistantErrorMessage ? (
-              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p className="mt-3 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {assistantErrorMessage}
               </p>
             ) : null}
@@ -14476,7 +14245,7 @@ export function AppShell() {
 
       <button
         type="button"
-        className="animate-pulse-soft fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-strong text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        className="animate-pulse-soft fixed bottom-28 right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-strong text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:bottom-6 sm:right-6"
         onClick={() => {
           setIsTaskAlertsPanelOpen(false);
           setIsAssistantPanelOpen((isOpen) => !isOpen);
@@ -14495,7 +14264,7 @@ export function AppShell() {
       </button>
 
       {pendingReminders.length > 0 ? (
-        <div className="fixed bottom-24 right-6 z-50 flex max-w-sm flex-col gap-2">
+        <div className="fixed bottom-24 left-4 right-4 z-50 flex flex-col gap-2 sm:left-auto sm:right-6 sm:max-w-sm">
           {pendingReminders.map((reminder) => {
             const remindAtDate = new Date(reminder.remindAt);
             const timeStr = remindAtDate.toLocaleTimeString(isFrench ? "fr-FR" : "en-US", {
@@ -14506,7 +14275,7 @@ export function AppShell() {
             return (
               <div
                 key={reminder.id}
-                className="animate-scale-in flex items-start gap-3 rounded-xl border border-amber-200 bg-white px-4 py-3 shadow-lg"
+                className="animate-scale-in dialog-shell flex items-start gap-3 rounded-[24px] border-amber-200 px-4 py-3"
               >
                 <span className="mt-0.5 shrink-0 text-amber-500">
                   <BellIcon />
@@ -14525,14 +14294,14 @@ export function AppShell() {
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
-                    className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
+                    className="rounded-full px-2.5 py-1 text-xs font-semibold text-accent transition-colors hover:bg-accent-soft"
                     onClick={() => { void handleCompleteReminder(reminder.id); }}
                   >
                     {isFrench ? "Traiter" : "Complete"}
                   </button>
                   <button
                     type="button"
-                    className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-surface-soft hover:text-foreground"
+                    className="rounded-full px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-surface-soft hover:text-foreground"
                     onClick={() => { void handleCancelReminder(reminder.id); }}
                   >
                     {isFrench ? "Annuler" : "Cancel"}

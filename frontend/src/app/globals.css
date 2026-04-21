@@ -1,23 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8f9fb;
+  --background: #fcf8ff;
   --surface: #ffffff;
-  --surface-soft: #f3f4f6;
-  --surface-elevated: #ffffff;
-  --foreground: #111827;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --accent: #6366f1;
+  --surface-soft: #f6f2ff;
+  --surface-elevated: #efebff;
+  --foreground: #100069;
+  --muted: #464555;
+  --line: #c7c4d8;
+  --accent: #3525cd;
   --accent-strong: #4f46e5;
-  --accent-soft: #eef2ff;
-  --danger: #ef4444;
-  --danger-soft: #fef2f2;
-  --success: #10b981;
-  --success-soft: #ecfdf5;
-  --warning: #f59e0b;
-  --warning-soft: #fffbeb;
-  --font-sans: "Plus Jakarta Sans", "SF Pro Display", system-ui, sans-serif;
+  --accent-soft: #e3dfff;
+  --secondary: #8856e5;
+  --secondary-soft: #ebddff;
+  --danger: #ba1a1a;
+  --danger-soft: #ffdad6;
+  --success: #426b00;
+  --success-soft: #eef8d6;
+  --warning: #6e3aca;
+  --warning-soft: #f2e9ff;
+  --reward: #91db2a;
+  --reward-soft: #edf8d6;
+  --font-sans: "Inter", "SF Pro Text", system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
   --font-mono: "Fira Mono", "Menlo", monospace;
   color-scheme: light;
 }
@@ -33,25 +38,71 @@
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-soft: var(--secondary-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-reward: var(--reward);
+  --color-reward-soft: var(--reward-soft);
   --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
   --font-mono: var(--font-mono);
 }
 
 body {
+  position: relative;
   min-height: 100vh;
-  background: var(--background);
+  overflow-x: hidden;
+  background: linear-gradient(180deg, #fcf8ff 0%, #f6f2ff 48%, #ece7ff 100%);
   color: var(--foreground);
   font-family: var(--font-sans);
+  isolation: isolate;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: -12%;
+  z-index: -2;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(79, 70, 229, 0.2), transparent 28%),
+    radial-gradient(circle at 86% 12%, rgba(136, 86, 229, 0.18), transparent 26%),
+    radial-gradient(circle at 55% 100%, rgba(145, 219, 42, 0.12), transparent 30%);
+  pointer-events: none;
+  filter: blur(16px);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgba(79, 70, 229, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 70, 229, 0.06) 1px, transparent 1px);
+  background-size: 160px 160px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 86%);
+  opacity: 0.42;
+  pointer-events: none;
 }
 
 ::selection {
-  background: #c7d2fe;
+  background: rgba(195, 192, 255, 0.8);
+}
+
+.app-shell-page h1,
+.app-shell-page h2,
+.app-shell-page h3,
+.app-shell-page h4,
+.app-shell-page h5,
+.app-shell-page h6,
+.app-shell-page [class*="font-semibold"],
+.app-shell-page [class*="font-bold"] {
+  font-family: var(--font-display);
 }
 
 /* Fade-in animation for sections */
@@ -83,8 +134,8 @@ body {
 }
 
 @keyframes pulse-soft {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.36); }
+  50% { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0); }
 }
 
 @keyframes shimmer {
@@ -110,7 +161,7 @@ body {
 
 /* Skeleton loading shimmer */
 .skeleton-shimmer {
-  background: linear-gradient(90deg, var(--surface-soft) 25%, #e8eaed 50%, var(--surface-soft) 75%);
+  background: linear-gradient(90deg, rgba(239, 235, 255, 0.82) 25%, rgba(255, 255, 255, 0.98) 50%, rgba(239, 235, 255, 0.82) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
@@ -129,6 +180,176 @@ body {
 /* Sidebar transition */
 .sidebar-transition {
   transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.app-shell-page {
+  position: relative;
+  isolation: isolate;
+}
+
+.app-panel {
+  border: 1px solid rgba(199, 196, 216, 0.2);
+  background: rgba(246, 242, 255, 0.82);
+  box-shadow:
+    0 24px 60px rgba(16, 0, 105, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(20px);
+}
+
+.app-panel-soft {
+  border: 1px solid rgba(199, 196, 216, 0.18);
+  background: rgba(239, 235, 255, 0.76);
+  box-shadow:
+    0 12px 30px rgba(16, 0, 105, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.metric-card {
+  border: 1px solid rgba(199, 196, 216, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(239, 235, 255, 0.84) 100%);
+  box-shadow:
+    0 18px 36px rgba(16, 0, 105, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 24px 40px rgba(16, 0, 105, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.segmented-surface {
+  border: 1px solid rgba(199, 196, 216, 0.16);
+  background: rgba(239, 235, 255, 0.84);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.toolbar-surface {
+  border: 1px solid rgba(199, 196, 216, 0.16);
+  background: rgba(246, 242, 255, 0.84);
+  box-shadow:
+    0 12px 28px rgba(16, 0, 105, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.nav-shell {
+  border-right: 1px solid rgba(199, 196, 216, 0.16);
+  background: rgba(246, 242, 255, 0.76);
+  box-shadow: 18px 0 40px rgba(16, 0, 105, 0.08);
+  backdrop-filter: blur(24px);
+}
+
+.auth-brand-shell {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(155deg, #1f00a4 0%, #3525cd 40%, #8856e5 100%);
+}
+
+.auth-brand-shell::before,
+.auth-brand-shell::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(12px);
+}
+
+.auth-brand-shell::before {
+  top: -5rem;
+  right: -4rem;
+  height: 16rem;
+  width: 16rem;
+  background: rgba(172, 248, 71, 0.18);
+}
+
+.auth-brand-shell::after {
+  bottom: -6rem;
+  left: -3rem;
+  height: 18rem;
+  width: 18rem;
+  background: rgba(227, 223, 255, 0.22);
+}
+
+.auth-card-shell {
+  border: 1px solid rgba(199, 196, 216, 0.18);
+  background: rgba(246, 242, 255, 0.82);
+  box-shadow:
+    0 28px 70px rgba(16, 0, 105, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px);
+}
+
+.task-card-shell {
+  border: 1px solid rgba(199, 196, 216, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(246, 242, 255, 0.86) 100%);
+  box-shadow:
+    0 14px 30px rgba(16, 0, 105, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.kanban-column-shell {
+  border: 1px solid rgba(199, 196, 216, 0.16);
+  background: linear-gradient(180deg, rgba(246, 242, 255, 0.86) 0%, rgba(239, 235, 255, 0.78) 100%);
+  box-shadow:
+    0 16px 38px rgba(16, 0, 105, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.workspace-shell {
+  background:
+    linear-gradient(180deg, rgba(252, 248, 255, 0.96) 0%, rgba(246, 242, 255, 0.92) 100%);
+}
+
+.workspace-header-shell {
+  border-bottom: 1px solid rgba(199, 196, 216, 0.16);
+  background: rgba(246, 242, 255, 0.92);
+  backdrop-filter: blur(20px);
+}
+
+.workspace-stat-card {
+  border: 1px solid rgba(199, 196, 216, 0.16);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow:
+    0 12px 26px rgba(16, 0, 105, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.workspace-filter-shell {
+  border-bottom: 1px solid rgba(199, 196, 216, 0.16);
+  background: rgba(239, 235, 255, 0.6);
+  backdrop-filter: blur(18px);
+}
+
+.dialog-overlay-shell {
+  background: rgba(31, 0, 164, 0.16);
+  backdrop-filter: blur(18px);
+}
+
+.dialog-shell {
+  border: 1px solid rgba(199, 196, 216, 0.18);
+  background: rgba(227, 223, 255, 0.6);
+  box-shadow:
+    0 28px 80px rgba(16, 0, 105, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px);
+}
+
+.dialog-section-shell {
+  border: 1px solid rgba(199, 196, 216, 0.14);
+  background: rgba(246, 242, 255, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 10px 22px rgba(16, 0, 105, 0.04);
+}
+
+.floating-panel-shell {
+  border: 1px solid rgba(199, 196, 216, 0.18);
+  background: rgba(227, 223, 255, 0.62);
+  box-shadow:
+    0 24px 60px rgba(16, 0, 105, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px);
 }
 
 .rich-text-render p {
@@ -155,15 +376,15 @@ body {
 
 .rich-text-render blockquote {
   margin: 0.35rem 0;
-  border-left: 3px solid #a5b4fc;
+  border-left: 3px solid var(--accent-strong);
   padding-left: 0.65rem;
-  color: #4b5563;
+  color: var(--muted);
 }
 
 .rich-text-render code {
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(199, 196, 216, 0.5);
   border-radius: 0.35rem;
-  background: #f3f4f6;
+  background: rgba(239, 235, 255, 0.9);
   padding: 0.08rem 0.3rem;
   font-size: 0.85em;
 }
@@ -171,17 +392,17 @@ body {
 .rich-text-render hr {
   margin: 0.6rem 0;
   border: 0;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid rgba(199, 196, 216, 0.45);
 }
 
 .rich-text-render mark {
   border-radius: 0.25rem;
-  background: #fef08a;
+  background: rgba(172, 248, 71, 0.28);
   padding: 0 0.15rem;
 }
 
 .rich-text-render a {
-  color: #6366f1;
+  color: var(--accent-strong);
   text-decoration: underline;
 }
 
@@ -208,11 +429,11 @@ body {
 }
 
 .rich-text-render ul[data-type="taskList"] input[type="checkbox"] {
-  accent-color: #6366f1;
+  accent-color: var(--accent-strong);
 }
 
 .rich-text-render ul[data-type="taskList"] li[data-checked="true"] > div {
-  color: #6b7280;
+  color: var(--muted);
   text-decoration: line-through;
 }
 
@@ -220,7 +441,7 @@ body {
   content: attr(data-placeholder);
   float: left;
   height: 0;
-  color: #9ca3af;
+  color: rgba(70, 69, 85, 0.55);
   pointer-events: none;
 }
 
@@ -233,14 +454,14 @@ body {
 
 .rich-text-render th,
 .rich-text-render td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(199, 196, 216, 0.45);
   padding: 0.4rem 0.6rem;
   text-align: left;
   vertical-align: top;
 }
 
 .rich-text-render th {
-  background: #f3f4f6;
+  background: rgba(239, 235, 255, 0.8);
   font-weight: 600;
 }
 

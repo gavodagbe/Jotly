@@ -157,12 +157,81 @@ For each lot:
 - no Stitch coverage yet for weekly/monthly objective and review surfaces
 - desktop variants are still missing for several overlays and utility surfaces
 
+## Verification snapshot as of 2026-04-20
+Current Stitch verification against the implemented product surfaces:
+
+Confirmed present in Stitch:
+- auth coverage exists on mobile and desktop
+- daily dashboard coverage exists on mobile and desktop
+- kanban coverage exists on mobile and desktop
+- task details exists on mobile
+- notes exists on mobile
+- gaming track exists on mobile
+- global search exists on mobile
+- AI assistant exists on mobile
+
+Confirmed still missing as dedicated screens or overlays:
+- reminders surface
+- weekly objective
+- weekly review
+- monthly objective
+- monthly review
+- project planning workspace
+- reminder form
+- note form
+- profile settings
+- alerts panel
+
+Still partial:
+- task details or task form: no desktop overlay variant confirmed
+- notes: no desktop/detail-edit coverage confirmed
+- gaming track: no desktop coverage confirmed
+- global search: no desktop modal variant confirmed
+- AI assistant: no desktop panel variant confirmed
+
+Verification notes:
+- multiple duplicate or near-duplicate auth and dashboard variants now exist in Stitch
+- dashboard-related blocks such as calendar events, affirmation, reminders, and bilan may already be represented inside operational dashboard proposals, but they are not tracked here as standalone screens unless explicitly separated
+- attempted duplicate-cleanup prompt reported success on `2026-04-20`, but a direct `list_screens` verification still showed the targeted duplicate screens present
+- practical implication: treat duplicate cleanup as a manual Stitch action until deletion is confirmed by a fresh screen inventory
+
+## Verification snapshot after full-system generation on 2026-04-20
+Confirmed present in Stitch after the broader generation pass:
+- auth coverage on mobile and desktop
+- daily dashboard coverage on mobile and desktop
+- kanban coverage on mobile and desktop
+- task details on mobile and desktop
+- notes on mobile and desktop
+- gaming track on mobile and desktop
+- global search on mobile and desktop
+- reminders on mobile
+- reminder form on mobile
+- project planning on desktop
+- profile settings on desktop
+- alerts panel on desktop
+- review coverage via `Weekly/Monthly Review - Mobile`
+
+Still missing or still partial after that pass:
+- AI assistant desktop variant not confirmed
+- reminder form desktop variant not confirmed
+- reminders desktop variant not confirmed
+- note form not confirmed
+- profile settings mobile variant not confirmed
+- alerts panel mobile variant not confirmed
+- weekly objective dedicated screen not confirmed
+- monthly objective dedicated screen not confirmed
+- separate weekly review and monthly review coverage not confirmed
+
+Current assessment:
+- the generation materially improved screen coverage and is close to implementation-ready
+- the remaining gaps are now concentrated in overlays, desktop/mobile companion variants, and periodic reflection surfaces
+
 ## Current iteration
 ### Lot 1 status
 - current lot: `Lot 1 - Core flow`
 - current surface: `Daily dashboard`
 - iteration started: `2026-04-18`
-- current execution state: `auth mobile and desktop generated in Stitch; daily dashboard mobile generated; desktop prompt ready`
+- current execution state: `auth mobile and desktop generated in Stitch; daily dashboard mobile generated; desktop dashboard prompt attempted on 2026-04-20; switch to manual-prompt-only mode requested by user on 2026-04-20`
 
 ### Auth surface scope
 Code reference: `AuthPanel` in `frontend/src/components/layout/app-shell.tsx`
@@ -251,6 +320,12 @@ Working rule for manual generation:
 - do not add visual instructions when pasting the prompt
 - after Stitch generates a result, review it quickly and then return here
 - report completion with `go`, then continue with the next prompt
+
+Manual-control rule added on `2026-04-20`:
+- do not trigger Stitch generation or edit tools from this agent while the user is actively iterating in Stitch
+- this agent should prepare prompts only
+- the user executes the prompt manually in Stitch
+- when the user asks for the next Stitch step, provide a fresh functional brief rather than launching Stitch from here
 
 ### Ready-to-paste prompt: Auth step 1
 Target:
@@ -639,3 +714,142 @@ Expected output of step 2:
 - an updated `Daily Dashboard - Desktop` aligned to the accepted mobile dashboard direction and the current Jotly product scope
 - continuity with the established desktop experience rather than a separate new branch
 - coverage limited to the dashboard blocks listed above
+
+### Daily dashboard step 2 attempt
+Attempted on `2026-04-20`:
+- `edit_screens` targeting existing `Daily Dashboard - Desktop` with the prepared functional brief
+  - result: transport send error while calling Stitch MCP
+
+Post-check after the attempt:
+- Stitch project `updateTime` advanced to `2026-04-20T19:54:01.427614Z`
+- no confirmed new version of `Daily Dashboard - Desktop` was visible after the transport failure
+- unexpected new auth desktop screens appeared in the project instead:
+  - `Sign In - Desktop`
+  - `Register - Desktop`
+  - `Forgot Password - Desktop`
+  - `Reset Password - Desktop`
+
+Current conclusion:
+- the desktop dashboard step is still pending
+- the latest Stitch-side update appears to have produced auth-related artifacts instead of a confirmed dashboard desktop update
+
+Next action:
+- do not launch Stitch from this agent
+- use a fresh manual prompt that does not ask Stitch to update or continue previous dashboard screens
+- ask for a new mobile-first dashboard proposal plus a desktop variation based only on functional requirements
+
+### Ready-to-paste prompt: Daily dashboard fresh generation
+Target:
+- manual execution in Stitch
+- generate a fresh dashboard direction from functionality only
+- do not ask Stitch to update, reuse, continue, or reference previous dashboard screens
+
+Prompt to paste into Stitch:
+
+```md
+Create a new daily dashboard proposal for Jotly from scratch.
+Do not continue, update, remix, or lightly adapt previous Jotly dashboard screens.
+Do not use earlier dashboard screens as a reference baseline.
+
+Surface: Daily dashboard
+Platform: mobile-first, plus one desktop variation
+User goal: help a signed-in user understand, steer, and complete their selected day inside Jotly.
+
+Must display:
+- the selected date as the main context
+- a short daily overview with key metrics for the selected day:
+  - total tasks
+  - actionable tasks
+  - planned time
+- day navigation controls:
+  - previous day
+  - today
+  - next day
+  - direct date selection
+- day-level actions:
+  - carry over yesterday’s unfinished tasks
+  - create a new task
+- a progress indicator for completion on the selected day
+- a calendar events section for the selected date when Google Calendar is connected
+- event rows that can show:
+  - time
+  - title
+  - connection or account color
+  - whether the event has an internal note
+  - whether the event has linked tasks
+- expanded event details that can expose:
+  - title
+  - external calendar link if available
+  - location if available
+  - description if available
+  - linked tasks
+  - internal note preview or empty note state
+- actions from a calendar event:
+  - create a new Jotly task from the event
+  - open an existing internal note
+  - create a note for the event when none exists
+- a day affirmation section with:
+  - editable content
+  - save action
+  - last updated information
+- a reminders section with:
+  - active reminders up to the selected day
+  - title
+  - optional project
+  - optional assignees
+  - reminder time
+  - reminder status
+  - add, edit, complete, and cancel actions
+- a day bilan section with:
+  - summary metrics for the selected day
+  - mood
+  - wins
+  - blockers
+  - lessons learned
+  - top 3 for tomorrow
+  - save action
+  - last updated information
+
+Must allow:
+- understand the selected day at a glance
+- move between days quickly
+- jump back to today
+- create a task from the dashboard
+- carry over unfinished work from yesterday
+- inspect calendar events and expand one for more detail
+- create a task from a calendar event
+- create or open a note linked to a calendar event
+- write and save a day affirmation
+- manage reminders directly from the dashboard
+- write and save the day bilan
+
+Important states:
+- loading selected-day data
+- empty day with no tasks yet
+- empty calendar section with no events
+- no active reminders
+- inline success or info after carry-over
+- inline error when data loading or saving fails
+- saving state for affirmation and bilan
+- authenticated workspace context
+
+Product constraints:
+- this is an authenticated productivity surface, not a marketing page
+- keep the dashboard centered on the selected date
+- keep the major blocks operationally distinct:
+  - overview
+  - day controls
+  - calendar events
+  - affirmation
+  - reminders
+  - bilan
+- do not merge this prompt with Kanban, Notes, Gaming Track, Global Search, Alerts, or AI Assistant
+- do not try to preserve continuity with earlier dashboard screens
+- create a fresh proposal that responds only to the functional requirements above
+- leave the visual direction to Stitch and stay within the active Jotly project and design system context
+```
+
+Expected output:
+- one fresh mobile-first daily dashboard proposal
+- one desktop variation of the same functional surface
+- no dependency on earlier dashboard screens
