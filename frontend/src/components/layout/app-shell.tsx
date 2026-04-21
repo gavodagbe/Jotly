@@ -9,6 +9,8 @@ import {
 } from "@dnd-kit/core";
 import { type DragEvent as ReactDragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { APP_TAGLINE } from "@/lib/app-meta";
+import { createAuthHeaders, getApiErrorMessage } from "@/lib/api-client";
+import { useAuthSession, type AuthUser, type UserLocale } from "@/hooks/useAuthSession";
 import { RichTextEditor, RichTextContent } from "@/components/ui/RichTextEditor";
 import { isHtmlContent, isRichTextEmpty, getRichTextCharacterCount, sanitizeRichTextHtml, stripRichTextToPlainText } from "@/lib/rich-text";
 import { controlButtonClass, primaryButtonClass, dangerButtonClass, textFieldClass, sectionHeaderClass, iconButtonClass, controlIconButtonClass } from "@/components/ui/constants";
@@ -450,30 +452,6 @@ type CarryOverYesterdayPayload = {
   tasks: Task[];
 };
 
-type UserLocale = "en" | "fr";
-
-type AuthUser = {
-  id: string;
-  email: string;
-  displayName: string | null;
-  preferredLocale: UserLocale;
-  preferredTimeZone: string | null;
-  requireDailyAffirmation: boolean;
-  requireDailyBilan: boolean;
-  requireWeeklySynthesis: boolean;
-  requireMonthlySynthesis: boolean;
-  createdAt: string;
-};
-
-type AuthMode = "login" | "register" | "forgot_password" | "reset_password";
-
-type AuthFormValues = {
-  email: string;
-  password: string;
-  displayName: string;
-  resetToken: string;
-};
-
 type ProfileFormValues = {
   displayName: string;
   preferredLocale: UserLocale;
@@ -566,23 +544,11 @@ type GlobalSearchState = {
   isLoadingRecent: boolean;
 };
 
-type ApiErrorPayload = { error?: { code?: string; message?: string } } | null;
 type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders" | "notes";
 type DashboardLayoutConfig = {
   order: DashboardBlockId[];
   collapsed: Record<DashboardBlockId, boolean>;
 };
-
-class ApiRequestError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-    readonly apiCode: string | null = null
-  ) {
-    super(message);
-    this.name = "ApiRequestError";
-  }
-}
 
 function getGoogleCalendarUnavailableMessage(isFrench: boolean): string {
   return isFrench
@@ -590,7 +556,6 @@ function getGoogleCalendarUnavailableMessage(isFrench: boolean): string {
     : "Google Calendar is not configured on this server. Set the GOOGLE_* environment variables and restart the backend.";
 }
 
-const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
 const ASSIGNEE_OPTIONS_STORAGE_KEY = "jotly_assignee_options";
 const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -1535,14 +1500,6 @@ function normalizeAffirmationText(value: string): string {
   return stripRichTextToPlainText(trimmed);
 }
 
-function getApiErrorMessage(statusCode: number, payload: ApiErrorPayload, fallback: string): string {
-  if (payload?.error?.message) {
-    return payload.error.message;
-  }
-
-  return `${fallback} (HTTP ${statusCode}).`;
-}
-
 function getDefaultTaskFormValues(targetDate: string): TaskFormValues {
   return {
     title: "",
@@ -1839,13 +1796,6 @@ function getProfileFormValues(user: AuthUser | null): ProfileFormValues {
   };
 }
 
-function createAuthHeaders(token: string, includesJsonBody: boolean): HeadersInit {
-  return {
-    ...(includesJsonBody ? { "Content-Type": "application/json" } : {}),
-    Authorization: `Bearer ${token}`,
-  };
-}
-
 async function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1889,157 +1839,6 @@ async function compressImageDataUrl(
   });
 }
 
-async function registerUser(values: AuthFormValues): Promise<{ user: AuthUser; token: string }> {
-  const response = await fetch("/backend-api/auth/register", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: values.email.trim(),
-      password: values.password,
-      displayName: values.displayName.trim() || null,
-    }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: { user: AuthUser; token: string }; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to register"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to register.");
-  }
-
-  return {
-    ...payload.data,
-    user: normalizeAuthUser(payload.data.user),
-  };
-}
-
-async function loginUser(values: AuthFormValues): Promise<{ user: AuthUser; token: string }> {
-  const response = await fetch("/backend-api/auth/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: values.email.trim(),
-      password: values.password,
-    }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: { user: AuthUser; token: string }; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to login"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to login.");
-  }
-
-  return {
-    ...payload.data,
-    user: normalizeAuthUser(payload.data.user),
-  };
-}
-
-async function requestPasswordReset(
-  email: string
-): Promise<{ resetToken: string | null; expiresAt: string | null }> {
-  const response = await fetch("/backend-api/auth/forgot-password", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: email.trim(),
-    }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: { resetToken?: string | null; expiresAt?: string | null }; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to request password reset"));
-  }
-
-  return {
-    resetToken: payload?.data?.resetToken ?? null,
-    expiresAt: payload?.data?.expiresAt ?? null,
-  };
-}
-
-async function resetPasswordWithToken(
-  token: string,
-  password: string
-): Promise<{ user: AuthUser; token: string }> {
-  const response = await fetch("/backend-api/auth/reset-password", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      token: token.trim(),
-      password,
-    }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: { user: AuthUser; token: string }; error?: { code?: string; message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new ApiRequestError(
-      response.status,
-      getApiErrorMessage(response.status, payload, "Unable to reset password"),
-      payload?.error?.code ?? null
-    );
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to reset password.");
-  }
-
-  return {
-    ...payload.data,
-    user: normalizeAuthUser(payload.data.user),
-  };
-}
-
-async function loadCurrentUser(token: string): Promise<AuthUser> {
-  const response = await fetch("/backend-api/auth/me", {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: { user?: AuthUser }; error?: { code?: string; message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new ApiRequestError(
-      response.status,
-      getApiErrorMessage(response.status, payload, "Unable to validate session"),
-      payload?.error?.code ?? null
-    );
-  }
-
-  if (!payload?.data?.user) {
-    throw new Error("Unable to validate session.");
-  }
-
-  return normalizeAuthUser(payload.data.user);
-}
-
 async function updateProfile(input: ProfileMutationInput, token: string): Promise<AuthUser> {
   const response = await fetch("/backend-api/profile", {
     method: "PATCH",
@@ -2060,18 +1859,6 @@ async function updateProfile(input: ProfileMutationInput, token: string): Promis
   }
 
   return normalizeAuthUser(payload.data);
-}
-
-async function logoutUser(token: string): Promise<void> {
-  const response = await fetch("/backend-api/auth/logout", {
-    method: "POST",
-    headers: createAuthHeaders(token, false),
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as ApiErrorPayload;
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to logout"));
-  }
 }
 
 async function loadTasksByDate(date: string, token: string, signal?: AbortSignal): Promise<Task[]> {
@@ -3204,24 +2991,10 @@ async function loadGamingTrackSummary(
 }
 
 export function AppShell() {
-  const [authToken, setAuthToken] = useState<string | null>(null);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [guestLocale, setGuestLocale] = useState<UserLocale>("en");
   const [activeSectionId, setActiveSectionId] = useState<string>("overview");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("jotly-sidebar-collapsed") === "true"; } catch { return false; }
   });
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [authFormValues, setAuthFormValues] = useState<AuthFormValues>({
-    email: "",
-    password: "",
-    displayName: "",
-    resetToken: "",
-  });
-  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
-  const [authInfoMessage, setAuthInfoMessage] = useState<string | null>(null);
-  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [profileFormValues, setProfileFormValues] = useState<ProfileFormValues>(
     getDefaultProfileFormValues
@@ -3485,6 +3258,116 @@ export function AppShell() {
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
   const [isDeletingTask, setIsDeletingTask] = useState(false);
 
+  const resetAppStateForAuthReset = useCallback(() => {
+    setIsProfileDialogOpen(false);
+    setProfileFormValues(getDefaultProfileFormValues());
+    setProfileErrorMessage(null);
+    setProfileSuccessMessage(null);
+    setIsProfileSaving(false);
+    setGoogleCalendarConnections([]);
+    setIsGoogleCalendarAvailable(true);
+    setIsGoogleCalendarLoading(false);
+    setIsGoogleCalendarSyncing(false);
+    setGoogleCalendarError(null);
+    setCalendarEvents([]);
+    setIsCalendarEventsLoading(false);
+    setCalendarEventNoteDrafts({});
+    setPendingCalendarEventNoteIds([]);
+    setCalendarEventNoteAttachments({});
+    setPendingCalendarEventNoteAttachmentIds([]);
+    setPendingCalendarEventTaskIds([]);
+    setExpandedCalendarEventId(null);
+    setCalendarEventSearchQuery("");
+    setConnectionCalendarOptions({});
+    setTasks([]);
+    setErrorMessage(null);
+    setDragErrorMessage(null);
+    setIsCarryingOverYesterday(false);
+    setCarryOverMessage(null);
+    setCarryOverErrorMessage(null);
+    setDraggedDashboardBlockId(null);
+    setDashboardDropTargetId(null);
+    dayAffirmationCacheRef.current = {};
+    applyDayAffirmationState(null);
+    setIsDayAffirmationLoading(false);
+    setIsDayAffirmationSaving(false);
+    setDayAffirmationErrorMessage(null);
+    setDayBilan(null);
+    setDayBilanFormValues(getDefaultDayBilanFormValues());
+    setIsDayBilanLoading(false);
+    setIsDayBilanSaving(false);
+    setDayBilanErrorMessage(null);
+    setDayBilanSuccessMessage(null);
+    setReminders([]);
+    setIsLoadingReminders(false);
+    setReminderDialogMode(null);
+    setEditingReminderId(null);
+    setReminderErrorMessage(null);
+    setIsSubmittingReminder(false);
+    setGamingTrackPeriod("week");
+    setGamingTrackSummary(null);
+    setIsGamingTrackLoading(false);
+    setGamingTrackErrorMessage(null);
+    setIsAssistantPanelOpen(false);
+    setAssistantQuestion("");
+    setAssistantMessages([]);
+    setAssistantErrorMessage(null);
+    setIsAssistantLoading(false);
+    setIsLoading(false);
+    setTaskDialogMode(null);
+    setEditingTaskId(null);
+    setTaskToDelete(null);
+    setTaskRecurrenceRule(null);
+    setRecurrenceFormValues(getDefaultRecurrenceFormValues());
+    setTaskDetailsErrorMessage(null);
+    setIsTaskDetailsLoading(false);
+    setTaskComments([]);
+    setTaskCommentDraft("");
+    setTaskCommentErrorMessage(null);
+    setIsCreatingTaskComment(false);
+    setPendingCommentIds([]);
+    setTaskAttachments([]);
+    setTaskAttachmentNameDraft("");
+    setTaskAttachmentFileDraft(null);
+    if (taskAttachmentFileInputRef.current) {
+      taskAttachmentFileInputRef.current.value = "";
+    }
+    setTaskAttachmentErrorMessage(null);
+    setIsCreatingTaskAttachment(false);
+    setPendingAttachmentIds([]);
+    setNewProjectDraft("");
+    setProjectFormErrorMessage(null);
+  }, [applyDayAffirmationState]);
+
+  const handleAuthSessionApplied = useCallback((_token: string, user: AuthUser) => {
+    setProfileFormValues(getProfileFormValues(user));
+    setProfileErrorMessage(null);
+    setProfileSuccessMessage(null);
+    setErrorMessage(null);
+  }, []);
+
+  const {
+    authToken,
+    authUser,
+    activeLocale,
+    activeTimeZone,
+    isFrench,
+    isAuthReady,
+    authMode,
+    authFormValues,
+    authErrorMessage,
+    authInfoMessage,
+    isAuthSubmitting,
+    handleAuthFormFieldChange,
+    handleAuthModeChange,
+    handleAuthSubmit,
+    handleLogout,
+    updateAuthenticatedUser,
+  } = useAuthSession({
+    onSessionApplied: handleAuthSessionApplied,
+    onSessionCleared: resetAppStateForAuthReset,
+  });
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -3584,8 +3467,6 @@ export function AppShell() {
   const isTaskDialogOpen = taskDialogMode !== null;
   const isNoteDialogOpen = noteDialogMode !== null;
   const isMutationPending = isSubmittingTask || isDeletingTask || isCarryingOverYesterday;
-  const activeLocale = getPreferredLocale(authUser?.preferredLocale ?? guestLocale);
-  const isFrench = activeLocale === "fr";
   const boardColumns = getBoardColumns(activeLocale);
   const priorityOptions = getPriorityOptions(activeLocale);
   const recurrenceFrequencyOptions = getRecurrenceFrequencyOptions(activeLocale);
@@ -3594,7 +3475,6 @@ export function AppShell() {
   const gamingTrackPeriodOptions = getGamingTrackPeriodOptions(activeLocale);
   const assistantPromptSuggestions = getAssistantPromptSuggestions(activeLocale);
   const userLocaleOptions = getUserLocaleOptions(activeLocale);
-  const activeTimeZone = authUser?.preferredTimeZone ?? null;
   const taskAlertsAnchorDate = getCurrentDateInputValue(activeTimeZone ?? getBrowserTimeZone());
   const alertRemindersHorizonDate = shiftDate(taskAlertsAnchorDate, 1);
   const dashboardIconButtonClass = `${iconButtonClass} h-9 w-9 rounded-xl px-0`;
@@ -3767,241 +3647,6 @@ export function AppShell() {
     }
     return nextOptions;
   }, []);
-
-  function applyAuthSession(token: string, user: AuthUser) {
-    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-    setAuthToken(token);
-    setAuthUser(user);
-    setProfileFormValues(getProfileFormValues(user));
-    setProfileErrorMessage(null);
-    setProfileSuccessMessage(null);
-    setAuthMode("login");
-    setAuthErrorMessage(null);
-    setAuthInfoMessage(null);
-    setErrorMessage(null);
-  }
-
-  const clearAuthSession = useCallback(() => {
-    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    setAuthToken(null);
-    setAuthUser(null);
-    setIsProfileDialogOpen(false);
-    setProfileFormValues(getDefaultProfileFormValues());
-    setProfileErrorMessage(null);
-    setProfileSuccessMessage(null);
-    setIsProfileSaving(false);
-    setGoogleCalendarConnections([]);
-    setIsGoogleCalendarAvailable(true);
-    setIsGoogleCalendarLoading(false);
-    setIsGoogleCalendarSyncing(false);
-    setGoogleCalendarError(null);
-    setCalendarEvents([]);
-    setIsCalendarEventsLoading(false);
-    setCalendarEventNoteDrafts({});
-    setPendingCalendarEventNoteIds([]);
-    setCalendarEventNoteAttachments({});
-    setPendingCalendarEventNoteAttachmentIds([]);
-    setPendingCalendarEventTaskIds([]);
-    setExpandedCalendarEventId(null);
-    setCalendarEventSearchQuery("");
-    setConnectionCalendarOptions({});
-    setTasks([]);
-    setErrorMessage(null);
-    setDragErrorMessage(null);
-    setIsCarryingOverYesterday(false);
-    setCarryOverMessage(null);
-    setCarryOverErrorMessage(null);
-    setDraggedDashboardBlockId(null);
-    setDashboardDropTargetId(null);
-    dayAffirmationCacheRef.current = {};
-    applyDayAffirmationState(null);
-    setIsDayAffirmationLoading(false);
-    setIsDayAffirmationSaving(false);
-    setDayAffirmationErrorMessage(null);
-    setDayBilan(null);
-    setDayBilanFormValues(getDefaultDayBilanFormValues());
-    setIsDayBilanLoading(false);
-    setIsDayBilanSaving(false);
-    setDayBilanErrorMessage(null);
-    setDayBilanSuccessMessage(null);
-    setReminders([]);
-    setIsLoadingReminders(false);
-    setReminderDialogMode(null);
-    setEditingReminderId(null);
-    setReminderErrorMessage(null);
-    setIsSubmittingReminder(false);
-    setGamingTrackPeriod("week");
-    setGamingTrackSummary(null);
-    setIsGamingTrackLoading(false);
-    setGamingTrackErrorMessage(null);
-    setIsAssistantPanelOpen(false);
-    setAssistantQuestion("");
-    setAssistantMessages([]);
-    setAssistantErrorMessage(null);
-    setIsAssistantLoading(false);
-    setIsLoading(false);
-    setTaskDialogMode(null);
-    setEditingTaskId(null);
-    setTaskToDelete(null);
-    setAuthMode("login");
-    setAuthErrorMessage(null);
-    setAuthInfoMessage(null);
-    setAuthFormValues((current) => ({
-      ...current,
-      password: "",
-      resetToken: "",
-    }));
-    setTaskRecurrenceRule(null);
-    setRecurrenceFormValues(getDefaultRecurrenceFormValues());
-    setTaskDetailsErrorMessage(null);
-    setIsTaskDetailsLoading(false);
-    setTaskComments([]);
-    setTaskCommentDraft("");
-    setTaskCommentErrorMessage(null);
-    setIsCreatingTaskComment(false);
-    setPendingCommentIds([]);
-    setTaskAttachments([]);
-    setTaskAttachmentNameDraft("");
-    setTaskAttachmentFileDraft(null);
-    if (taskAttachmentFileInputRef.current) {
-      taskAttachmentFileInputRef.current.value = "";
-    }
-    setTaskAttachmentErrorMessage(null);
-    setIsCreatingTaskAttachment(false);
-    setPendingAttachmentIds([]);
-    setNewProjectDraft("");
-    setProjectFormErrorMessage(null);
-  }, [applyDayAffirmationState]);
-
-  function handleAuthFormFieldChange(field: keyof AuthFormValues, value: string) {
-    setAuthFormValues((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
-
-  function handleAuthModeChange(mode: AuthMode) {
-    setAuthMode(mode);
-    setAuthErrorMessage(null);
-    setAuthInfoMessage(null);
-    setAuthFormValues((current) => ({
-      ...current,
-      password: "",
-      displayName: mode === "register" ? current.displayName : "",
-      resetToken: mode === "reset_password" ? current.resetToken : "",
-    }));
-  }
-
-  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (isAuthSubmitting) {
-      return;
-    }
-
-    setAuthErrorMessage(null);
-    setAuthInfoMessage(null);
-    setIsAuthSubmitting(true);
-
-    try {
-      if (authMode === "login" || authMode === "register") {
-        const result =
-          authMode === "login" ? await loginUser(authFormValues) : await registerUser(authFormValues);
-
-        applyAuthSession(result.token, result.user);
-        setAuthFormValues({
-          email: result.user.email,
-          password: "",
-          displayName: result.user.displayName ?? "",
-          resetToken: "",
-        });
-      } else if (authMode === "forgot_password") {
-        const result = await requestPasswordReset(authFormValues.email);
-        const resetToken = result.resetToken;
-        if (resetToken) {
-          setAuthFormValues((current) => ({
-            ...current,
-            password: "",
-            resetToken,
-          }));
-          setAuthMode("reset_password");
-          setAuthInfoMessage(
-            isFrench
-              ? "Un jeton de reinitialisation a ete genere. Choisissez maintenant un nouveau mot de passe."
-              : "A reset token was generated. You can now choose a new password."
-          );
-        } else {
-          setAuthFormValues((current) => ({
-            ...current,
-            password: "",
-            resetToken: "",
-          }));
-          setAuthInfoMessage(
-            isFrench
-              ? "Aucun jeton n'a ete genere. Verifiez l'email saisi ou creez un compte si vous n'en avez pas encore."
-              : "No reset token was generated. Check the email address or create an account if you do not have one yet."
-          );
-        }
-      } else {
-        const result = await resetPasswordWithToken(
-          authFormValues.resetToken,
-          authFormValues.password
-        );
-
-        applyAuthSession(result.token, result.user);
-        setAuthFormValues({
-          email: result.user.email,
-          password: "",
-          displayName: result.user.displayName ?? "",
-          resetToken: "",
-        });
-      }
-    } catch (error) {
-      if (
-        authMode === "reset_password" &&
-        error instanceof ApiRequestError &&
-        error.statusCode === 401 &&
-        error.apiCode === "INVALID_RESET_TOKEN"
-      ) {
-        setAuthMode("login");
-        setAuthFormValues((current) => ({
-          ...current,
-          password: "",
-          resetToken: "",
-        }));
-        setAuthErrorMessage(
-          isFrench
-            ? "Ce jeton de reinitialisation n'est plus valide. Connectez-vous avec votre mot de passe actuel ou demandez un nouveau jeton."
-            : "This reset token is no longer valid. Sign in with your current password or request a new reset token."
-        );
-        return;
-      }
-
-      setAuthErrorMessage(
-        error instanceof Error
-          ? error.message
-          : isFrench
-          ? "Impossible de vous authentifier."
-          : "Unable to authenticate."
-      );
-    } finally {
-      setIsAuthSubmitting(false);
-    }
-  }
-
-  async function handleLogout() {
-    const token = authToken;
-
-    try {
-      if (token) {
-        await logoutUser(token);
-      }
-    } catch {
-      // Keep logout UX predictable even if backend session cleanup fails.
-    } finally {
-      clearAuthSession();
-    }
-  }
 
   async function fetchGoogleCalendarStatus() {
     if (!authToken) return;
@@ -4503,12 +4148,8 @@ export function AppShell() {
         authToken
       );
 
-      setAuthUser(updatedUser);
+      updateAuthenticatedUser(updatedUser);
       setProfileFormValues(getProfileFormValues(updatedUser));
-      setAuthFormValues((current) => ({
-        ...current,
-        displayName: updatedUser.displayName ?? "",
-      }));
       setProfileSuccessMessage(isFrench ? "Profil mis a jour." : "Profile updated.");
     } catch (error) {
       setProfileErrorMessage(
@@ -6163,12 +5804,6 @@ export function AppShell() {
   }, [authToken, editingTask?.recurrenceSourceTaskId, editingTaskId, isFrench, taskDialogMode]);
 
   useEffect(() => {
-    setGuestLocale(
-      getPreferredLocale(window.navigator?.language ?? window.navigator?.languages?.[0] ?? "en")
-    );
-  }, []);
-
-  useEffect(() => {
     const sectionIds = [
       "overview", "board", "dailyControls", "affirmation", "reminders",
       "bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview",
@@ -6195,7 +5830,6 @@ export function AppShell() {
   }, [authUser]);
 
   useEffect(() => {
-    const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     const storedProjectOptions = parseStoredProjectOptions(
       window.localStorage.getItem(PROJECT_OPTIONS_STORAGE_KEY)
     );
@@ -6203,10 +5837,8 @@ export function AppShell() {
       window.localStorage.getItem(ASSIGNEE_OPTIONS_STORAGE_KEY)
     );
 
-    setAuthToken(storedToken);
     setProjectOptions(storedProjectOptions);
     setAssigneeOptions(storedAssigneeOptions);
-    setIsAuthReady(true);
   }, []);
 
   useEffect(() => {
@@ -6235,53 +5867,6 @@ export function AppShell() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.id]);
-
-  useEffect(() => {
-    if (!isAuthReady) {
-      return;
-    }
-
-    if (!authToken) {
-      setAuthUser(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    loadCurrentUser(authToken)
-      .then((user) => {
-        if (!cancelled) {
-          setAuthUser(user);
-          setProfileFormValues(getProfileFormValues(user));
-          setAuthErrorMessage(null);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          if (error instanceof ApiRequestError && error.statusCode === 401) {
-            clearAuthSession();
-            setAuthErrorMessage(
-              isFrench
-                ? "Votre session a expire. Veuillez vous reconnecter."
-                : "Your session expired. Please sign in again."
-            );
-            return;
-          }
-
-          setAuthErrorMessage(
-            error instanceof Error
-              ? error.message
-              : isFrench
-              ? "Impossible de valider votre session pour le moment."
-              : "Unable to validate your session right now."
-          );
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authToken, clearAuthSession, isAuthReady, isFrench]);
 
   // Handle Google Calendar OAuth callback redirect + auto-fetch status
   useEffect(() => {
