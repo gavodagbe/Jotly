@@ -595,6 +595,7 @@ function getGoogleCalendarUnavailableMessage(isFrench: boolean): string {
 
 const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
+const ASSIGNEE_OPTIONS_STORAGE_KEY = "jotly_assignee_options";
 const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
 const DAY_AFFIRMATION_MAX_LENGTH = 5000;
@@ -1879,6 +1880,25 @@ function parseStoredProjectOptions(rawValue: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+function parseStoredAssigneeOptions(rawValue: string | null): string[] {
+  if (!rawValue) return [];
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function parseAssignees(value: string): string[] {
+  return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function formatAssignees(list: string[]): string {
+  return list.join(", ");
 }
 
 function areStringListsEqual(left: string[], right: string[]): boolean {
@@ -6768,6 +6788,9 @@ export function AppShell() {
   const [newProjectDraft, setNewProjectDraft] = useState("");
   const [projectFormErrorMessage, setProjectFormErrorMessage] = useState<string | null>(null);
 
+  const [assigneeOptions, setAssigneeOptions] = useState<string[]>([]);
+  const [newAssigneeDraft, setNewAssigneeDraft] = useState("");
+
   const [taskFormErrorMessage, setTaskFormErrorMessage] = useState<string | null>(null);
   const [isSubmittingTask, setIsSubmittingTask] = useState(false);
 
@@ -7049,6 +7072,15 @@ export function AppShell() {
     const nextOptions = getUniqueSortedProjectNames(values);
     setProjectOptions(nextOptions);
     window.localStorage.setItem(PROJECT_OPTIONS_STORAGE_KEY, JSON.stringify(nextOptions));
+    return nextOptions;
+  }, []);
+
+  const saveAssigneeOptions = useCallback((values: string[]) => {
+    const nextOptions = [...new Set(values.filter((v) => v.trim().length > 0))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+    setAssigneeOptions(nextOptions);
+    window.localStorage.setItem(ASSIGNEE_OPTIONS_STORAGE_KEY, JSON.stringify(nextOptions));
     return nextOptions;
   }, []);
 
@@ -7865,17 +7897,20 @@ export function AppShell() {
     initialStatus: TaskStatus = "todo",
     overrides?: Partial<TaskFormValues>
   ) {
+    const defaultAssignee = (authUser?.displayName || authUser?.email || "").trim();
     setTaskDialogMode("create");
     setEditingTaskId(null);
     setTaskFormValues({
       ...getDefaultTaskFormValues(selectedDate),
       status: initialStatus,
+      assignees: defaultAssignee,
       ...overrides,
     });
     setRecurrenceFormValues(getDefaultRecurrenceFormValues());
     setTaskFormErrorMessage(null);
     setProjectFormErrorMessage(null);
     setNewProjectDraft("");
+    setNewAssigneeDraft("");
     setDeleteErrorMessage(null);
     resetTaskDetailsState();
   }
@@ -8456,7 +8491,8 @@ export function AppShell() {
     const now = new Date();
     now.setMinutes(now.getMinutes() + 30);
     const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    return { title: "", description: "", project: "", assignees: "", remindAt: localIso };
+    const defaultAssignee = (authUser?.displayName || authUser?.email || "").trim();
+    return { title: "", description: "", project: "", assignees: defaultAssignee, remindAt: localIso };
   }
 
   function openCreateReminderDialog() {
@@ -8464,6 +8500,7 @@ export function AppShell() {
     setEditingReminderId(null);
     setReminderFormValues(getDefaultReminderFormValues());
     setReminderErrorMessage(null);
+    setNewAssigneeDraft("");
   }
 
   function openEditReminderDialog(reminder: Reminder) {
@@ -9012,6 +9049,35 @@ export function AppShell() {
     setProjectFormErrorMessage(null);
   }
 
+  function handleAddNewAssigneeToTask() {
+    const normalized = newAssigneeDraft.trim();
+    if (!normalized) return;
+    if (!assigneeOptions.includes(normalized)) {
+      saveAssigneeOptions([...assigneeOptions, normalized]);
+    }
+    const current = parseAssignees(taskFormValues.assignees);
+    if (!current.includes(normalized)) {
+      updateTaskFormField("assignees", formatAssignees([...current, normalized]));
+    }
+    setNewAssigneeDraft("");
+  }
+
+  function handleAddNewAssigneeToReminder() {
+    const normalized = newAssigneeDraft.trim();
+    if (!normalized) return;
+    if (!assigneeOptions.includes(normalized)) {
+      saveAssigneeOptions([...assigneeOptions, normalized]);
+    }
+    const current = parseAssignees(reminderFormValues.assignees);
+    if (!current.includes(normalized)) {
+      setReminderFormValues((v) => ({
+        ...v,
+        assignees: formatAssignees([...current, normalized]),
+      }));
+    }
+    setNewAssigneeDraft("");
+  }
+
   async function handleCreateComment() {
     if (!editingTaskId || isCreatingTaskComment || isTaskDetailsLoading) {
       return;
@@ -9451,11 +9517,29 @@ export function AppShell() {
     const storedProjectOptions = parseStoredProjectOptions(
       window.localStorage.getItem(PROJECT_OPTIONS_STORAGE_KEY)
     );
+    const storedAssigneeOptions = parseStoredAssigneeOptions(
+      window.localStorage.getItem(ASSIGNEE_OPTIONS_STORAGE_KEY)
+    );
 
     setAuthToken(storedToken);
     setProjectOptions(storedProjectOptions);
+    setAssigneeOptions(storedAssigneeOptions);
     setIsAuthReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!authUser) return;
+    const label = (authUser.displayName || authUser.email).trim();
+    if (label) {
+      setAssigneeOptions((current) => {
+        if (current.includes(label)) return current;
+        const next = [...new Set([...current, label])].sort((a, b) => a.localeCompare(b));
+        window.localStorage.setItem(ASSIGNEE_OPTIONS_STORAGE_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -13272,17 +13356,89 @@ export function AppShell() {
                 </label>
               </div>
 
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Assignes (optionnel)" : "Assignees (optional)"}
-                <input
-                  type="text"
-                  placeholder={isFrench ? "ex : Alice, Bob" : "e.g. Alice, Bob"}
-                  value={taskFormValues.assignees}
-                  onChange={(event) => updateTaskFormField("assignees", event.target.value)}
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {isFrench ? "Assignes" : "Assignees"}
+                </p>
+                {parseAssignees(taskFormValues.assignees).length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {parseAssignees(taskFormValues.assignees).map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent"
+                      >
+                        {name}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = parseAssignees(taskFormValues.assignees).filter(
+                              (n) => n !== name
+                            );
+                            updateTaskFormField("assignees", formatAssignees(next));
+                          }}
+                          disabled={isSubmittingTask}
+                          className="ml-0.5 rounded-full text-accent/70 hover:text-accent disabled:cursor-not-allowed"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <select
+                  value=""
+                  onChange={(event) => {
+                    if (!event.target.value) return;
+                    const current = parseAssignees(taskFormValues.assignees);
+                    if (!current.includes(event.target.value)) {
+                      updateTaskFormField(
+                        "assignees",
+                        formatAssignees([...current, event.target.value])
+                      );
+                    }
+                    event.target.value = "";
+                  }}
                   className={textFieldClass}
                   disabled={isSubmittingTask}
-                />
-              </label>
+                >
+                  <option value="">
+                    {isFrench ? "— Ajouter une personne —" : "— Add a person —"}
+                  </option>
+                  {assigneeOptions
+                    .filter((name) => !parseAssignees(taskFormValues.assignees).includes(name))
+                    .map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                </select>
+                <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <input
+                    type="text"
+                    value={newAssigneeDraft}
+                    onChange={(event) => setNewAssigneeDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleAddNewAssigneeToTask();
+                      }
+                    }}
+                    placeholder={isFrench ? "Nouveau nom ou email" : "New name or email"}
+                    className={textFieldClass}
+                    disabled={isSubmittingTask}
+                    maxLength={200}
+                  />
+                  <button
+                    type="button"
+                    className={controlButtonClass}
+                    onClick={handleAddNewAssigneeToTask}
+                    disabled={isSubmittingTask}
+                  >
+                    <PlusIcon />
+                    {isFrench ? "Ajouter" : "Add"}
+                  </button>
+                </div>
+              </div>
 
               {googleCalendarConnections.length > 0 ? (
                 <label className="block text-sm font-semibold text-foreground">
@@ -13878,20 +14034,92 @@ export function AppShell() {
                 </select>
               </label>
 
-              <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Assignes (optionnel)" : "Assignees (optional)"}
-                <input
-                  type="text"
-                  value={reminderFormValues.assignees}
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {isFrench ? "Assignes" : "Assignees"}
+                </p>
+                {parseAssignees(reminderFormValues.assignees).length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {parseAssignees(reminderFormValues.assignees).map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent"
+                      >
+                        {name}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = parseAssignees(reminderFormValues.assignees).filter(
+                              (n) => n !== name
+                            );
+                            setReminderFormValues((v) => ({
+                              ...v,
+                              assignees: formatAssignees(next),
+                            }));
+                          }}
+                          disabled={isSubmittingReminder}
+                          className="ml-0.5 rounded-full text-accent/70 hover:text-accent disabled:cursor-not-allowed"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <select
+                  value=""
                   onChange={(event) => {
-                    setReminderFormValues((v) => ({ ...v, assignees: event.target.value }));
+                    if (!event.target.value) return;
+                    const current = parseAssignees(reminderFormValues.assignees);
+                    if (!current.includes(event.target.value)) {
+                      setReminderFormValues((v) => ({
+                        ...v,
+                        assignees: formatAssignees([...current, event.target.value]),
+                      }));
+                    }
+                    event.target.value = "";
                   }}
                   className={textFieldClass}
-                  maxLength={500}
-                  placeholder={isFrench ? "Noms ou emails, separes par des virgules" : "Names or emails, comma-separated"}
                   disabled={isSubmittingReminder}
-                />
-              </label>
+                >
+                  <option value="">
+                    {isFrench ? "— Ajouter une personne —" : "— Add a person —"}
+                  </option>
+                  {assigneeOptions
+                    .filter((name) => !parseAssignees(reminderFormValues.assignees).includes(name))
+                    .map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                </select>
+                <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <input
+                    type="text"
+                    value={newAssigneeDraft}
+                    onChange={(event) => setNewAssigneeDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleAddNewAssigneeToReminder();
+                      }
+                    }}
+                    placeholder={isFrench ? "Nouveau nom ou email" : "New name or email"}
+                    className={textFieldClass}
+                    disabled={isSubmittingReminder}
+                    maxLength={200}
+                  />
+                  <button
+                    type="button"
+                    className={controlButtonClass}
+                    onClick={handleAddNewAssigneeToReminder}
+                    disabled={isSubmittingReminder}
+                  >
+                    <PlusIcon />
+                    {isFrench ? "Ajouter" : "Add"}
+                  </button>
+                </div>
+              </div>
 
               <label className="block text-sm font-semibold text-foreground">
                 {isFrench ? "Date et heure" : "Date & Time"}
