@@ -19,12 +19,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "branch=$(git branch --show-current 2>/dev/null); [ -z \"$branch\" ] || [ \"$branch\" = \"main\" ] || [ \"$branch\" = \"master\" ] && exit 0; sentinel=\"/tmp/.jotly_review_${branch//\\//_}\"; [ -f \"$sentinel\" ] && exit 0; pr=$(gh pr view --json number,title -q '\"PR #\\(.number): \\(.title)\"' 2>/dev/null); [ -z \"$pr\" ] && exit 0; touch \"$sentinel\"; echo \"$pr\"; exit 2",
+            "command": "branch=$(git branch --show-current 2>/dev/null); [ -z \"$branch\" ] || [ \"$branch\" = \"main\" ] || [ \"$branch\" = \"master\" ] && exit 0; sentinel=\"/tmp/.jotly_dev_${branch//\\//_}\"; [ -f \"$sentinel\" ] && exit 0; pr=$(gh pr view --json number,title -q '\"PR #\\(.number): \\(.title)\"' 2>/dev/null); if [ -n \"$pr\" ]; then touch \"$sentinel\"; echo \"$pr\"; echo \"ACTION:review\"; exit 2; fi; ahead=$(git rev-list origin/main..HEAD --count 2>/dev/null || echo \"0\"); if [ \"$ahead\" -gt \"0\" ]; then touch \"$sentinel\"; echo \"Branche '$branch' — $ahead commit(s) non poussé(s), aucune PR.\"; echo \"ACTION:push\"; exit 2; fi; exit 0",
             "asyncRewake": true,
-            "rewakeMessage": "Une PR est ouverte sur cette branche. Lance le skill /review pour faire la revue de code.",
-            "rewakeSummary": "PR détectée — revue de code automatique",
+            "rewakeMessage": "Dev Jotly — action requise : ",
+            "rewakeSummary": "Dev terminé — push ou review requis",
             "timeout": 15,
-            "statusMessage": "Vérification PR en cours..."
+            "statusMessage": "Vérification branche en cours..."
           }
         ]
       }
