@@ -6861,6 +6861,45 @@ export function AppShell() {
   }, [isAuthReady, tasks]);
 
   useEffect(() => {
+    if (!isAuthReady || !authToken || !authUser) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    loadAllTasks(authToken, {}, controller.signal)
+      .then((allTasks) => {
+        const projectsFromAllTasks = getUniqueSortedProjectNames(
+          allTasks.map((task) => task.project ?? "")
+        );
+
+        if (projectsFromAllTasks.length === 0) {
+          return;
+        }
+
+        setProjectOptions((currentOptions) => {
+          const mergedOptions = getUniqueSortedProjectNames([
+            ...currentOptions,
+            ...projectsFromAllTasks,
+          ]);
+
+          if (areStringListsEqual(currentOptions, mergedOptions)) {
+            return currentOptions;
+          }
+
+          window.localStorage.setItem(
+            PROJECT_OPTIONS_STORAGE_KEY,
+            JSON.stringify(mergedOptions)
+          );
+          return mergedOptions;
+        });
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, [isAuthReady, authToken, authUser]);
+
+  useEffect(() => {
     if (!isAssistantPanelOpen) {
       return;
     }
