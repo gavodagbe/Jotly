@@ -1,4 +1,4 @@
-import { GoogleCalendarConnection, Task } from "@prisma/client";
+import { CalendarEvent, GoogleCalendarConnection, Task } from "@prisma/client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "../app";
@@ -274,6 +274,7 @@ class TrackingCalendarEventStore implements CalendarEventStore {
     return null;
   }
 
+  async listByConnectionId(): Promise<CalendarEvent[]> { return []; }
   async deleteByConnectionId(connectionId: string): Promise<void> {
     this.deletedConnectionIds.push(connectionId);
   }

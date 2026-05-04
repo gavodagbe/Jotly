@@ -1,4 +1,4 @@
-import { Task, TaskPriority, TaskStatus } from "@prisma/client";
+import { CalendarEvent, Task, TaskPriority, TaskStatus } from "@prisma/client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AuthSession, AuthStore, AuthUser, CreateAuthSessionInput, CreateAuthUserInput } from "../auth/auth-store";
@@ -223,6 +223,7 @@ class InMemoryCalendarEventStore implements CalendarEventStore {
     return null;
   }
 
+  async listByConnectionId(): Promise<CalendarEvent[]> { return []; }
   async deleteByConnectionId(): Promise<void> {}
 }
 
