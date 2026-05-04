@@ -39,6 +39,7 @@ export type CalendarEventStore = {
     userId: string,
     connectionId: string
   ): Promise<CalendarEvent | null>;
+  listByConnectionId(connectionId: string, userId: string): Promise<CalendarEvent[]>;
   deleteMissingForConnection?(
     connectionId: string,
     userId: string,
@@ -301,20 +302,30 @@ export function createPrismaCalendarEventStore(
       }
     },
 
-    async deleteMissingForConnection(connectionId, userId, activeGoogleEventIds) {
-      // Find internal IDs of events that have linked notes — these must be preserved
-      // even if they fall outside the current sync window, to avoid breaking note links.
-      const notesWithLinkedEvents = await prisma.note.findMany({
-        where: {
-          userId,
-          calendarEventId: { not: null },
-          calendarEvent: { connectionId },
-        },
-        select: { calendarEventId: true },
+    async listByConnectionId(connectionId, userId) {
+      return prisma.calendarEvent.findMany({
+        where: { connectionId, userId },
       });
-      const preservedEventIds = notesWithLinkedEvents
-        .map((n) => n.calendarEventId)
-        .filter((id): id is string => id !== null);
+    },
+
+    async deleteMissingForConnection(connectionId, userId, activeGoogleEventIds) {
+      // Preserve events that have linked standalone Notes or CalendarEventNotes,
+      // to avoid cascade-deleting user content outside the current sync window.
+      const [notesWithLinkedEvents, calendarEventNotes] = await Promise.all([
+        prisma.note.findMany({
+          where: { userId, calendarEventId: { not: null }, calendarEvent: { connectionId } },
+          select: { calendarEventId: true },
+        }),
+        prisma.calendarEventNote.findMany({
+          where: { userId, calendarEvent: { connectionId } },
+          select: { calendarEventId: true },
+        }),
+      ]);
+
+      const preservedEventIds = [
+        ...notesWithLinkedEvents.map((n) => n.calendarEventId).filter((id): id is string => id !== null),
+        ...calendarEventNotes.map((n) => n.calendarEventId),
+      ];
 
       const baseWhere: Prisma.CalendarEventWhereInput =
         activeGoogleEventIds.length > 0

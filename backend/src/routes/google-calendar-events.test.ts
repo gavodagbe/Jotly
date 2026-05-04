@@ -278,6 +278,7 @@ class SpyCalendarEventStore implements CalendarEventStore {
     return null;
   }
 
+  async listByConnectionId(): Promise<CalendarEvent[]> { return []; }
   async deleteByConnectionId(): Promise<void> {}
 }
 

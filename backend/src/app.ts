@@ -419,6 +419,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       googleCalendarOAuthService,
       googleCalendarConnectionStore,
       calendarEventStore,
+      calendarEventNoteStore,
+      noteStore,
+      noteAttachmentStore,
       frontendOrigin: options.frontendOrigin,
     });
   }

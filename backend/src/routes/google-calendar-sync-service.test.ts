@@ -160,6 +160,7 @@ class SpyCalendarEventStore implements CalendarEventStore {
     this.deletedMissingSnapshots.push({ connectionId, userId, activeGoogleEventIds });
   }
 
+  async listByConnectionId(): Promise<CalendarEvent[]> { return []; }
   async deleteByConnectionId(): Promise<void> {}
 }
 

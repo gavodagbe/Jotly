@@ -4,6 +4,9 @@ import { AuthSession, AuthStore } from "../auth/auth-store";
 import { GoogleCalendarOAuthService } from "../google-calendar/google-calendar-oauth-service";
 import { GoogleCalendarConnectionStore } from "../google-calendar/google-calendar-store";
 import { CalendarEventStore } from "../google-calendar/calendar-event-store";
+import { CalendarEventNoteStore } from "../google-calendar/calendar-event-note-store";
+import { NoteStore } from "../notes/note-store";
+import { NoteAttachmentStore } from "../notes/note-attachment-store";
 import { TaskStore } from "../tasks/task-store";
 import {
   getBearerToken,
@@ -18,6 +21,9 @@ type GoogleCalendarOAuthRoutesOptions = {
   googleCalendarOAuthService: GoogleCalendarOAuthService;
   googleCalendarConnectionStore?: GoogleCalendarConnectionStore;
   calendarEventStore?: CalendarEventStore;
+  calendarEventNoteStore?: CalendarEventNoteStore;
+  noteStore?: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
   frontendOrigin?: string;
 };
 
@@ -106,6 +112,9 @@ const googleCalendarOAuthRoutes: FastifyPluginAsync<GoogleCalendarOAuthRoutesOpt
     googleCalendarOAuthService,
     googleCalendarConnectionStore,
     calendarEventStore,
+    calendarEventNoteStore,
+    noteStore,
+    noteAttachmentStore,
   } = options;
   const frontendOrigin = normalizeFrontendOrigin(options.frontendOrigin ?? "http://localhost:3000");
 
@@ -179,6 +188,63 @@ const googleCalendarOAuthRoutes: FastifyPluginAsync<GoogleCalendarOAuthRoutesOpt
     const { connectionId } = request.params as { connectionId: string };
 
     try {
+      // Migrate user content before cascade-deletion from the connection
+      if (calendarEventStore && (calendarEventNoteStore || noteStore)) {
+        const events = await calendarEventStore.listByConnectionId(connectionId, authUserId);
+        const eventIds = events.map((e) => e.id);
+
+        if (eventIds.length > 0) {
+          // Build a map from event id → event start date for targetDate assignment
+          const eventStartMap = new Map(
+            events.map((e) => [
+              e.id,
+              e.startDate ?? new Date(Date.UTC(e.startTime.getUTCFullYear(), e.startTime.getUTCMonth(), e.startTime.getUTCDate())),
+            ])
+          );
+
+          // Migrate CalendarEventNote → standalone Note to avoid cascade-deletion
+          if (calendarEventNoteStore && noteStore) {
+            const eventNotes = await calendarEventNoteStore.listWithAttachmentsByCalendarEventIds(eventIds, authUserId);
+            for (const eventNote of eventNotes) {
+              try {
+                const migratedNote = await noteStore.create({
+                  userId: authUserId,
+                  body: eventNote.body,
+                  targetDate: eventStartMap.get(eventNote.calendarEventId) ?? null,
+                });
+                if (noteAttachmentStore && eventNote.attachments.length > 0) {
+                  for (const attachment of eventNote.attachments) {
+                    await noteAttachmentStore.create({
+                      noteId: migratedNote.id,
+                      userId: authUserId,
+                      name: attachment.name,
+                      url: attachment.url,
+                      contentType: attachment.contentType,
+                      sizeBytes: attachment.sizeBytes,
+                    });
+                  }
+                }
+              } catch {
+                // Best-effort: do not block disconnect on migration failure
+              }
+            }
+          }
+
+          // Fix standalone Notes linked to these events that have no targetDate
+          if (noteStore) {
+            const linkedNotes = await noteStore.listByCalendarEventIds(eventIds, authUserId);
+            for (const note of linkedNotes) {
+              if (!note.targetDate) {
+                const targetDate = eventStartMap.get(note.calendarEventId ?? "") ?? null;
+                if (targetDate) {
+                  await noteStore.update(note.id, { targetDate }, authUserId).catch(() => {});
+                }
+              }
+            }
+          }
+        }
+      }
+
       const disconnected = await googleCalendarOAuthService.disconnect(connectionId, authUserId);
       if (!disconnected) {
         return sendError(reply, 404, "NOT_FOUND", "Google Calendar connection not found");

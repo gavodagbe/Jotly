@@ -1,7 +1,12 @@
-import { CalendarEventNote, PrismaClient } from "@prisma/client";
+import { CalendarEventNote, CalendarEventNoteAttachment, PrismaClient } from "@prisma/client";
+
+export type CalendarEventNoteWithAttachments = CalendarEventNote & {
+  attachments: CalendarEventNoteAttachment[];
+};
 
 export type CalendarEventNoteStore = {
   listByCalendarEventIds(calendarEventIds: string[], userId: string): Promise<CalendarEventNote[]>;
+  listWithAttachmentsByCalendarEventIds(calendarEventIds: string[], userId: string): Promise<CalendarEventNoteWithAttachments[]>;
   getByCalendarEventId(calendarEventId: string, userId: string): Promise<CalendarEventNote | null>;
   upsert(calendarEventId: string, userId: string, body: string): Promise<CalendarEventNote>;
   deleteByCalendarEventId(calendarEventId: string, userId: string): Promise<void>;
@@ -24,6 +29,20 @@ export function createPrismaCalendarEventNoteStore(
             in: calendarEventIds,
           },
         },
+      });
+    },
+
+    async listWithAttachmentsByCalendarEventIds(calendarEventIds, userId) {
+      if (calendarEventIds.length === 0) {
+        return [];
+      }
+
+      return prisma.calendarEventNote.findMany({
+        where: {
+          userId,
+          calendarEventId: { in: calendarEventIds },
+        },
+        include: { attachments: true },
       });
     },
 
