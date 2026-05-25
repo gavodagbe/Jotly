@@ -10,6 +10,7 @@ import {
 import { type DragEvent as ReactDragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { APP_TAGLINE } from "@/lib/app-meta";
 import { RichTextEditor, RichTextContent } from "@/components/ui/RichTextEditor";
+import { AiTextAssistButton } from "@/components/ui/AiTextAssistButton";
 import { isHtmlContent, isRichTextEmpty, getRichTextCharacterCount, sanitizeRichTextHtml, stripRichTextToPlainText } from "@/lib/rich-text";
 import { controlButtonClass, primaryButtonClass, dangerButtonClass, textFieldClass, sectionHeaderClass, iconButtonClass, controlIconButtonClass } from "@/components/ui/constants";
 import { CollapseChevronIcon, DragHandleIcon, ArrowLeftIcon, ArrowRightIcon, CalendarIcon, CopyIcon, PlusIcon, SaveIcon, PencilIcon, TrashIcon, CloseIcon, LayoutToggleIcon } from "@/components/ui/icons";
@@ -176,6 +177,14 @@ type AssistantReplyPayload = {
   usedTaskCount: number;
   usedCommentCount: number;
 };
+
+type AssistantRewritePayload = {
+  text: string;
+  source: "openai";
+  generatedAt: string;
+};
+
+type AiTextRewriteFormat = "title" | "plain" | "rich";
 
 type AssistantChatMessage = {
   id: string;
@@ -2483,6 +2492,36 @@ async function requestAssistantReply(
   return payload.data;
 }
 
+async function requestAssistantRewrite(
+  input: {
+    text: string;
+    format: AiTextRewriteFormat;
+    fieldLabel: string;
+    locale: UserLocale;
+  },
+  token: string
+): Promise<AssistantRewritePayload> {
+  const response = await fetch("/backend-api/assistant/rewrite", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: AssistantRewritePayload; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to rewrite text"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to rewrite text.");
+  }
+
+  return payload.data;
+}
+
 async function loadDayAffirmation(
   date: string,
   token: string,
@@ -3344,6 +3383,7 @@ export function AppShell() {
   const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
   const [gamingTrackErrorMessage, setGamingTrackErrorMessage] = useState<string | null>(null);
+  const [aiRewriteFieldKey, setAiRewriteFieldKey] = useState<string | null>(null);
   const [isAssistantPanelOpen, setIsAssistantPanelOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([]);
@@ -3377,6 +3417,8 @@ export function AppShell() {
     isLoadingRecent: false,
   });
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeLocale = getPreferredLocale(authUser?.preferredLocale ?? guestLocale);
+  const isFrench = activeLocale === "fr";
 
   const updateDayAffirmationDraft = useCallback((nextValue: string) => {
     dayAffirmationDraftRef.current = nextValue;
@@ -3426,6 +3468,52 @@ export function AppShell() {
 
     return nextUpdatedAt >= cachedUpdatedAt;
   }
+
+  const handleAiRewrite = useCallback(async (input: {
+    fieldKey: string;
+    text: string;
+    format: AiTextRewriteFormat;
+    fieldLabel: string;
+    onApply: (nextValue: string) => void;
+    onError?: (message: string | null) => void;
+  }) => {
+    if (!authToken) {
+      input.onError?.(isFrench ? "Authentification requise." : "Authentication is required.");
+      return;
+    }
+
+    const normalizedText = input.text.trim();
+    if (!normalizedText) {
+      input.onError?.(isFrench ? "Ajoutez d'abord du texte." : "Add some text first.");
+      return;
+    }
+
+    setAiRewriteFieldKey(input.fieldKey);
+    input.onError?.(null);
+
+    try {
+      const rewrite = await requestAssistantRewrite(
+        {
+          text: normalizedText,
+          format: input.format,
+          fieldLabel: input.fieldLabel,
+          locale: activeLocale,
+        },
+        authToken
+      );
+      input.onApply(rewrite.text);
+    } catch (error) {
+      input.onError?.(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de reformuler ce texte."
+          : "Unable to rewrite this text."
+      );
+    } finally {
+      setAiRewriteFieldKey((current) => (current === input.fieldKey ? null : current));
+    }
+  }, [activeLocale, authToken, isFrench]);
 
   const [taskDialogMode, setTaskDialogMode] = useState<TaskDialogMode | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -3584,8 +3672,6 @@ export function AppShell() {
   const isTaskDialogOpen = taskDialogMode !== null;
   const isNoteDialogOpen = noteDialogMode !== null;
   const isMutationPending = isSubmittingTask || isDeletingTask || isCarryingOverYesterday;
-  const activeLocale = getPreferredLocale(authUser?.preferredLocale ?? guestLocale);
-  const isFrench = activeLocale === "fr";
   const boardColumns = getBoardColumns(activeLocale);
   const priorityOptions = getPriorityOptions(activeLocale);
   const recurrenceFrequencyOptions = getRecurrenceFrequencyOptions(activeLocale);
@@ -7254,6 +7340,192 @@ export function AppShell() {
     }
   }
 
+  const handleRewriteDayAffirmation = () => {
+    void handleAiRewrite({
+      fieldKey: "day-affirmation",
+      text: stripRichTextToPlainText(dayAffirmationDraft),
+      format: "rich",
+      fieldLabel: isFrench ? "affirmation du jour" : "day affirmation",
+      onApply: (nextValue) => {
+        updateDayAffirmationDraft(nextValue);
+        setDayAffirmationErrorMessage(null);
+      },
+      onError: setDayAffirmationErrorMessage,
+    });
+  };
+
+  const handleRewriteDayBilanField = (
+    field: keyof Pick<DayBilanFormValues, "wins" | "blockers" | "lessonsLearned" | "tomorrowTop3">,
+    fieldKey: string,
+    fieldLabel: string
+  ) => {
+    void handleAiRewrite({
+      fieldKey,
+      text: stripRichTextToPlainText(dayBilanFormValues[field]),
+      format: "rich",
+      fieldLabel,
+      onApply: (nextValue) => {
+        updateDayBilanField(field, nextValue);
+        setDayBilanErrorMessage(null);
+      },
+      onError: setDayBilanErrorMessage,
+    });
+  };
+
+  const handleRewriteMonthlyObjective = () => {
+    void handleAiRewrite({
+      fieldKey: "monthly-objective",
+      text: stripRichTextToPlainText(monthlyObjective),
+      format: "rich",
+      fieldLabel: isFrench ? "objectif du mois" : "monthly objective",
+      onApply: (nextValue) => {
+        setMonthlyObjective(nextValue);
+        setMonthlyEntryErrorMessage(null);
+      },
+      onError: setMonthlyEntryErrorMessage,
+    });
+  };
+
+  const handleRewriteMonthlyReview = () => {
+    void handleAiRewrite({
+      fieldKey: "monthly-review",
+      text: stripRichTextToPlainText(monthlyReview),
+      format: "rich",
+      fieldLabel: isFrench ? "bilan du mois" : "monthly review",
+      onApply: (nextValue) => {
+        setMonthlyReview(nextValue);
+        setMonthlyEntryErrorMessage(null);
+      },
+      onError: setMonthlyEntryErrorMessage,
+    });
+  };
+
+  const handleRewriteWeeklyObjective = () => {
+    void handleAiRewrite({
+      fieldKey: "weekly-objective",
+      text: stripRichTextToPlainText(weeklyObjective),
+      format: "rich",
+      fieldLabel: isFrench ? "objectif de la semaine" : "weekly objective",
+      onApply: (nextValue) => {
+        setWeeklyObjective(nextValue);
+        setWeeklyEntryErrorMessage(null);
+      },
+      onError: setWeeklyEntryErrorMessage,
+    });
+  };
+
+  const handleRewriteWeeklyReview = () => {
+    void handleAiRewrite({
+      fieldKey: "weekly-review",
+      text: stripRichTextToPlainText(weeklyReview),
+      format: "rich",
+      fieldLabel: isFrench ? "bilan de la semaine" : "weekly review",
+      onApply: (nextValue) => {
+        setWeeklyReview(nextValue);
+        setWeeklyEntryErrorMessage(null);
+      },
+      onError: setWeeklyEntryErrorMessage,
+    });
+  };
+
+  const handleRewriteNoteTitle = () => {
+    void handleAiRewrite({
+      fieldKey: "note-title",
+      text: noteFormValues.title,
+      format: "title",
+      fieldLabel: isFrench ? "titre de la note" : "note title",
+      onApply: (nextValue) => {
+        setNoteFormValues((prev) => ({ ...prev, title: nextValue }));
+        setNoteErrorMessage(null);
+      },
+      onError: setNoteErrorMessage,
+    });
+  };
+
+  const handleRewriteNoteBody = () => {
+    void handleAiRewrite({
+      fieldKey: "note-body",
+      text: stripRichTextToPlainText(noteFormValues.body),
+      format: "rich",
+      fieldLabel: isFrench ? "contenu de la note" : "note body",
+      onApply: (nextValue) => {
+        setNoteFormValues((prev) => ({ ...prev, body: nextValue }));
+        setNoteErrorMessage(null);
+      },
+      onError: setNoteErrorMessage,
+    });
+  };
+
+  const handleRewriteTaskTitle = () => {
+    void handleAiRewrite({
+      fieldKey: "task-title",
+      text: taskFormValues.title,
+      format: "title",
+      fieldLabel: isFrench ? "titre de la tache" : "task title",
+      onApply: (nextValue) => {
+        updateTaskFormField("title", nextValue);
+        setTaskFormErrorMessage(null);
+      },
+      onError: setTaskFormErrorMessage,
+    });
+  };
+
+  const handleRewriteTaskDescription = () => {
+    void handleAiRewrite({
+      fieldKey: "task-description",
+      text: stripRichTextToPlainText(taskFormValues.description),
+      format: "rich",
+      fieldLabel: isFrench ? "description de la tache" : "task description",
+      onApply: (nextValue) => {
+        updateTaskFormField("description", nextValue);
+        setTaskFormErrorMessage(null);
+      },
+      onError: setTaskFormErrorMessage,
+    });
+  };
+
+  const handleRewriteTaskComment = () => {
+    void handleAiRewrite({
+      fieldKey: "task-comment",
+      text: stripRichTextToPlainText(taskCommentDraft),
+      format: "rich",
+      fieldLabel: isFrench ? "commentaire de tache" : "task comment",
+      onApply: (nextValue) => {
+        setTaskCommentDraft(nextValue);
+        setTaskCommentErrorMessage(null);
+      },
+      onError: setTaskCommentErrorMessage,
+    });
+  };
+
+  const handleRewriteReminderTitle = () => {
+    void handleAiRewrite({
+      fieldKey: "reminder-title",
+      text: reminderFormValues.title,
+      format: "title",
+      fieldLabel: isFrench ? "titre du rappel" : "reminder title",
+      onApply: (nextValue) => {
+        setReminderFormValues((prev) => ({ ...prev, title: nextValue }));
+        setReminderErrorMessage(null);
+      },
+      onError: setReminderErrorMessage,
+    });
+  };
+
+  const handleRewriteReminderDescription = () => {
+    void handleAiRewrite({
+      fieldKey: "reminder-description",
+      text: stripRichTextToPlainText(reminderFormValues.description),
+      format: "rich",
+      fieldLabel: isFrench ? "description du rappel" : "reminder description",
+      onApply: (nextValue) => {
+        setReminderFormValues((prev) => ({ ...prev, description: nextValue }));
+        setReminderErrorMessage(null);
+      },
+      onError: setReminderErrorMessage,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {isSearchModalOpen ? (
@@ -8236,6 +8508,11 @@ export function AppShell() {
                   allowTextColor={false}
                   renderOptions={DAY_AFFIRMATION_RICH_TEXT_OPTIONS}
                   contentClassName="max-h-[200px] overflow-y-auto"
+                  assistantAction={{
+                    onClick: handleRewriteDayAffirmation,
+                    isLoading: aiRewriteFieldKey === "day-affirmation",
+                    disabled: isDayAffirmationLoading || isDayAffirmationSaving,
+                  }}
                 />
               </div>
               <div className="flex justify-end">
@@ -8451,6 +8728,16 @@ export function AppShell() {
                       onChange={(nextValue) => updateDayBilanField("wins", nextValue)}
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
+                      assistantAction={{
+                        onClick: () =>
+                          handleRewriteDayBilanField(
+                            "wins",
+                            "day-bilan-wins",
+                            isFrench ? "victoires du jour" : "daily wins"
+                          ),
+                        isLoading: aiRewriteFieldKey === "day-bilan-wins",
+                        disabled: isDayBilanSaving,
+                      }}
                     />
                   </div>
                   <div className="block text-sm font-semibold text-foreground">
@@ -8461,6 +8748,16 @@ export function AppShell() {
                       onChange={(nextValue) => updateDayBilanField("blockers", nextValue)}
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
+                      assistantAction={{
+                        onClick: () =>
+                          handleRewriteDayBilanField(
+                            "blockers",
+                            "day-bilan-blockers",
+                            isFrench ? "blocages du jour" : "daily blockers"
+                          ),
+                        isLoading: aiRewriteFieldKey === "day-bilan-blockers",
+                        disabled: isDayBilanSaving,
+                      }}
                     />
                   </div>
                 </div>
@@ -8474,6 +8771,16 @@ export function AppShell() {
                       onChange={(nextValue) => updateDayBilanField("lessonsLearned", nextValue)}
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
+                      assistantAction={{
+                        onClick: () =>
+                          handleRewriteDayBilanField(
+                            "lessonsLearned",
+                            "day-bilan-lessons",
+                            isFrench ? "lecons apprises" : "lessons learned"
+                          ),
+                        isLoading: aiRewriteFieldKey === "day-bilan-lessons",
+                        disabled: isDayBilanSaving,
+                      }}
                     />
                   </div>
                   <div className="block text-sm font-semibold text-foreground">
@@ -8484,6 +8791,16 @@ export function AppShell() {
                       onChange={(nextValue) => updateDayBilanField("tomorrowTop3", nextValue)}
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
+                      assistantAction={{
+                        onClick: () =>
+                          handleRewriteDayBilanField(
+                            "tomorrowTop3",
+                            "day-bilan-tomorrow-top-3",
+                            isFrench ? "top 3 de demain" : "tomorrow top 3"
+                          ),
+                        isLoading: aiRewriteFieldKey === "day-bilan-tomorrow-top-3",
+                        disabled: isDayBilanSaving,
+                      }}
                     />
                   </div>
                 </div>
@@ -8551,6 +8868,10 @@ export function AppShell() {
                     onChange={setMonthlyObjective}
                     disabled={false}
                     contentClassName="max-h-[200px] overflow-y-auto"
+                    assistantAction={{
+                      onClick: handleRewriteMonthlyObjective,
+                      isLoading: aiRewriteFieldKey === "monthly-objective",
+                    }}
                   />
                 </div>
                 {monthlyEntry?.updatedAt ? (
@@ -8605,6 +8926,10 @@ export function AppShell() {
                     onChange={setMonthlyReview}
                     disabled={false}
                     contentClassName="max-h-[200px] overflow-y-auto"
+                    assistantAction={{
+                      onClick: handleRewriteMonthlyReview,
+                      isLoading: aiRewriteFieldKey === "monthly-review",
+                    }}
                   />
                 </div>
                 {monthlyEntryErrorMessage ? (
@@ -8653,6 +8978,10 @@ export function AppShell() {
                     onChange={setWeeklyObjective}
                     disabled={false}
                     contentClassName="max-h-[200px] overflow-y-auto"
+                    assistantAction={{
+                      onClick: handleRewriteWeeklyObjective,
+                      isLoading: aiRewriteFieldKey === "weekly-objective",
+                    }}
                   />
                 </div>
                 {weeklyEntry?.updatedAt ? (
@@ -8707,6 +9036,10 @@ export function AppShell() {
                     onChange={setWeeklyReview}
                     disabled={false}
                     contentClassName="max-h-[200px] overflow-y-auto"
+                    assistantAction={{
+                      onClick: handleRewriteWeeklyReview,
+                      isLoading: aiRewriteFieldKey === "weekly-review",
+                    }}
                   />
                 </div>
                 {weeklyEntry?.updatedAt ? (
@@ -9371,7 +9704,15 @@ export function AppShell() {
               }}
             >
               <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Titre (facultatif)" : "Title (optional)"}
+                <span className="flex items-center justify-between gap-2">
+                  <span>{isFrench ? "Titre (facultatif)" : "Title (optional)"}</span>
+                  <AiTextAssistButton
+                    locale={activeLocale}
+                    onClick={handleRewriteNoteTitle}
+                    isLoading={aiRewriteFieldKey === "note-title"}
+                    disabled={isSubmittingNote}
+                  />
+                </span>
                 <input
                   type="text"
                   className={textFieldClass}
@@ -9390,6 +9731,11 @@ export function AppShell() {
                   value={noteFormValues.body}
                   disabled={isSubmittingNote}
                   onChange={(nextValue) => setNoteFormValues((prev) => ({ ...prev, body: nextValue }))}
+                  assistantAction={{
+                    onClick: handleRewriteNoteBody,
+                    isLoading: aiRewriteFieldKey === "note-body",
+                    disabled: isSubmittingNote,
+                  }}
                 />
               </label>
 
@@ -9622,7 +9968,15 @@ export function AppShell() {
 
             <form className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" onSubmit={handleTaskFormSubmit}>
               <label className="block text-sm font-semibold text-foreground">
-                {isFrench ? "Titre" : "Title"}
+                <span className="flex items-center justify-between gap-2">
+                  <span>{isFrench ? "Titre" : "Title"}</span>
+                  <AiTextAssistButton
+                    locale={activeLocale}
+                    onClick={handleRewriteTaskTitle}
+                    isLoading={aiRewriteFieldKey === "task-title"}
+                    disabled={isSubmittingTask}
+                  />
+                </span>
                 <input
                   type="text"
                   value={taskFormValues.title}
@@ -9642,6 +9996,11 @@ export function AppShell() {
                   value={taskFormValues.description}
                   onChange={(nextValue) => updateTaskFormField("description", nextValue)}
                   disabled={isSubmittingTask}
+                  assistantAction={{
+                    onClick: handleRewriteTaskDescription,
+                    isLoading: aiRewriteFieldKey === "task-description",
+                    disabled: isSubmittingTask,
+                  }}
                 />
               </label>
 
@@ -10115,6 +10474,11 @@ export function AppShell() {
                         value={taskCommentDraft}
                         onChange={(nextValue) => setTaskCommentDraft(nextValue)}
                         disabled={isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading}
+                        assistantAction={{
+                          onClick: handleRewriteTaskComment,
+                          isLoading: aiRewriteFieldKey === "task-comment",
+                          disabled: isSubmittingTask || isCreatingTaskComment || isTaskDetailsLoading,
+                        }}
                       />
                       {taskCommentErrorMessage ? (
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -10339,6 +10703,10 @@ export function AppShell() {
         isDataUrl={isDataUrl}
         formatFileSize={formatFileSize}
         formatAssignees={formatAssignees}
+        onRewriteReminderTitle={handleRewriteReminderTitle}
+        onRewriteReminderDescription={handleRewriteReminderDescription}
+        isRewritingReminderTitle={aiRewriteFieldKey === "reminder-title"}
+        isRewritingReminderDescription={aiRewriteFieldKey === "reminder-description"}
       />
 
       <ProfileDialog

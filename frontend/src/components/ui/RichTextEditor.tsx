@@ -16,6 +16,7 @@ import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
+import { AiTextAssistButton } from "@/components/ui/AiTextAssistButton";
 import { type RichTextRenderOptions, renderDescriptionHtml, isHtmlContent } from "@/lib/rich-text";
 
 type UserLocale = "en" | "fr";
@@ -30,6 +31,11 @@ export type RichTextEditorProps = {
   allowTextColor?: boolean;
   renderOptions?: RichTextRenderOptions;
   contentClassName?: string;
+  assistantAction?: {
+    onClick: () => void;
+    isLoading: boolean;
+    disabled?: boolean;
+  };
 };
 
 export function RichTextContent({ value, className }: { value: string; className: string }) {
@@ -74,11 +80,17 @@ function TiptapToolbar({
   disabled,
   locale,
   allowTextColor,
+  assistantAction,
 }: {
   editor: Editor | null;
   disabled: boolean;
   locale: UserLocale;
   allowTextColor: boolean;
+  assistantAction?: {
+    onClick: () => void;
+    isLoading: boolean;
+    disabled?: boolean;
+  };
 }) {
   const colorInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -189,6 +201,17 @@ function TiptapToolbar({
           </TiptapToolbarButton>
         </>
       )}
+      {assistantAction ? (
+        <div className="ml-auto pl-1">
+          <AiTextAssistButton
+            locale={locale}
+            variant="toolbar"
+            onClick={assistantAction.onClick}
+            isLoading={assistantAction.isLoading}
+            disabled={disabled || assistantAction.disabled}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -209,6 +232,7 @@ export function RichTextEditor({
   allowTextColor = true,
   renderOptions,
   contentClassName,
+  assistantAction,
 }: RichTextEditorProps) {
   const isFrench = locale === "fr";
   const lastExternalValueRef = useRef(value);
@@ -289,7 +313,13 @@ export function RichTextEditor({
 
   return (
     <div className={`mt-1 overflow-x-hidden rounded-lg border border-line bg-surface transition-all duration-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 ${disabled ? "opacity-50" : ""}`}>
-      <TiptapToolbar editor={editor} disabled={disabled} locale={locale} allowTextColor={allowTextColor} />
+      <TiptapToolbar
+        editor={editor}
+        disabled={disabled}
+        locale={locale}
+        allowTextColor={allowTextColor}
+        assistantAction={assistantAction}
+      />
       <div className={contentClassName ?? ""}>
         <EditorContent editor={editor} />
       </div>
