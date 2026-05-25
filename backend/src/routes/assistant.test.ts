@@ -659,8 +659,9 @@ test("POST /api/assistant/rewrite reformulates text through OpenAI", async (t) =
   assert.equal(response.statusCode, 200);
   const body = parsePayload(response.payload);
   assert.equal((body.data as { text: string }).text, "Finalize the onboarding checklist");
-  assert.equal(capturedBody?.model, "gpt-4o-mini");
-  assert.match(JSON.stringify(capturedBody?.messages), /task title/i);
+  assert.ok(capturedBody);
+  assert.equal(capturedBody["model"], "gpt-4o-mini");
+  assert.match(JSON.stringify(capturedBody["messages"]), /task title/i);
 });
 
 test("POST /api/assistant/rewrite follows the input text language instead of the UI locale", async (t) => {
@@ -709,7 +710,8 @@ test("POST /api/assistant/rewrite follows the input text language instead of the
   });
 
   assert.equal(response.statusCode, 200);
-  const messagesJson = JSON.stringify(capturedBody?.messages);
+  assert.ok(capturedBody);
+  const messagesJson = JSON.stringify(capturedBody["messages"]);
   assert.match(messagesJson, /same language as the input text/i);
   assert.match(messagesJson, /rewrite this title/i);
   assert.doesNotMatch(messagesJson, /reformule ce titre/i);
