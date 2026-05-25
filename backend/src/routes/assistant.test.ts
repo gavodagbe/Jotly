@@ -383,6 +383,9 @@ function authHeaders(token: string): Record<string, string> {
 function createAppForTest(options?: {
   assistantService?: AssistantService;
   assistantContextStore?: InMemoryAssistantContextStore;
+  openAiApiKey?: string;
+  openAiModel?: string;
+  openAiBaseUrl?: string;
 }) {
   const taskStore = new InMemoryTaskStore();
   const commentStore = new InMemoryCommentStore();
@@ -393,6 +396,9 @@ function createAppForTest(options?: {
     authStore: new InMemoryAuthStore(),
     assistantContextStore: options?.assistantContextStore,
     assistantService: options?.assistantService ?? new EchoAssistantService(),
+    openAiApiKey: options?.openAiApiKey,
+    openAiModel: options?.openAiModel,
+    openAiBaseUrl: options?.openAiBaseUrl,
   });
 }
 
@@ -603,6 +609,137 @@ test("POST /api/assistant/reply validates body", async (t) => {
   assert.equal(error.code, "VALIDATION_ERROR");
   assert.ok(Array.isArray(error.details));
   assert.ok(error.details && error.details.length >= 1);
+});
+
+test("POST /api/assistant/rewrite reformulates text through OpenAI", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | null = null;
+
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "Finalize the onboarding checklist" } }],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }) as typeof fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const app = createAppForTest({
+    openAiApiKey: "test-key",
+    openAiModel: "gpt-4o-mini",
+    openAiBaseUrl: "https://example.com/v1",
+  });
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/rewrite",
+    headers: authHeaders(token),
+    payload: {
+      text: "finish onboarding checklist",
+      format: "title",
+      fieldLabel: "task title",
+      locale: "en",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  assert.equal((body.data as { text: string }).text, "Finalize the onboarding checklist");
+  assert.equal(capturedBody?.model, "gpt-4o-mini");
+  assert.match(JSON.stringify(capturedBody?.messages), /task title/i);
+});
+
+test("POST /api/assistant/rewrite follows the input text language instead of the UI locale", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | null = null;
+
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "Finalize the onboarding checklist" } }],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }) as typeof fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const app = createAppForTest({
+    openAiApiKey: "test-key",
+    openAiModel: "gpt-4o-mini",
+    openAiBaseUrl: "https://example.com/v1",
+  });
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/rewrite",
+    headers: authHeaders(token),
+    payload: {
+      text: "finish onboarding checklist",
+      format: "title",
+      fieldLabel: "titre de tache",
+      locale: "fr",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const messagesJson = JSON.stringify(capturedBody?.messages);
+  assert.match(messagesJson, /same language as the input text/i);
+  assert.match(messagesJson, /rewrite this title/i);
+  assert.doesNotMatch(messagesJson, /reformule ce titre/i);
+});
+
+test("POST /api/assistant/rewrite returns unavailable when OpenAI is not configured", async (t) => {
+  const app = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/rewrite",
+    headers: authHeaders(token),
+    payload: {
+      text: "finish onboarding checklist",
+      format: "title",
+    },
+  });
+
+  assert.equal(response.statusCode, 503);
+  const body = parsePayload(response.payload);
+  assert.deepEqual(body.error, {
+    code: "AI_UNAVAILABLE",
+    message: "AI rewriting is not configured",
+  });
 });
 
 test("POST /api/assistant/reply keeps English planning response for English 'comment' prompts", async (t) => {

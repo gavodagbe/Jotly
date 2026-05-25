@@ -446,6 +446,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.register(assistantRoutes, {
     authService,
     assistantService,
+    openAiApiKey: options.openAiApiKey,
+    openAiModel: options.openAiModel,
+    openAiBaseUrl: options.openAiBaseUrl ?? "https://api.openai.com/v1",
+    requestTimeoutMs: options.assistantRequestTimeoutMs,
   });
 
   app.setErrorHandler((error, request, reply) => {

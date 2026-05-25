@@ -2,6 +2,7 @@
 
 import { type RefObject } from "react";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { AiTextAssistButton } from "@/components/ui/AiTextAssistButton";
 import {
   controlButtonClass,
   primaryButtonClass,
@@ -61,6 +62,10 @@ export type ReminderDialogProps = {
   isDataUrl: (value: string) => boolean;
   formatFileSize: (sizeBytes: number) => string;
   formatAssignees: (list: string[]) => string;
+  onRewriteReminderTitle: () => void;
+  onRewriteReminderDescription: () => void;
+  isRewritingReminderTitle: boolean;
+  isRewritingReminderDescription: boolean;
 };
 
 export function ReminderDialog({
@@ -94,6 +99,10 @@ export function ReminderDialog({
   isDataUrl,
   formatFileSize,
   formatAssignees,
+  onRewriteReminderTitle,
+  onRewriteReminderDescription,
+  isRewritingReminderTitle,
+  isRewritingReminderDescription,
 }: ReminderDialogProps) {
   if (!reminderDialogMode) return null;
 
@@ -142,7 +151,15 @@ export function ReminderDialog({
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleReminderFormSubmit}>
           <div className="flex-1 space-y-4 overflow-y-auto pr-1">
             <label className="block text-sm font-semibold text-foreground">
-              {isFrench ? "Titre" : "Title"}
+              <span className="flex items-center justify-between gap-2">
+                <span>{isFrench ? "Titre" : "Title"}</span>
+                <AiTextAssistButton
+                  locale={activeLocale}
+                  onClick={onRewriteReminderTitle}
+                  isLoading={isRewritingReminderTitle}
+                  disabled={isSubmittingReminder}
+                />
+              </span>
               <input
                 type="text"
                 value={reminderFormValues.title}
@@ -167,6 +184,11 @@ export function ReminderDialog({
                   setReminderFormValues((v) => ({ ...v, description: nextValue }));
                 }}
                 disabled={isSubmittingReminder}
+                assistantAction={{
+                  onClick: onRewriteReminderDescription,
+                  isLoading: isRewritingReminderDescription,
+                  disabled: isSubmittingReminder,
+                }}
               />
             </div>
 
