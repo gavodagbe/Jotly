@@ -186,6 +186,15 @@ type AssistantRewritePayload = {
 
 type AiTextRewriteFormat = "title" | "plain" | "rich";
 
+type AiRewriteRequest = {
+  fieldKey: string;
+  text: string;
+  format: AiTextRewriteFormat;
+  fieldLabel: string;
+  onApply: (nextValue: string) => void;
+  onError?: (message: string | null) => void;
+};
+
 type AssistantChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -2498,6 +2507,7 @@ async function requestAssistantRewrite(
     format: AiTextRewriteFormat;
     fieldLabel: string;
     locale: UserLocale;
+    targetLocale?: UserLocale;
   },
   token: string
 ): Promise<AssistantRewritePayload> {
@@ -3384,6 +3394,7 @@ export function AppShell() {
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
   const [gamingTrackErrorMessage, setGamingTrackErrorMessage] = useState<string | null>(null);
   const [aiRewriteFieldKey, setAiRewriteFieldKey] = useState<string | null>(null);
+  const [pendingAiRewriteRequest, setPendingAiRewriteRequest] = useState<AiRewriteRequest | null>(null);
   const [isAssistantPanelOpen, setIsAssistantPanelOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([]);
@@ -3469,14 +3480,7 @@ export function AppShell() {
     return nextUpdatedAt >= cachedUpdatedAt;
   }
 
-  const handleAiRewrite = useCallback(async (input: {
-    fieldKey: string;
-    text: string;
-    format: AiTextRewriteFormat;
-    fieldLabel: string;
-    onApply: (nextValue: string) => void;
-    onError?: (message: string | null) => void;
-  }) => {
+  const handleAiRewrite = useCallback((input: AiRewriteRequest) => {
     if (!authToken) {
       input.onError?.(isFrench ? "Authentification requise." : "Authentication is required.");
       return;
@@ -3488,16 +3492,28 @@ export function AppShell() {
       return;
     }
 
+    input.onError?.(null);
+    setPendingAiRewriteRequest({ ...input, text: normalizedText });
+  }, [authToken, isFrench]);
+
+  const executeAiRewrite = useCallback(async (targetLocale: UserLocale) => {
+    if (!authToken || !pendingAiRewriteRequest) {
+      return;
+    }
+
+    const input = pendingAiRewriteRequest;
+    setPendingAiRewriteRequest(null);
     setAiRewriteFieldKey(input.fieldKey);
     input.onError?.(null);
 
     try {
       const rewrite = await requestAssistantRewrite(
         {
-          text: normalizedText,
+          text: input.text,
           format: input.format,
           fieldLabel: input.fieldLabel,
           locale: activeLocale,
+          targetLocale,
         },
         authToken
       );
@@ -3513,7 +3529,7 @@ export function AppShell() {
     } finally {
       setAiRewriteFieldKey((current) => (current === input.fieldKey ? null : current));
     }
-  }, [activeLocale, authToken, isFrench]);
+  }, [activeLocale, authToken, isFrench, pendingAiRewriteRequest]);
 
   const [taskDialogMode, setTaskDialogMode] = useState<TaskDialogMode | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -7539,6 +7555,60 @@ export function AppShell() {
           onClose={handleCloseSearchModal}
           onResultClick={handleSearchResultClick}
         />
+      ) : null}
+      {pendingAiRewriteRequest ? (
+        <div
+          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPendingAiRewriteRequest(null);
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={isFrench ? "Choisir la langue de reformulation" : "Choose rewrite language"}
+            className="animate-scale-in w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-2xl"
+          >
+            <header className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">
+                  {isFrench ? "Langue du resultat" : "Result language"}
+                </h2>
+                <p className="mt-1 text-sm text-muted">
+                  {isFrench
+                    ? "Choisissez la langue avant la traduction et la reformulation."
+                    : "Choose the language before translation and rewriting."}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={controlIconButtonClass}
+                onClick={() => setPendingAiRewriteRequest(null)}
+                aria-label={isFrench ? "Fermer" : "Close"}
+                title={isFrench ? "Fermer" : "Close"}
+              >
+                <CloseIcon />
+              </button>
+            </header>
+            <div className="mt-4 grid gap-2">
+              {getUserLocaleOptions(activeLocale).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="flex items-center justify-between rounded-lg border border-line bg-surface-soft px-3 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:border-accent/40 hover:bg-accent/5"
+                  onClick={() => {
+                    void executeAiRewrite(option.value);
+                  }}
+                >
+                  <span>{option.label}</span>
+                  <span className="text-xs uppercase text-muted">{option.value}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
       ) : null}
       <AppNavbar
         locale={activeLocale}

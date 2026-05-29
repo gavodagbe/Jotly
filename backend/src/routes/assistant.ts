@@ -29,9 +29,11 @@ const assistantRewriteBodySchema = z.object({
   format: z.enum(["title", "plain", "rich"]).default("plain"),
   fieldLabel: z.string().trim().max(120, "fieldLabel is too long").optional(),
   locale: z.enum(["en", "fr"]).optional(),
+  targetLocale: z.enum(["en", "fr"]).optional(),
 });
 
 type AssistantRewriteFormat = z.infer<typeof assistantRewriteBodySchema>["format"];
+type AssistantRewriteTargetLocale = z.infer<typeof assistantRewriteBodySchema>["targetLocale"];
 
 type OpenAiChatResponse = {
   model?: string;
@@ -64,18 +66,21 @@ function getRewritePrompts(input: {
   format: AssistantRewriteFormat;
   fieldLabel?: string;
   text: string;
+  targetLocale?: AssistantRewriteTargetLocale;
 }) {
   const fieldContext = input.fieldLabel?.trim()
     ? ` for the field "${input.fieldLabel.trim()}"`
     : "";
+  const targetLanguage = input.targetLocale === "fr" ? "French" : input.targetLocale === "en" ? "English" : null;
 
-  const systemPrompt =
-    "You rewrite user-authored text. Preserve the intent, facts, point of view, and the language of the input text. Always answer in the same language as the input text, even if the app locale or field label uses another language. Improve only clarity, flow, and formulation. Reply only with the rewritten text and no explanation.";
+  const systemPrompt = targetLanguage
+    ? `You rewrite and translate user-authored text into ${targetLanguage}. Preserve the intent, facts, point of view, and useful structure of the input text. Improve clarity, flow, and formulation while making the result natural in ${targetLanguage}. Reply only with the rewritten text and no explanation.`
+    : "You rewrite user-authored text. Preserve the intent, facts, point of view, and the language of the input text. Always answer in the same language as the input text, even if the app locale or field label uses another language. Improve only clarity, flow, and formulation. Reply only with the rewritten text and no explanation.";
 
   if (input.format === "title") {
     return {
       systemPrompt,
-      userPrompt: `Rewrite this title${fieldContext}. Keep it short, natural, precise, and action-oriented when that matches the original meaning. Return a single line with no quotes or list.\n\nText:\n${input.text}`,
+      userPrompt: `${targetLanguage ? `Rewrite and translate this title${fieldContext} into ${targetLanguage}` : `Rewrite this title${fieldContext}`}. Keep it short, natural, precise, and action-oriented when that matches the original meaning. Return a single line with no quotes or list.\n\nText:\n${input.text}`,
       maxTokens: 120,
     };
   }
@@ -83,14 +88,14 @@ function getRewritePrompts(input: {
   if (input.format === "rich") {
     return {
       systemPrompt,
-      userPrompt: `Rewrite this text${fieldContext}. Preserve useful structure with paragraphs or simple lists when needed. Keep a natural tone and a length close to the original unless the source is very fragmentary. You may respond in plain text or simple markdown.\n\nText:\n${input.text}`,
+      userPrompt: `${targetLanguage ? `Rewrite and translate this text${fieldContext} into ${targetLanguage}` : `Rewrite this text${fieldContext}`}. Preserve useful structure with paragraphs or simple lists when needed. Keep a natural tone and a length close to the original unless the source is very fragmentary. You may respond in plain text or simple markdown.\n\nText:\n${input.text}`,
       maxTokens: 1200,
     };
   }
 
   return {
     systemPrompt,
-    userPrompt: `Rewrite this text${fieldContext}. Keep the same meaning, language, and a similar length to the original. Make it clearer and more natural.\n\nText:\n${input.text}`,
+    userPrompt: `${targetLanguage ? `Rewrite and translate this text${fieldContext} into ${targetLanguage}` : `Rewrite this text${fieldContext}`}. Keep the same meaning and a similar length to the original. Make it clearer and more natural.\n\nText:\n${input.text}`,
     maxTokens: 500,
   };
 }
@@ -257,6 +262,7 @@ const assistantRoutes: FastifyPluginAsync<AssistantRoutesOptions> = async (app, 
       format: bodyResult.data.format,
       fieldLabel: bodyResult.data.fieldLabel,
       text: bodyResult.data.text,
+      targetLocale: bodyResult.data.targetLocale,
     });
 
     try {
