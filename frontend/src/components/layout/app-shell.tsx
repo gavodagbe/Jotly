@@ -7,7 +7,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { type DragEvent as ReactDragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { APP_TAGLINE } from "@/lib/app-meta";
 import { RichTextEditor, RichTextContent } from "@/components/ui/RichTextEditor";
 import { AiTextAssistButton } from "@/components/ui/AiTextAssistButton";
@@ -186,11 +186,19 @@ type AssistantRewritePayload = {
 
 type AiTextRewriteFormat = "title" | "plain" | "rich";
 
+type AiRewriteAnchorRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 type AiRewriteRequest = {
   fieldKey: string;
   text: string;
   format: AiTextRewriteFormat;
   fieldLabel: string;
+  anchorRect: AiRewriteAnchorRect;
   onApply: (nextValue: string) => void;
   onError?: (message: string | null) => void;
 };
@@ -1014,6 +1022,38 @@ function detectLikelyTextLocale(text: string, fallbackLocale: UserLocale): UserL
 
 function getOppositeLocale(locale: UserLocale): UserLocale {
   return locale === "fr" ? "en" : "fr";
+}
+
+function getAiRewriteAnchorRect(event: ReactMouseEvent<HTMLButtonElement>): AiRewriteAnchorRect {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function getAiRewritePopoverStyle(anchorRect: AiRewriteAnchorRect): CSSProperties {
+  const viewportWidth = typeof window === "undefined" ? 1024 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 768 : window.innerHeight;
+  const margin = 12;
+  const gap = 8;
+  const popoverWidth = Math.min(360, viewportWidth - margin * 2);
+  const estimatedPopoverHeight = 104;
+  const preferredLeft = anchorRect.left + anchorRect.width / 2 - popoverWidth / 2;
+  const left = Math.min(Math.max(margin, preferredLeft), Math.max(margin, viewportWidth - popoverWidth - margin));
+  const topBelow = anchorRect.top + anchorRect.height + gap;
+  const topAbove = anchorRect.top - estimatedPopoverHeight - gap;
+  const top = topBelow + estimatedPopoverHeight + margin <= viewportHeight
+    ? topBelow
+    : Math.max(margin, topAbove);
+
+  return {
+    left,
+    top,
+    width: popoverWidth,
+  };
 }
 
 function getAssistantPromptSuggestions(locale: UserLocale): ReadonlyArray<string> {
@@ -3415,6 +3455,7 @@ export function AppShell() {
   const [gamingTrackErrorMessage, setGamingTrackErrorMessage] = useState<string | null>(null);
   const [aiRewriteFieldKey, setAiRewriteFieldKey] = useState<string | null>(null);
   const [pendingAiRewriteRequest, setPendingAiRewriteRequest] = useState<AiRewriteRequest | null>(null);
+  const aiRewritePopoverRef = useRef<HTMLDivElement | null>(null);
   const [isAssistantPanelOpen, setIsAssistantPanelOpen] = useState(false);
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([]);
@@ -3458,6 +3499,9 @@ export function AppShell() {
     ...getUserLocaleOptions(activeLocale).filter((option) => option.value === pendingAiRewriteRecommendedLocale),
     ...getUserLocaleOptions(activeLocale).filter((option) => option.value !== pendingAiRewriteRecommendedLocale),
   ];
+  const pendingAiRewritePopoverStyle = pendingAiRewriteRequest
+    ? getAiRewritePopoverStyle(pendingAiRewriteRequest.anchorRect)
+    : undefined;
 
   const updateDayAffirmationDraft = useCallback((nextValue: string) => {
     dayAffirmationDraftRef.current = nextValue;
@@ -3585,6 +3629,24 @@ export function AppShell() {
     window.addEventListener("keydown", handleLanguageShortcut);
     return () => window.removeEventListener("keydown", handleLanguageShortcut);
   }, [executeAiRewrite, pendingAiRewriteRequest]);
+
+  useEffect(() => {
+    if (!pendingAiRewriteRequest) {
+      return;
+    }
+
+    function handleOutsideClick(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && aiRewritePopoverRef.current?.contains(target)) {
+        return;
+      }
+
+      setPendingAiRewriteRequest(null);
+    }
+
+    window.addEventListener("pointerdown", handleOutsideClick);
+    return () => window.removeEventListener("pointerdown", handleOutsideClick);
+  }, [pendingAiRewriteRequest]);
 
   const [taskDialogMode, setTaskDialogMode] = useState<TaskDialogMode | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -7411,12 +7473,13 @@ export function AppShell() {
     }
   }
 
-  const handleRewriteDayAffirmation = () => {
+  const handleRewriteDayAffirmation = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "day-affirmation",
       text: stripRichTextToPlainText(dayAffirmationDraft),
       format: "rich",
       fieldLabel: isFrench ? "affirmation du jour" : "day affirmation",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         updateDayAffirmationDraft(nextValue);
         setDayAffirmationErrorMessage(null);
@@ -7426,6 +7489,7 @@ export function AppShell() {
   };
 
   const handleRewriteDayBilanField = (
+    event: ReactMouseEvent<HTMLButtonElement>,
     field: keyof Pick<DayBilanFormValues, "wins" | "blockers" | "lessonsLearned" | "tomorrowTop3">,
     fieldKey: string,
     fieldLabel: string
@@ -7435,6 +7499,7 @@ export function AppShell() {
       text: stripRichTextToPlainText(dayBilanFormValues[field]),
       format: "rich",
       fieldLabel,
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         updateDayBilanField(field, nextValue);
         setDayBilanErrorMessage(null);
@@ -7443,12 +7508,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteMonthlyObjective = () => {
+  const handleRewriteMonthlyObjective = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "monthly-objective",
       text: stripRichTextToPlainText(monthlyObjective),
       format: "rich",
       fieldLabel: isFrench ? "objectif du mois" : "monthly objective",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setMonthlyObjective(nextValue);
         setMonthlyEntryErrorMessage(null);
@@ -7457,12 +7523,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteMonthlyReview = () => {
+  const handleRewriteMonthlyReview = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "monthly-review",
       text: stripRichTextToPlainText(monthlyReview),
       format: "rich",
       fieldLabel: isFrench ? "bilan du mois" : "monthly review",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setMonthlyReview(nextValue);
         setMonthlyEntryErrorMessage(null);
@@ -7471,12 +7538,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteWeeklyObjective = () => {
+  const handleRewriteWeeklyObjective = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "weekly-objective",
       text: stripRichTextToPlainText(weeklyObjective),
       format: "rich",
       fieldLabel: isFrench ? "objectif de la semaine" : "weekly objective",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setWeeklyObjective(nextValue);
         setWeeklyEntryErrorMessage(null);
@@ -7485,12 +7553,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteWeeklyReview = () => {
+  const handleRewriteWeeklyReview = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "weekly-review",
       text: stripRichTextToPlainText(weeklyReview),
       format: "rich",
       fieldLabel: isFrench ? "bilan de la semaine" : "weekly review",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setWeeklyReview(nextValue);
         setWeeklyEntryErrorMessage(null);
@@ -7499,12 +7568,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteNoteTitle = () => {
+  const handleRewriteNoteTitle = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "note-title",
       text: noteFormValues.title,
       format: "title",
       fieldLabel: isFrench ? "titre de la note" : "note title",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setNoteFormValues((prev) => ({ ...prev, title: nextValue }));
         setNoteErrorMessage(null);
@@ -7513,12 +7583,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteNoteBody = () => {
+  const handleRewriteNoteBody = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "note-body",
       text: stripRichTextToPlainText(noteFormValues.body),
       format: "rich",
       fieldLabel: isFrench ? "contenu de la note" : "note body",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setNoteFormValues((prev) => ({ ...prev, body: nextValue }));
         setNoteErrorMessage(null);
@@ -7527,12 +7598,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteTaskTitle = () => {
+  const handleRewriteTaskTitle = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "task-title",
       text: taskFormValues.title,
       format: "title",
       fieldLabel: isFrench ? "titre de la tache" : "task title",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         updateTaskFormField("title", nextValue);
         setTaskFormErrorMessage(null);
@@ -7541,12 +7613,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteTaskDescription = () => {
+  const handleRewriteTaskDescription = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "task-description",
       text: stripRichTextToPlainText(taskFormValues.description),
       format: "rich",
       fieldLabel: isFrench ? "description de la tache" : "task description",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         updateTaskFormField("description", nextValue);
         setTaskFormErrorMessage(null);
@@ -7555,12 +7628,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteTaskComment = () => {
+  const handleRewriteTaskComment = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "task-comment",
       text: stripRichTextToPlainText(taskCommentDraft),
       format: "rich",
       fieldLabel: isFrench ? "commentaire de tache" : "task comment",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setTaskCommentDraft(nextValue);
         setTaskCommentErrorMessage(null);
@@ -7569,12 +7643,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteReminderTitle = () => {
+  const handleRewriteReminderTitle = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "reminder-title",
       text: reminderFormValues.title,
       format: "title",
       fieldLabel: isFrench ? "titre du rappel" : "reminder title",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setReminderFormValues((prev) => ({ ...prev, title: nextValue }));
         setReminderErrorMessage(null);
@@ -7583,12 +7658,13 @@ export function AppShell() {
     });
   };
 
-  const handleRewriteReminderDescription = () => {
+  const handleRewriteReminderDescription = (event: ReactMouseEvent<HTMLButtonElement>) => {
     void handleAiRewrite({
       fieldKey: "reminder-description",
       text: stripRichTextToPlainText(reminderFormValues.description),
       format: "rich",
       fieldLabel: isFrench ? "description du rappel" : "reminder description",
+      anchorRect: getAiRewriteAnchorRect(event),
       onApply: (nextValue) => {
         setReminderFormValues((prev) => ({ ...prev, description: nextValue }));
         setReminderErrorMessage(null);
@@ -7613,13 +7689,15 @@ export function AppShell() {
       ) : null}
       {pendingAiRewriteRequest ? (
         <div
-          className="animate-fade-in fixed inset-x-0 bottom-4 z-[60] flex justify-center px-4 sm:bottom-6"
+          ref={aiRewritePopoverRef}
+          className="animate-fade-in fixed z-[60]"
+          style={pendingAiRewritePopoverStyle}
           role="dialog"
           aria-modal="false"
           aria-label={isFrench ? "Choisir la langue de reformulation" : "Choose rewrite language"}
         >
           <section
-            className="animate-scale-in flex w-full max-w-xl flex-col gap-3 rounded-2xl border border-line bg-surface p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between"
+            className="animate-scale-in flex w-full flex-col gap-3 rounded-2xl border border-line bg-surface p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between"
           >
             <header className="min-w-0">
               <div>
@@ -8864,8 +8942,9 @@ export function AppShell() {
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
                       assistantAction={{
-                        onClick: () =>
+                        onClick: (event) =>
                           handleRewriteDayBilanField(
+                            event,
                             "wins",
                             "day-bilan-wins",
                             isFrench ? "victoires du jour" : "daily wins"
@@ -8884,8 +8963,9 @@ export function AppShell() {
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
                       assistantAction={{
-                        onClick: () =>
+                        onClick: (event) =>
                           handleRewriteDayBilanField(
+                            event,
                             "blockers",
                             "day-bilan-blockers",
                             isFrench ? "blocages du jour" : "daily blockers"
@@ -8907,8 +8987,9 @@ export function AppShell() {
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
                       assistantAction={{
-                        onClick: () =>
+                        onClick: (event) =>
                           handleRewriteDayBilanField(
+                            event,
                             "lessonsLearned",
                             "day-bilan-lessons",
                             isFrench ? "lecons apprises" : "lessons learned"
@@ -8927,8 +9008,9 @@ export function AppShell() {
                       disabled={isDayBilanSaving}
                       contentClassName="max-h-[160px] overflow-y-auto"
                       assistantAction={{
-                        onClick: () =>
+                        onClick: (event) =>
                           handleRewriteDayBilanField(
+                            event,
                             "tomorrowTop3",
                             "day-bilan-tomorrow-top-3",
                             isFrench ? "top 3 de demain" : "tomorrow top 3"

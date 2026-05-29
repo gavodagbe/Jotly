@@ -1,6 +1,6 @@
 "use client";
 
-import { type RefObject } from "react";
+import { type MouseEvent, type RefObject } from "react";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { AiTextAssistButton } from "@/components/ui/AiTextAssistButton";
 import {
@@ -62,8 +62,8 @@ export type ReminderDialogProps = {
   isDataUrl: (value: string) => boolean;
   formatFileSize: (sizeBytes: number) => string;
   formatAssignees: (list: string[]) => string;
-  onRewriteReminderTitle: () => void;
-  onRewriteReminderDescription: () => void;
+  onRewriteReminderTitle: (event: MouseEvent<HTMLButtonElement>) => void;
+  onRewriteReminderDescription: (event: MouseEvent<HTMLButtonElement>) => void;
   isRewritingReminderTitle: boolean;
   isRewritingReminderDescription: boolean;
 };

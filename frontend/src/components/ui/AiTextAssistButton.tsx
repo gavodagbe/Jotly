@@ -1,10 +1,12 @@
 "use client";
 
+import { type MouseEvent } from "react";
+
 type UserLocale = "en" | "fr";
 
 type AiTextAssistButtonProps = {
   locale: UserLocale;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   isLoading: boolean;
   disabled?: boolean;
   variant?: "inline" | "toolbar";
