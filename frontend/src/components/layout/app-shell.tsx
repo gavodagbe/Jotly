@@ -996,6 +996,26 @@ function getUserLocaleOptions(locale: UserLocale): ReadonlyArray<{ value: UserLo
   return USER_LOCALE_OPTIONS_BY_LOCALE[locale];
 }
 
+function detectLikelyTextLocale(text: string, fallbackLocale: UserLocale): UserLocale {
+  const normalized = text.toLowerCase();
+  const frenchMatches = normalized.match(
+    /\b(je|tu|il|elle|nous|vous|ils|elles|le|la|les|un|une|des|du|de|dans|avec|pour|que|qui|est|sont|pas|plus|sur|ce|cette|ces|mon|ma|mes|votre|notre|tache|rappel|bilan|objectif)\b/g
+  );
+  const englishMatches = normalized.match(
+    /\b(i|you|we|they|the|a|an|and|or|to|for|with|that|this|these|those|is|are|not|more|on|task|reminder|review|goal|objective|note)\b/g
+  );
+  const frenchScore = (frenchMatches?.length ?? 0) + (/[àâçéèêëîïôùûüÿœ]/i.test(text) ? 2 : 0);
+  const englishScore = englishMatches?.length ?? 0;
+
+  if (frenchScore > englishScore) return "fr";
+  if (englishScore > frenchScore) return "en";
+  return fallbackLocale;
+}
+
+function getOppositeLocale(locale: UserLocale): UserLocale {
+  return locale === "fr" ? "en" : "fr";
+}
+
 function getAssistantPromptSuggestions(locale: UserLocale): ReadonlyArray<string> {
   return ASSISTANT_PROMPT_SUGGESTIONS_BY_LOCALE[locale];
 }
@@ -3430,6 +3450,14 @@ export function AppShell() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeLocale = getPreferredLocale(authUser?.preferredLocale ?? guestLocale);
   const isFrench = activeLocale === "fr";
+  const pendingAiRewriteDetectedLocale = pendingAiRewriteRequest
+    ? detectLikelyTextLocale(pendingAiRewriteRequest.text, activeLocale)
+    : activeLocale;
+  const pendingAiRewriteRecommendedLocale = getOppositeLocale(pendingAiRewriteDetectedLocale);
+  const pendingAiRewriteLanguageOptions = [
+    ...getUserLocaleOptions(activeLocale).filter((option) => option.value === pendingAiRewriteRecommendedLocale),
+    ...getUserLocaleOptions(activeLocale).filter((option) => option.value !== pendingAiRewriteRecommendedLocale),
+  ];
 
   const updateDayAffirmationDraft = useCallback((nextValue: string) => {
     dayAffirmationDraftRef.current = nextValue;
@@ -3530,6 +3558,33 @@ export function AppShell() {
       setAiRewriteFieldKey((current) => (current === input.fieldKey ? null : current));
     }
   }, [activeLocale, authToken, isFrench, pendingAiRewriteRequest]);
+
+  useEffect(() => {
+    if (!pendingAiRewriteRequest) {
+      return;
+    }
+
+    function handleLanguageShortcut(event: KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "escape") {
+        event.preventDefault();
+        setPendingAiRewriteRequest(null);
+        return;
+      }
+
+      if (key === "f" || key === "e") {
+        event.preventDefault();
+        void executeAiRewrite(key === "f" ? "fr" : "en");
+      }
+    }
+
+    window.addEventListener("keydown", handleLanguageShortcut);
+    return () => window.removeEventListener("keydown", handleLanguageShortcut);
+  }, [executeAiRewrite, pendingAiRewriteRequest]);
 
   const [taskDialogMode, setTaskDialogMode] = useState<TaskDialogMode | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -7558,54 +7613,64 @@ export function AppShell() {
       ) : null}
       {pendingAiRewriteRequest ? (
         <div
-          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setPendingAiRewriteRequest(null);
-            }
-          }}
+          className="animate-fade-in fixed inset-x-0 bottom-4 z-[60] flex justify-center px-4 sm:bottom-6"
+          role="dialog"
+          aria-modal="false"
+          aria-label={isFrench ? "Choisir la langue de reformulation" : "Choose rewrite language"}
         >
           <section
-            role="dialog"
-            aria-modal="true"
-            aria-label={isFrench ? "Choisir la langue de reformulation" : "Choose rewrite language"}
-            className="animate-scale-in w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-2xl"
+            className="animate-scale-in flex w-full max-w-xl flex-col gap-3 rounded-2xl border border-line bg-surface p-3 shadow-2xl sm:flex-row sm:items-center sm:justify-between"
           >
-            <header className="flex items-start justify-between gap-3">
+            <header className="min-w-0">
               <div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  {isFrench ? "Langue du resultat" : "Result language"}
+                <h2 className="text-sm font-semibold text-foreground">
+                  {isFrench ? "Traduire en" : "Translate to"}
                 </h2>
-                <p className="mt-1 text-sm text-muted">
+                <p className="mt-0.5 truncate text-xs text-muted">
                   {isFrench
-                    ? "Choisissez la langue avant la traduction et la reformulation."
-                    : "Choose the language before translation and rewriting."}
+                    ? `Suggestion: ${pendingAiRewriteRecommendedLocale.toUpperCase()} selon le texte`
+                    : `Suggested: ${pendingAiRewriteRecommendedLocale.toUpperCase()} from the text`}
                 </p>
               </div>
+            </header>
+            <div className="flex shrink-0 items-center gap-2">
+              {pendingAiRewriteLanguageOptions.map((option) => {
+                const isRecommended = option.value === pendingAiRewriteRecommendedLocale;
+                const shortcut = option.value === "fr" ? "F" : "E";
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${
+                      isRecommended
+                        ? "border-accent bg-accent text-white hover:bg-accent/90"
+                        : "border-line bg-surface-soft text-foreground hover:border-accent/40 hover:bg-accent/5"
+                    }`}
+                    onClick={() => {
+                      void executeAiRewrite(option.value);
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    <span
+                      className={`rounded border px-1.5 py-0.5 text-[10px] leading-none ${
+                        isRecommended ? "border-white/40 text-white/90" : "border-line text-muted"
+                      }`}
+                    >
+                      {shortcut}
+                    </span>
+                  </button>
+                );
+              })}
               <button
                 type="button"
                 className={controlIconButtonClass}
                 onClick={() => setPendingAiRewriteRequest(null)}
                 aria-label={isFrench ? "Fermer" : "Close"}
-                title={isFrench ? "Fermer" : "Close"}
+                title={isFrench ? "Fermer (Esc)" : "Close (Esc)"}
               >
                 <CloseIcon />
               </button>
-            </header>
-            <div className="mt-4 grid gap-2">
-              {getUserLocaleOptions(activeLocale).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className="flex items-center justify-between rounded-lg border border-line bg-surface-soft px-3 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:border-accent/40 hover:bg-accent/5"
-                  onClick={() => {
-                    void executeAiRewrite(option.value);
-                  }}
-                >
-                  <span>{option.label}</span>
-                  <span className="text-xs uppercase text-muted">{option.value}</span>
-                </button>
-              ))}
             </div>
           </section>
         </div>
