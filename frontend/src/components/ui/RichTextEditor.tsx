@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { type MouseEvent, useEffect, useRef } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -32,7 +32,7 @@ export type RichTextEditorProps = {
   renderOptions?: RichTextRenderOptions;
   contentClassName?: string;
   assistantAction?: {
-    onClick: () => void;
+    onClick: (event: MouseEvent<HTMLButtonElement>) => void;
     isLoading: boolean;
     disabled?: boolean;
   };
@@ -87,7 +87,7 @@ function TiptapToolbar({
   locale: UserLocale;
   allowTextColor: boolean;
   assistantAction?: {
-    onClick: () => void;
+    onClick: (event: MouseEvent<HTMLButtonElement>) => void;
     isLoading: boolean;
     disabled?: boolean;
   };

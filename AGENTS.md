@@ -29,6 +29,8 @@ Use Atlassian MCP for Jira and Confluence context when needed.
 
 ## Execution rules
 - Work ticket by ticket.
+- Before any implementation, provide a concrete plan and wait for explicit user validation.
+- Do not edit source files, run implementation commands, or start coding until the user validates the plan.
 - Implement only the current ticket scope.
 - Respect out-of-scope boundaries.
 - Keep changes minimal, clean, and testable.
