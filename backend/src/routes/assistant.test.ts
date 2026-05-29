@@ -717,6 +717,59 @@ test("POST /api/assistant/rewrite follows the input text language instead of the
   assert.doesNotMatch(messagesJson, /reformule ce titre/i);
 });
 
+test("POST /api/assistant/rewrite translates into the selected target locale", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: Record<string, unknown> | null = null;
+
+  globalThis.fetch = (async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "Finaliser la liste d'integration" } }],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }) as typeof fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const app = createAppForTest({
+    openAiApiKey: "test-key",
+    openAiModel: "gpt-4o-mini",
+    openAiBaseUrl: "https://example.com/v1",
+  });
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/assistant/rewrite",
+    headers: authHeaders(token),
+    payload: {
+      text: "finish onboarding checklist",
+      format: "title",
+      fieldLabel: "task title",
+      locale: "en",
+      targetLocale: "fr",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.ok(capturedBody);
+  const messagesJson = JSON.stringify(capturedBody["messages"]);
+  assert.match(messagesJson, /translate user-authored text into French/i);
+  assert.match(messagesJson, /translate this title.*into French/i);
+});
+
 test("POST /api/assistant/rewrite returns unavailable when OpenAI is not configured", async (t) => {
   const app = createAppForTest();
 
