@@ -261,6 +261,46 @@ type MonthlyEntry = {
   updatedAt: string;
 };
 
+type RoutineChallenge = "normal" | "bonus";
+
+type RoutineTemplate = {
+  id: string;
+  challenge: RoutineChallenge;
+  startTime: string | null;
+  endTime: string | null;
+  title: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RoutineCompletion = {
+  id: string;
+  routineId: string;
+  targetDate: string;
+  isCompleted: boolean;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RoutineMonthlySummary = {
+  month: string;
+  days: string[];
+  routines: RoutineTemplate[];
+  completions: RoutineCompletion[];
+  dailyPercentages: Array<{ date: string; percentage: number }>;
+  monthPercentage: number;
+};
+
+type RoutineFormValues = {
+  challenge: RoutineChallenge;
+  startTime: string;
+  endTime: string;
+  title: string;
+};
+
 type DayBilanFormValues = {
   mood: string;
   wins: string;
@@ -593,7 +633,7 @@ type GlobalSearchState = {
 };
 
 type ApiErrorPayload = { error?: { code?: string; message?: string } } | null;
-type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "affirmation" | "board" | "bilan" | "reminders" | "notes";
+type DashboardBlockId = "overview" | "gamingTrack" | "dailyControls" | "routine" | "affirmation" | "board" | "bilan" | "reminders" | "notes";
 type DashboardLayoutConfig = {
   order: DashboardBlockId[];
   collapsed: Record<DashboardBlockId, boolean>;
@@ -637,6 +677,7 @@ const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
 const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "overview",
   "dailyControls",
+  "routine",
   "affirmation",
   "reminders",
   "bilan",
@@ -648,6 +689,7 @@ const DEFAULT_DASHBOARD_BLOCK_COLLAPSED: Record<DashboardBlockId, boolean> = {
   overview: false,
   gamingTrack: true,
   dailyControls: false,
+  routine: false,
   affirmation: true,
   reminders: false,
   notes: true,
@@ -892,6 +934,10 @@ function formatDashboardBlockLabel(blockId: DashboardBlockId, locale: UserLocale
     return isFrench ? "Pilotage du jour" : "Day controls";
   }
 
+  if (blockId === "routine") {
+    return isFrench ? "Routine CEO" : "CEO routine";
+  }
+
   if (blockId === "affirmation") {
     return isFrench ? "Affirmation du jour" : "Day affirmation";
   }
@@ -1022,6 +1068,20 @@ function detectLikelyTextLocale(text: string, fallbackLocale: UserLocale): UserL
 
 function getOppositeLocale(locale: UserLocale): UserLocale {
   return locale === "fr" ? "en" : "fr";
+}
+
+function getMonthInputValue(dateValue: string): string {
+  return dateValue.slice(0, 7);
+}
+
+function getRoutineTimeLabel(routine: Pick<RoutineTemplate, "startTime" | "endTime">): string {
+  if (routine.startTime && routine.endTime) return `${routine.startTime}-${routine.endTime}`;
+  if (routine.startTime) return routine.startTime;
+  return "";
+}
+
+function getRoutineCompletionKey(routineId: string, targetDate: string): string {
+  return `${routineId}:${targetDate}`;
 }
 
 function getAiRewriteAnchorRect(event: ReactMouseEvent<HTMLButtonElement>): AiRewriteAnchorRect {
@@ -3122,6 +3182,99 @@ async function cancelReminderApi(id: string, token: string): Promise<Reminder> {
   return payload.data;
 }
 
+async function loadRoutineMonth(month: string, token: string, signal?: AbortSignal): Promise<RoutineMonthlySummary> {
+  const response = await fetch(`/backend-api/routine-completions?month=${encodeURIComponent(month)}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: RoutineMonthlySummary; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load routine tracker"));
+  }
+  if (!payload?.data) throw new Error("Unable to load routine tracker.");
+  return payload.data;
+}
+
+async function createRoutineApi(input: RoutineFormValues, token: string): Promise<RoutineTemplate> {
+  const response = await fetch("/backend-api/routines", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      challenge: input.challenge,
+      startTime: input.startTime || null,
+      endTime: input.endTime || null,
+      title: input.title,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: RoutineTemplate; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create routine"));
+  }
+  if (!payload?.data) throw new Error("Unable to create routine.");
+  return payload.data;
+}
+
+async function updateRoutineApi(id: string, input: RoutineFormValues, token: string): Promise<RoutineTemplate> {
+  const response = await fetch(`/backend-api/routines/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({
+      challenge: input.challenge,
+      startTime: input.startTime || null,
+      endTime: input.endTime || null,
+      title: input.title,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: RoutineTemplate; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update routine"));
+  }
+  if (!payload?.data) throw new Error("Unable to update routine.");
+  return payload.data;
+}
+
+async function deleteRoutineApi(id: string, token: string): Promise<RoutineTemplate> {
+  const response = await fetch(`/backend-api/routines/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: createAuthHeaders(token, false),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: RoutineTemplate; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete routine"));
+  }
+  if (!payload?.data) throw new Error("Unable to delete routine.");
+  return payload.data;
+}
+
+async function upsertRoutineCompletionApi(
+  input: { routineId: string; targetDate: string; isCompleted: boolean },
+  token: string
+): Promise<RoutineCompletion> {
+  const response = await fetch("/backend-api/routine-completions", {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: RoutineCompletion; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update routine completion"));
+  }
+  if (!payload?.data) throw new Error("Unable to update routine completion.");
+  return payload.data;
+}
+
 async function carryOverYesterdayTasks(targetDate: string, token: string): Promise<CarryOverYesterdayPayload> {
   const response = await fetch("/backend-api/tasks/carry-over-yesterday", {
     method: "POST",
@@ -3449,6 +3602,21 @@ export function AppShell() {
   const [reminderAttachmentErrorMessage, setReminderAttachmentErrorMessage] = useState<string | null>(null);
   const [isCreatingReminderAttachment, setIsCreatingReminderAttachment] = useState(false);
   const [pendingReminderAttachmentIds, setPendingReminderAttachmentIds] = useState<string[]>([]);
+  const [routineMonth, setRoutineMonth] = useState(() => getMonthInputValue(toDateInputValue(new Date())));
+  const [routineSummary, setRoutineSummary] = useState<RoutineMonthlySummary | null>(null);
+  const [routineViewMode, setRoutineViewMode] = useState<"today" | "month">("today");
+  const [isRoutineLoading, setIsRoutineLoading] = useState(false);
+  const [routineErrorMessage, setRoutineErrorMessage] = useState<string | null>(null);
+  const [pendingRoutineCompletionKeys, setPendingRoutineCompletionKeys] = useState<string[]>([]);
+  const [isRoutineFormOpen, setIsRoutineFormOpen] = useState(false);
+  const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
+  const [routineFormValues, setRoutineFormValues] = useState<RoutineFormValues>({
+    challenge: "normal",
+    startTime: "",
+    endTime: "",
+    title: "",
+  });
+  const [isSubmittingRoutine, setIsSubmittingRoutine] = useState(false);
   const [gamingTrackPeriod, setGamingTrackPeriod] = useState<GamingTrackPeriod>("week");
   const [gamingTrackSummary, setGamingTrackSummary] = useState<GamingTrackSummary | null>(null);
   const [isGamingTrackLoading, setIsGamingTrackLoading] = useState(false);
@@ -3502,6 +3670,22 @@ export function AppShell() {
   const pendingAiRewritePopoverStyle = pendingAiRewriteRequest
     ? getAiRewritePopoverStyle(pendingAiRewriteRequest.anchorRect)
     : undefined;
+  const routineCompletionsByKey = useMemo(() => {
+    const map = new Map<string, RoutineCompletion>();
+    for (const completion of routineSummary?.completions ?? []) {
+      map.set(getRoutineCompletionKey(completion.routineId, completion.targetDate), completion);
+    }
+    return map;
+  }, [routineSummary]);
+  const selectedDateRoutineCompletions = routineSummary?.routines.filter((routine) =>
+    routineCompletionsByKey.get(getRoutineCompletionKey(routine.id, selectedDate))?.isCompleted
+  ).length ?? 0;
+  const selectedDateRoutineTotal = routineSummary?.routines.length ?? 0;
+  const selectedDateRoutinePercentage = selectedDateRoutineTotal === 0
+    ? 0
+    : Math.round((selectedDateRoutineCompletions / selectedDateRoutineTotal) * 100);
+  const selectedDateRoutineScorePercentage =
+    routineSummary?.dailyPercentages.find((entry) => entry.date === selectedDate)?.percentage ?? selectedDateRoutinePercentage;
 
   const updateDayAffirmationDraft = useCallback((nextValue: string) => {
     dayAffirmationDraftRef.current = nextValue;
@@ -5524,6 +5708,120 @@ export function AppShell() {
     }
   }
 
+  async function refreshRoutineSummary() {
+    if (!authToken) return;
+    const summary = await loadRoutineMonth(routineMonth, authToken);
+    setRoutineSummary(summary);
+  }
+
+  async function handleToggleRoutineCompletion(routineId: string, targetDate: string) {
+    if (!authToken || !routineSummary) return;
+    const key = getRoutineCompletionKey(routineId, targetDate);
+    const current = routineCompletionsByKey.get(key);
+    const nextCompleted = !current?.isCompleted;
+    setPendingRoutineCompletionKeys((prev) => [...prev, key]);
+    setRoutineErrorMessage(null);
+
+    try {
+      const completion = await upsertRoutineCompletionApi(
+        { routineId, targetDate, isCompleted: nextCompleted },
+        authToken
+      );
+      setRoutineSummary((prev) => {
+        if (!prev) return prev;
+        const nextCompletions = prev.completions.filter(
+          (entry) => getRoutineCompletionKey(entry.routineId, entry.targetDate) !== key
+        );
+        nextCompletions.push(completion);
+        return { ...prev, completions: nextCompletions };
+      });
+      void refreshRoutineSummary();
+    } catch (error) {
+      setRoutineErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de mettre a jour la routine."
+          : "Unable to update routine."
+      );
+    } finally {
+      setPendingRoutineCompletionKeys((prev) => prev.filter((entry) => entry !== key));
+    }
+  }
+
+  function openCreateRoutineForm() {
+    setEditingRoutineId(null);
+    setRoutineFormValues({ challenge: "normal", startTime: "", endTime: "", title: "" });
+    setRoutineErrorMessage(null);
+    setIsRoutineFormOpen(true);
+  }
+
+  function openEditRoutineForm(routine: RoutineTemplate) {
+    setEditingRoutineId(routine.id);
+    setRoutineFormValues({
+      challenge: routine.challenge,
+      startTime: routine.startTime ?? "",
+      endTime: routine.endTime ?? "",
+      title: routine.title,
+    });
+    setRoutineErrorMessage(null);
+    setIsRoutineFormOpen(true);
+  }
+
+  function closeRoutineForm() {
+    setIsRoutineFormOpen(false);
+    setEditingRoutineId(null);
+    setRoutineFormValues({ challenge: "normal", startTime: "", endTime: "", title: "" });
+  }
+
+  async function handleSubmitRoutine(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!authToken || isSubmittingRoutine) return;
+    if (!routineFormValues.title.trim()) {
+      setRoutineErrorMessage(isFrench ? "Le titre de la routine est requis." : "Routine title is required.");
+      return;
+    }
+
+    setIsSubmittingRoutine(true);
+    setRoutineErrorMessage(null);
+    try {
+      if (editingRoutineId) {
+        await updateRoutineApi(editingRoutineId, routineFormValues, authToken);
+      } else {
+        await createRoutineApi(routineFormValues, authToken);
+      }
+      await refreshRoutineSummary();
+      closeRoutineForm();
+    } catch (error) {
+      setRoutineErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer la routine."
+          : "Unable to save routine."
+      );
+    } finally {
+      setIsSubmittingRoutine(false);
+    }
+  }
+
+  async function handleDeleteRoutine(id: string) {
+    if (!authToken) return;
+    try {
+      await deleteRoutineApi(id, authToken);
+      await refreshRoutineSummary();
+      if (editingRoutineId === id) closeRoutineForm();
+    } catch (error) {
+      setRoutineErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de supprimer la routine."
+          : "Unable to delete routine."
+      );
+    }
+  }
+
   function openCreateNoteDialog(options?: {
     calendarEventId?: string | null;
     targetDate?: string | null;
@@ -6389,7 +6687,7 @@ export function AppShell() {
 
   useEffect(() => {
     const sectionIds = [
-      "overview", "board", "dailyControls", "affirmation", "reminders",
+      "overview", "board", "dailyControls", "routine", "affirmation", "reminders",
       "bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview",
       "notes", "gaming",
     ];
@@ -6577,6 +6875,10 @@ export function AppShell() {
   }, [activeLocale]);
 
   useEffect(() => {
+    setRoutineMonth(getMonthInputValue(selectedDate));
+  }, [selectedDate]);
+
+  useEffect(() => {
     window.localStorage.setItem(
       DASHBOARD_LAYOUT_STORAGE_KEY,
       JSON.stringify({
@@ -6704,6 +7006,41 @@ export function AppShell() {
 
     return () => controller.abort();
   }, [authToken, authUser, isAuthReady, selectedDate]);
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+    if (!authToken || !authUser) {
+      setRoutineSummary(null);
+      setIsRoutineLoading(false);
+      return;
+    }
+
+    setIsRoutineLoading(true);
+    setRoutineErrorMessage(null);
+    const controller = new AbortController();
+
+    loadRoutineMonth(routineMonth, authToken, controller.signal)
+      .then((summary) => {
+        if (!controller.signal.aborted) setRoutineSummary(summary);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setRoutineSummary(null);
+          setRoutineErrorMessage(
+            error instanceof Error
+              ? error.message
+              : isFrench
+              ? "Impossible de charger la routine."
+              : "Unable to load routine."
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsRoutineLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, isFrench, routineMonth]);
 
   // Poll for pending reminders every 30s
   useEffect(() => {
@@ -8302,6 +8639,269 @@ export function AppShell() {
               </div>
             ) : null}
           </>
+        )}
+      </section>
+
+      <section
+        id="routine"
+        className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("routine", activeSectionId)} ${getDashboardDropClassName("routine")}`}
+        style={{ order: getDashboardBlockVisualOrder("routine"), animationDelay: "0.12s" }}
+        onDragOver={(event) => handleDashboardBlockDragOver("routine", event)}
+        onDrop={(event) => handleDashboardBlockDrop("routine", event)}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <SectionIdentityPills sectionId="routine" locale={activeLocale} isActive={activeSectionId === "routine"} />
+            <h2 className={sectionHeaderClass}>{isFrench ? "Routine quotidienne CEO" : "Daily CEO routine"}</h2>
+            <p className="text-sm text-muted">
+              {isFrench ? "Suivi des routines par jour et progression mensuelle." : "Track routines by day and monthly completion."}
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              draggable
+              onDragStart={(event) => handleDashboardBlockDragStart("routine", event)}
+              onDragEnd={handleDashboardBlockDragEnd}
+              aria-label={getDashboardDragHandleLabel("routine")}
+              title={getDashboardDragHandleLabel("routine")}
+            >
+              <DragHandleIcon />
+            </button>
+            <button
+              type="button"
+              className={dashboardIconButtonClass}
+              onClick={() => toggleDashboardBlock("routine")}
+              aria-expanded={!dashboardBlockCollapsed.routine}
+              aria-label={getCollapseToggleAriaLabel("routine", dashboardBlockCollapsed.routine)}
+              title={getCollapseToggleAriaLabel("routine", dashboardBlockCollapsed.routine)}
+            >
+              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.routine} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardBlockCollapsed.routine ? (
+          <p className="mt-3 text-xs text-muted">
+            {routineSummary
+              ? `${selectedDateRoutineScorePercentage}% · ${selectedDateRoutineCompletions}/${selectedDateRoutineTotal}`
+              : collapsedHintLabel}
+          </p>
+        ) : (
+          <div className="mt-5 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-line bg-surface-soft px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                    {isFrench ? "Aujourd'hui" : "Today"}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">{selectedDateRoutineScorePercentage}%</p>
+                  <p className="text-xs text-muted">{selectedDateRoutineCompletions}/{selectedDateRoutineTotal}</p>
+                </div>
+                <div className="rounded-lg border border-line bg-surface-soft px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                    {isFrench ? "Mois" : "Month"}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">{routineSummary?.monthPercentage ?? 0}%</p>
+                  <p className="text-xs text-muted">{routineMonth}</p>
+                </div>
+                <label className="block rounded-lg border border-line bg-surface-soft px-4 py-3 text-sm font-semibold text-foreground">
+                  {isFrench ? "Mois suivi" : "Tracked month"}
+                  <input
+                    type="month"
+                    value={routineMonth}
+                    onChange={(event) => setRoutineMonth(event.target.value || getMonthInputValue(selectedDate))}
+                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm font-medium text-foreground outline-none focus:border-accent"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="inline-flex rounded-lg bg-surface-soft p-1">
+                  {(["today", "month"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        routineViewMode === mode ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
+                      }`}
+                      onClick={() => setRoutineViewMode(mode)}
+                    >
+                      {mode === "today" ? (isFrench ? "Jour" : "Today") : isFrench ? "Mois" : "Month"}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" className={controlButtonClass} onClick={openCreateRoutineForm}>
+                  <PlusIcon />
+                  {isFrench ? "Routine" : "Routine"}
+                </button>
+              </div>
+            </div>
+
+            {routineErrorMessage ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {routineErrorMessage}
+              </p>
+            ) : null}
+
+            {isRoutineFormOpen ? (
+              <form className="grid gap-3 rounded-xl border border-line bg-surface-soft p-4 sm:grid-cols-[120px_120px_120px_minmax(0,1fr)_auto]" onSubmit={handleSubmitRoutine}>
+                <label className="text-xs font-semibold text-muted">
+                  {isFrench ? "Type" : "Type"}
+                  <select
+                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-2 text-sm text-foreground"
+                    value={routineFormValues.challenge}
+                    onChange={(event) =>
+                      setRoutineFormValues((prev) => ({ ...prev, challenge: event.target.value === "bonus" ? "bonus" : "normal" }))
+                    }
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="bonus">Bonus</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-muted">
+                  {isFrench ? "Debut" : "Start"}
+                  <input
+                    type="time"
+                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-2 text-sm text-foreground"
+                    value={routineFormValues.startTime}
+                    onChange={(event) => setRoutineFormValues((prev) => ({ ...prev, startTime: event.target.value }))}
+                  />
+                </label>
+                <label className="text-xs font-semibold text-muted">
+                  {isFrench ? "Fin" : "End"}
+                  <input
+                    type="time"
+                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-2 text-sm text-foreground"
+                    value={routineFormValues.endTime}
+                    onChange={(event) => setRoutineFormValues((prev) => ({ ...prev, endTime: event.target.value }))}
+                  />
+                </label>
+                <label className="text-xs font-semibold text-muted">
+                  {isFrench ? "Element" : "Item"}
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-2 text-sm text-foreground"
+                    value={routineFormValues.title}
+                    onChange={(event) => setRoutineFormValues((prev) => ({ ...prev, title: event.target.value }))}
+                    placeholder={isFrench ? "Nom de routine" : "Routine name"}
+                    maxLength={300}
+                  />
+                </label>
+                <div className="flex items-end gap-2">
+                  <button type="submit" className={primaryButtonClass} disabled={isSubmittingRoutine}>
+                    <SaveIcon />
+                    {isSubmittingRoutine ? "..." : isFrench ? "OK" : "Save"}
+                  </button>
+                  <button type="button" className={controlButtonClass} onClick={closeRoutineForm}>
+                    {isFrench ? "Annuler" : "Cancel"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+
+            {isRoutineLoading ? (
+              <p className="rounded-lg border border-dashed border-line bg-surface-soft px-4 py-6 text-center text-sm text-muted">
+                {isFrench ? "Chargement de la routine..." : "Loading routine..."}
+              </p>
+            ) : routineViewMode === "today" ? (
+              <div className="grid gap-2">
+                {(routineSummary?.routines ?? []).map((routine) => {
+                  const key = getRoutineCompletionKey(routine.id, selectedDate);
+                  const completion = routineCompletionsByKey.get(key);
+                  const isCompleted = Boolean(completion?.isCompleted);
+                  return (
+                    <div key={routine.id} className="grid gap-3 rounded-lg border border-line bg-surface px-3 py-2 sm:grid-cols-[88px_80px_minmax(0,1fr)_auto] sm:items-center">
+                      <span className={`rounded-full border px-2 py-1 text-center text-[11px] font-semibold uppercase ${
+                        routine.challenge === "bonus" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      }`}>
+                        {routine.challenge}
+                      </span>
+                      <span className="text-sm font-semibold text-muted">{getRoutineTimeLabel(routine)}</span>
+                      <button
+                        type="button"
+                        className={`min-w-0 text-left text-sm font-medium transition-colors ${isCompleted ? "text-muted line-through" : "text-foreground"}`}
+                        onClick={() => void handleToggleRoutineCompletion(routine.id, selectedDate)}
+                      >
+                        {routine.title}
+                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          className={`grid h-8 w-8 place-items-center rounded-md border transition-colors ${
+                            isCompleted ? "border-emerald-500 bg-emerald-500 text-white" : "border-line bg-surface-soft text-transparent hover:border-accent"
+                          }`}
+                          disabled={pendingRoutineCompletionKeys.includes(key)}
+                          onClick={() => void handleToggleRoutineCompletion(routine.id, selectedDate)}
+                          aria-label={isFrench ? "Basculer la routine" : "Toggle routine"}
+                        >
+                          ✓
+                        </button>
+                        <button type="button" className={controlIconButtonClass} onClick={() => openEditRoutineForm(routine)} aria-label={isFrench ? "Modifier" : "Edit"}>
+                          <PencilIcon />
+                        </button>
+                        <button type="button" className={controlIconButtonClass} onClick={() => void handleDeleteRoutine(routine.id)} aria-label={isFrench ? "Supprimer" : "Delete"}>
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-line">
+                <table className="min-w-[980px] border-collapse bg-surface text-sm">
+                  <thead>
+                    <tr className="border-b border-line bg-surface-soft">
+                      <th className="sticky left-0 z-10 w-[90px] bg-surface-soft px-3 py-2 text-left font-semibold text-foreground">Type</th>
+                      <th className="sticky left-[90px] z-10 w-[90px] bg-surface-soft px-3 py-2 text-left font-semibold text-foreground">
+                        {isFrench ? "Debut" : "Start"}
+                      </th>
+                      <th className="sticky left-[180px] z-10 w-[260px] bg-surface-soft px-3 py-2 text-left font-semibold text-foreground">
+                        {isFrench ? "Routine" : "Routine"}
+                      </th>
+                      {(routineSummary?.days ?? []).map((date) => (
+                        <th key={date} className="min-w-16 border-l border-line px-2 py-2 text-center font-semibold text-muted">
+                          <span className="block text-[11px]">{formatDateOnlyForLocale(date, activeLocale).slice(0, 5)}</span>
+                          <span className="text-xs text-foreground">
+                            {routineSummary?.dailyPercentages.find((entry) => entry.date === date)?.percentage ?? 0}%
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(routineSummary?.routines ?? []).map((routine) => (
+                      <tr key={routine.id} className="border-b border-line last:border-b-0">
+                        <td className="sticky left-0 bg-surface px-3 py-2 text-xs font-semibold uppercase text-muted">{routine.challenge}</td>
+                        <td className="sticky left-[90px] bg-surface px-3 py-2 font-semibold text-muted">{getRoutineTimeLabel(routine)}</td>
+                        <td className="sticky left-[180px] bg-surface px-3 py-2 font-medium text-foreground">{routine.title}</td>
+                        {(routineSummary?.days ?? []).map((date) => {
+                          const key = getRoutineCompletionKey(routine.id, date);
+                          const isCompleted = Boolean(routineCompletionsByKey.get(key)?.isCompleted);
+                          return (
+                            <td key={date} className="border-l border-line px-2 py-2 text-center">
+                              <button
+                                type="button"
+                                className={`mx-auto grid h-7 w-7 place-items-center rounded-md border text-xs transition-colors ${
+                                  isCompleted ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted/60 bg-surface text-transparent hover:border-accent"
+                                }`}
+                                disabled={pendingRoutineCompletionKeys.includes(key)}
+                                onClick={() => void handleToggleRoutineCompletion(routine.id, date)}
+                                aria-label={`${routine.title} ${date}`}
+                              >
+                                ✓
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         )}
       </section>
 

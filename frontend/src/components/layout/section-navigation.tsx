@@ -6,6 +6,7 @@ type MainContentSectionId =
   | "overview"
   | "board"
   | "dailyControls"
+  | "routine"
   | "affirmation"
   | "reminders"
   | "bilan"
@@ -42,6 +43,12 @@ const MAIN_CONTENT_SECTION_META: Record<
     label: { fr: "Pilotage du jour", en: "Day Controls" },
     chipClass: "border-sky-200 bg-sky-50 text-sky-700",
     activeRingClass: "ring-sky-200",
+  },
+  routine: {
+    group: { fr: "Aujourd'hui", en: "Today" },
+    label: { fr: "Routine CEO", en: "CEO Routine" },
+    chipClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    activeRingClass: "ring-emerald-200",
   },
   affirmation: {
     group: { fr: "Affirmation", en: "Affirmation" },
