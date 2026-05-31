@@ -83,7 +83,7 @@ export function AppNavbar({
   const activeMobileTab =
     isProfileDialogOpen ? "profil" :
     isAssistantPanelOpen ? "assistant" :
-    ["overview", "dailyControls", "reminders"].includes(activeSectionId) ? "jour" :
+    ["overview", "dailyControls", "routine", "reminders"].includes(activeSectionId) ? "jour" :
     activeSectionId === "board" ? "kanban" :
     activeSectionId === "affirmation" ? "affirmation" :
     ["bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview"].includes(activeSectionId) ? "bilan" :
@@ -174,6 +174,10 @@ export function AppNavbar({
             <a href="#dailyControls" title={isSidebarCollapsed ? (isFrench ? "Pilotage du jour" : "Day Controls") : undefined} className={navItem("dailyControls", isSidebarCollapsed)}>
               <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>
               {!isSidebarCollapsed && (isFrench ? "Pilotage du jour" : "Day Controls")}
+            </a>
+            <a href="#routine" title={isSidebarCollapsed ? (isFrench ? "Routine CEO" : "CEO Routine") : undefined} className={navItem("routine", isSidebarCollapsed)}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 4h10M5 8h10M5 12h7M5 16h5" strokeLinecap="round"/><path d="M15 12l1.5 1.5L19 10" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {!isSidebarCollapsed && (isFrench ? "Routine CEO" : "CEO Routine")}
             </a>
             <a href="#affirmation" title={isSidebarCollapsed ? "Affirmation" : undefined} className={navItem("affirmation", isSidebarCollapsed)}>
               <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>

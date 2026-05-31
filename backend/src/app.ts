@@ -40,6 +40,7 @@ import { createPrismaDayAffirmationStore, DayAffirmationStore } from "./day-affi
 import { createPrismaDayBilanStore, DayBilanStore } from "./day-bilan/day-bilan-store";
 import { createPrismaWeeklyEntryStore, WeeklyEntryStore } from "./weekly-entry/weekly-entry-store";
 import { createPrismaMonthlyEntryStore, MonthlyEntryStore } from "./monthly-entry/monthly-entry-store";
+import { createPrismaRoutineStore, RoutineStore } from "./routines/routine-store";
 import { createPrismaGamingTrackStore, GamingTrackStore } from "./gaming-track/gaming-track-store";
 import { createGamingTrackService, GamingTrackService } from "./gaming-track/gaming-track-service";
 import { createPrismaProfileStore, ProfileStore } from "./profile/profile-store";
@@ -52,6 +53,7 @@ import dayAffirmationRoutes from "./routes/day-affirmation";
 import dayBilanRoutes from "./routes/day-bilan";
 import weeklyEntryRoutes from "./routes/weekly-entry";
 import monthlyEntryRoutes from "./routes/monthly-entry";
+import routineRoutes from "./routes/routines";
 import gamingTrackRoutes from "./routes/gaming-track";
 import profileRoutes from "./routes/profile";
 import recurrenceRoutes from "./routes/recurrence";
@@ -108,6 +110,7 @@ export type BuildAppOptions = {
   dayBilanStore?: DayBilanStore;
   weeklyEntryStore?: WeeklyEntryStore;
   monthlyEntryStore?: MonthlyEntryStore;
+  routineStore?: RoutineStore;
   gamingTrackStore?: GamingTrackStore;
   gamingTrackService?: GamingTrackService;
   noteStore?: NoteStore;
@@ -219,6 +222,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const monthlyEntryStore =
     options.monthlyEntryStore ??
     (options.taskStore ? undefined : createPrismaMonthlyEntryStore());
+  const routineStore =
+    options.routineStore ??
+    (options.taskStore ? undefined : createPrismaRoutineStore());
   const noteStore =
     options.noteStore ??
     (options.taskStore ? undefined : createPrismaNoteStore());
@@ -393,6 +399,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (monthlyEntryStore) {
     app.register(monthlyEntryRoutes, { monthlyEntryStore, authService });
   }
+  if (routineStore) {
+    app.register(routineRoutes, { routineStore, authService });
+  }
   if (noteStore) {
     app.register(noteRoutes, {
       noteStore,
@@ -520,6 +529,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (monthlyEntryStore?.close) {
       await monthlyEntryStore.close();
+    }
+
+    if (routineStore?.close) {
+      await routineStore.close();
     }
 
     if (gamingTrackStore?.close) {

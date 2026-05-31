@@ -59,6 +59,8 @@ model User {
   calendarEvents CalendarEvent[]
   reminders    Reminder[]
   notes        Note[]
+  routineTemplates RoutineTemplate[]
+  routineCompletions RoutineCompletion[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -425,6 +427,41 @@ model NoteAttachment {
 
   @@index([noteId, createdAt])
   @@index([userId])
+}
+
+model RoutineTemplate {
+  id          String   @id @default(cuid())
+  userId      String
+  challenge   String   @default("normal")
+  startTime   String?
+  endTime     String?
+  title       String
+  sortOrder   Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completions RoutineCompletion[]
+
+  @@index([userId, isActive, sortOrder])
+  @@index([userId, sortOrder])
+}
+
+model RoutineCompletion {
+  id          String          @id @default(cuid())
+  userId      String
+  routineId   String
+  targetDate  DateTime        @db.Date
+  isCompleted Boolean         @default(false)
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routine     RoutineTemplate @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  @@unique([routineId, targetDate])
+  @@index([userId, targetDate])
+  @@index([routineId, targetDate])
 }
 
 model AssistantSearchDocument {
