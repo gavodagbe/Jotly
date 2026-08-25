@@ -54,9 +54,11 @@ Profile preferences:
 ## Alerts
 
 Authenticated alert APIs and UI conventions:
-- `GET /api/tasks/alerts?date=YYYY-MM-DD` — list actionable due-date tasks that are overdue, due today, or due tomorrow
+- `GET /api/tasks/alerts?date=YYYY-MM-DD` — list actionable due-date tasks that are overdue by at most 14 days, due today, or due tomorrow
+- `GET /api/tasks/triage?date=YYYY-MM-DD` — list actionable tasks overdue by more than 14 days, each with a `daysOverdue` field
 - dashboard `Alerts` panel combines due-date tasks from `/api/tasks/alerts` with active reminders loaded via `GET /api/reminders?date=YYYY-MM-DD`
-- task alerts stay visible until the task becomes `done` or `cancelled`
+- task alerts stay visible until the task becomes `done`/`cancelled`, or until it has been overdue for more than 14 days (at which point it moves to the `Needs triage` panel, reachable from a link in the `Alerts` panel)
+- the `Needs triage` panel lets a stale task be rescheduled, completed, or cancelled directly, without navigating to its date (so it never triggers the daily-sections navigation guard)
 - reminder alerts stay visible until the reminder becomes `completed` or `cancelled`
 - alert summary and ordering prioritize `overdue`, then `today`, then `tomorrow`
 

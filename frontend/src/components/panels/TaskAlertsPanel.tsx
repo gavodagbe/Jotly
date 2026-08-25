@@ -97,7 +97,9 @@ export type TaskAlertsPanelProps = {
   isLoading: boolean;
   errorMessage: string | null;
   anchorDate: string;
+  triageCount: number;
   onClose: () => void;
+  onOpenTriage: () => void;
   onTaskClick: (task: Task) => void;
   onReminderClick: (reminder: Reminder) => void;
   onCompleteReminder: (reminderId: string) => void;
@@ -121,7 +123,9 @@ export function TaskAlertsPanel({
   isLoading,
   errorMessage,
   anchorDate,
+  triageCount,
   onClose,
+  onOpenTriage,
   onTaskClick,
   onReminderClick,
   onCompleteReminder,
@@ -286,6 +290,21 @@ export function TaskAlertsPanel({
           </p>
         ) : null}
       </div>
+
+      {triageCount > 0 ? (
+        <button
+          type="button"
+          className="flex items-center justify-between gap-2 border-t border-line bg-surface-soft/60 px-4 py-2.5 text-left text-xs font-medium text-muted transition-colors hover:bg-surface-soft"
+          onClick={onOpenTriage}
+        >
+          <span>
+            {isFrench
+              ? `${triageCount} tâche${triageCount > 1 ? "s" : ""} en retard depuis plus de 14 jours`
+              : `${triageCount} task${triageCount > 1 ? "s" : ""} overdue by more than 14 days`}
+          </span>
+          <span className="text-accent">{isFrench ? "Trier" : "Triage"}</span>
+        </button>
+      ) : null}
     </section>
   );
 }
