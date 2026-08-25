@@ -92,6 +92,16 @@ export function BellIcon() {
   );
 }
 
+export function ArchiveIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="3.5" y="4.5" width="13" height="3" rx="1" />
+      <path d="M4.5 7.5v6.7a1.3 1.3 0 001.3 1.3h8.4a1.3 1.3 0 001.3-1.3V7.5" strokeLinecap="round" />
+      <path d="M8.3 10.5h3.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function PlusIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">

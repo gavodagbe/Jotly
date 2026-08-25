@@ -81,6 +81,12 @@ const listTaskAlertsQuerySchema = z.object({
   date: targetDateSchema
 });
 
+const listTaskTriageQuerySchema = z.object({
+  date: targetDateSchema
+});
+
+const STALE_THRESHOLD_DAYS = 14;
+
 const carryOverYesterdayBodySchema = z.object({
   targetDate: targetDateSchema,
 });
@@ -446,6 +452,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
     const tomorrowDate = addUtcDays(anchorDate, 1);
     const endExclusive = addUtcDays(anchorDate, 2);
+    const startInclusive = addUtcDays(anchorDate, -STALE_THRESHOLD_DAYS);
 
     try {
       const dueSoonTasks = (await taskStore.listByUser(authUserId))
@@ -453,6 +460,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
           (task) =>
             task.dueDate !== null &&
             isTaskDueSoonStatus(task.status) &&
+            task.dueDate.getTime() >= startInclusive.getTime() &&
             task.dueDate.getTime() < endExclusive.getTime()
         )
         .sort(compareDueSoonTasks);
@@ -480,6 +488,70 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       request.log.error(error, "Failed to list task alerts");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list task alerts");
+    }
+  });
+
+  app.get("/api/tasks/triage", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const queryResult = listTaskTriageQuerySchema.safeParse(request.query);
+
+    if (!queryResult.success) {
+      const details = zodIssuesToStrings(queryResult.error);
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        details[0] ?? "Invalid request query",
+        details
+      );
+    }
+
+    const anchorDate = parseDateOnly(queryResult.data.date);
+
+    if (!anchorDate) {
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        "date must be a valid date in YYYY-MM-DD format"
+      );
+    }
+
+    const startInclusive = addUtcDays(anchorDate, -STALE_THRESHOLD_DAYS);
+    const msPerDay = 24 * 60 * 60 * 1000;
+
+    try {
+      const staleTasks = (await taskStore.listByUser(authUserId))
+        .filter(
+          (task) =>
+            task.dueDate !== null &&
+            isTaskDueSoonStatus(task.status) &&
+            task.dueDate.getTime() < startInclusive.getTime()
+        )
+        .sort(compareDueSoonTasks);
+
+      return reply.send({
+        data: {
+          count: staleTasks.length,
+          tasks: staleTasks.map((task) => ({
+            ...serializeTask(task),
+            daysOverdue: Math.floor((anchorDate.getTime() - task.dueDate!.getTime()) / msPerDay),
+          })),
+        },
+      });
+    } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
+      request.log.error(error, "Failed to list task triage");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list task triage");
     }
   });
 

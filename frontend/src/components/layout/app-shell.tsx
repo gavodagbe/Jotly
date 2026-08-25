@@ -23,6 +23,7 @@ import { ActiveSectionIndicator, SectionIdentityPills, getMainContentSectionClas
 import { AssistantFab, AssistantPanel } from "@/components/panels/AssistantPanel";
 import { PendingReminderToasts } from "@/components/panels/PendingReminderToasts";
 import { TaskAlertsPanel } from "@/components/panels/TaskAlertsPanel";
+import { TaskTriagePanel } from "@/components/panels/TaskTriagePanel";
 import { ProjectPlanningView } from "@/components/projects/ProjectPlanningView";
 import { RemindersSection } from "@/components/reminders/RemindersSection";
 import { AuthPanel } from "@/components/auth/AuthPanel";
@@ -124,6 +125,11 @@ type TaskAlertsSummary = {
   dueTodayCount: number;
   dueTomorrowCount: number;
   tasks: Task[];
+};
+
+type TaskTriageSummary = {
+  count: number;
+  tasks: (Task & { daysOverdue: number })[];
 };
 
 type AlertsSummary = {
@@ -2284,6 +2290,29 @@ async function loadTaskAlerts(date: string, token: string, signal?: AbortSignal)
   return payload.data;
 }
 
+async function loadTaskTriage(date: string, token: string, signal?: AbortSignal): Promise<TaskTriageSummary> {
+  const response = await fetch(`/backend-api/tasks/triage?date=${encodeURIComponent(date)}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskTriageSummary; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load stale tasks"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to load stale tasks.");
+  }
+
+  return payload.data;
+}
+
 async function createTask(input: TaskMutationInput, token: string): Promise<Task> {
   const response = await fetch("/backend-api/tasks", {
     method: "POST",
@@ -2401,6 +2430,32 @@ async function updateTaskStatus(taskId: string, status: TaskStatus, token: strin
 
   if (!payload?.data) {
     throw new Error("Unable to move task.");
+  }
+
+  return payload.data;
+}
+
+async function rescheduleTask(
+  taskId: string,
+  input: { targetDate: string; dueDate?: string },
+  token: string
+): Promise<Task> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
+    method: "PATCH",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: Task; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to reschedule task"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to reschedule task.");
   }
 
   return payload.data;
@@ -3636,6 +3691,12 @@ export function AppShell() {
   const [isTaskAlertsLoading, setIsTaskAlertsLoading] = useState(false);
   const [isTaskAlertsPanelOpen, setIsTaskAlertsPanelOpen] = useState(false);
   const [taskAlertsReloadKey, setTaskAlertsReloadKey] = useState(0);
+  const [taskTriageSummary, setTaskTriageSummary] = useState<TaskTriageSummary | null>(null);
+  const [taskTriageErrorMessage, setTaskTriageErrorMessage] = useState<string | null>(null);
+  const [isTaskTriageLoading, setIsTaskTriageLoading] = useState(false);
+  const [isTaskTriagePanelOpen, setIsTaskTriagePanelOpen] = useState(false);
+  const [taskTriageReloadKey, setTaskTriageReloadKey] = useState(0);
+  const [pendingTriageTaskId, setPendingTriageTaskId] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
   const [taskFilterValues, setTaskFilterValues] = useState<TaskFilterValues>(DEFAULT_TASK_FILTER_VALUES);
@@ -5239,6 +5300,66 @@ export function AppShell() {
     setIsTaskAlertsPanelOpen((isOpen) => !isOpen);
   }
 
+  function refreshTaskTriage() {
+    setTaskTriageReloadKey((currentValue) => currentValue + 1);
+  }
+
+  async function handleTriageReschedule(
+    task: { id: string; targetDate: string; dueDate: string | null },
+    nextDate: string
+  ) {
+    if (!authToken || !nextDate) return;
+    setPendingTriageTaskId(task.id);
+    try {
+      const shouldMoveDueDate = task.dueDate === task.targetDate;
+      await rescheduleTask(
+        task.id,
+        shouldMoveDueDate ? { targetDate: nextDate, dueDate: nextDate } : { targetDate: nextDate },
+        authToken
+      );
+      setTaskTriageSummary((current) =>
+        current
+          ? { count: current.count - 1, tasks: current.tasks.filter((entry) => entry.id !== task.id) }
+          : current
+      );
+      refreshTaskAlerts();
+    } catch (error: unknown) {
+      setTaskTriageErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de reporter la tâche."
+          : "Unable to reschedule the task."
+      );
+    } finally {
+      setPendingTriageTaskId(null);
+    }
+  }
+
+  async function handleTriageStatusChange(task: { id: string }, status: "done" | "cancelled") {
+    if (!authToken) return;
+    setPendingTriageTaskId(task.id);
+    try {
+      await updateTaskStatus(task.id, status, authToken);
+      setTaskTriageSummary((current) =>
+        current
+          ? { count: current.count - 1, tasks: current.tasks.filter((entry) => entry.id !== task.id) }
+          : current
+      );
+      refreshTaskAlerts();
+    } catch (error: unknown) {
+      setTaskTriageErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de mettre à jour la tâche."
+          : "Unable to update the task."
+      );
+    } finally {
+      setPendingTriageTaskId(null);
+    }
+  }
+
   async function fetchAllProjectTasks(filters = projectPlanningFilters) {
     if (!authToken) return;
     setIsLoadingAllTasks(true);
@@ -5391,6 +5512,7 @@ export function AppShell() {
       }
 
       refreshTaskAlerts();
+      refreshTaskTriage();
     } catch (error) {
       setCarryOverErrorMessage(
         error instanceof Error
@@ -6517,6 +6639,7 @@ export function AppShell() {
       }
 
       refreshTaskAlerts();
+      refreshTaskTriage();
       await fetchCalendarEvents(selectedDate, true);
 
       if (isProjectPlanningOpen) {
@@ -6606,6 +6729,7 @@ export function AppShell() {
 
       setTaskToDelete(null);
       refreshTaskAlerts();
+      refreshTaskTriage();
       await fetchCalendarEvents(selectedDate, true);
     } catch (error) {
       setDeleteErrorMessage(
@@ -7158,6 +7282,54 @@ export function AppShell() {
     }
 
     if (!authToken || !authUser) {
+      setTaskTriageSummary(null);
+      setTaskTriageErrorMessage(null);
+      setIsTaskTriageLoading(false);
+      setIsTaskTriagePanelOpen(false);
+      return;
+    }
+
+    setIsTaskTriageLoading(true);
+    setTaskTriageErrorMessage(null);
+    const controller = new AbortController();
+
+    loadTaskTriage(taskAlertsAnchorDate, authToken, controller.signal)
+      .then((nextTaskTriage) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setTaskTriageSummary(nextTaskTriage);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setTaskTriageSummary(null);
+        setTaskTriageErrorMessage(
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger les tâches à trier."
+            : "Unable to load stale tasks."
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsTaskTriageLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, isFrench, taskAlertsAnchorDate, taskTriageReloadKey]);
+
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken || !authUser) {
       setGamingTrackSummary(null);
       setGamingTrackErrorMessage(null);
       setIsGamingTrackLoading(false);
@@ -7652,6 +7824,7 @@ export function AppShell() {
         currentTasks.map((task) => (task.id === taskId ? { ...task, ...updatedTask } : task))
       );
       refreshTaskAlerts();
+      refreshTaskTriage();
       await fetchCalendarEvents(selectedDate, true);
     } catch (error) {
       setTasks((currentTasks) =>
@@ -11578,7 +11751,12 @@ export function AppShell() {
         isLoading={isTaskAlertsLoading}
         errorMessage={taskAlertsErrorMessage}
         anchorDate={taskAlertsAnchorDate}
+        triageCount={taskTriageSummary?.count ?? 0}
         onClose={() => setIsTaskAlertsPanelOpen(false)}
+        onOpenTriage={() => {
+          setIsTaskAlertsPanelOpen(false);
+          setIsTaskTriagePanelOpen(true);
+        }}
         onTaskClick={(task) => {
           setIsTaskAlertsPanelOpen(false);
 
@@ -11603,6 +11781,20 @@ export function AppShell() {
         formatAlertSourceLabel={formatAlertSourceLabel}
         formatPriority={formatPriority}
         formatReminderStatus={formatReminderStatus}
+      />
+
+      <TaskTriagePanel
+        isOpen={isTaskTriagePanelOpen}
+        locale={activeLocale}
+        tasks={taskTriageSummary?.tasks ?? []}
+        isLoading={isTaskTriageLoading}
+        errorMessage={taskTriageErrorMessage}
+        pendingTaskId={pendingTriageTaskId}
+        onClose={() => setIsTaskTriagePanelOpen(false)}
+        onReschedule={(task, nextDate) => { void handleTriageReschedule(task, nextDate); }}
+        onComplete={(task) => { void handleTriageStatusChange(task, "done"); }}
+        onCancelTask={(task) => { void handleTriageStatusChange(task, "cancelled"); }}
+        formatPriority={formatPriority}
       />
 
       <AssistantPanel

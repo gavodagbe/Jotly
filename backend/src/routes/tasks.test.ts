@@ -393,6 +393,115 @@ test("GET /api/tasks/alerts returns actionable tasks due today, tomorrow, and ov
   );
 });
 
+test("GET /api/tasks/alerts excludes tasks overdue by more than 14 days", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Recently overdue",
+      targetDate: "2026-02-22",
+      dueDate: "2026-02-22",
+      status: "todo",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Stale",
+      targetDate: "2026-02-16",
+      dueDate: "2026-02-16",
+      status: "todo",
+    },
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/tasks/alerts?date=2026-03-08",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as { tasks: Array<{ title: string }> };
+
+  assert.deepEqual(
+    data.tasks.map((task) => task.title),
+    ["Recently overdue"]
+  );
+});
+
+test("GET /api/tasks/triage returns actionable tasks overdue by more than 14 days", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Recently overdue",
+      targetDate: "2026-02-22",
+      dueDate: "2026-02-22",
+      status: "todo",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Stale",
+      targetDate: "2026-02-16",
+      dueDate: "2026-02-16",
+      status: "todo",
+      priority: "high",
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Stale but done",
+      targetDate: "2026-02-10",
+      dueDate: "2026-02-10",
+      status: "done",
+    },
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/tasks/triage?date=2026-03-08",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as {
+    count: number;
+    tasks: Array<{ title: string; daysOverdue: number }>;
+  };
+
+  assert.equal(data.count, 1);
+  assert.equal(data.tasks[0]?.title, "Stale");
+  assert.equal(data.tasks[0]?.daysOverdue, 20);
+});
+
 test("GET /api/tasks filters tasks by selected date", async (t) => {
   const app = createAppForTest();
   t.after(async () => {
