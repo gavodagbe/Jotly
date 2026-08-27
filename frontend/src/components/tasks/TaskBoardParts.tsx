@@ -20,6 +20,7 @@ type Task = {
   dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
+  subProject?: string | null;
   assignees: string | null;
   plannedTime: number | null;
   rolledFromTaskId: string | null;
@@ -139,6 +140,7 @@ export function TaskCard({
         {task.project ? (
           <span className="rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
             {task.project}
+            {task.subProject ? ` › ${task.subProject}` : ""}
           </span>
         ) : null}
         {typeof task.plannedTime === "number" ? (

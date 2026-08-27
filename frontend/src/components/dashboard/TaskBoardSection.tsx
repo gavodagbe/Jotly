@@ -30,6 +30,7 @@ type Task = {
   dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
+  subProject?: string | null;
   assignees: string | null;
   plannedTime: number | null;
   rolledFromTaskId: string | null;
@@ -43,6 +44,7 @@ type TaskFilterValues = {
   status: TaskFilterStatus;
   priority: TaskFilterPriority;
   project: string;
+  subProject: string;
 };
 
 type BoardColumn = {
@@ -76,6 +78,7 @@ type TaskBoardSectionProps = {
   boardColumns: ReadonlyArray<BoardColumn>;
   priorityOptions: ReadonlyArray<PriorityOption>;
   taskFilterProjectOptions: string[];
+  taskFilterSubProjectOptions: string[];
   isEmptyBoard: boolean;
   isFilteredBoardEmpty: boolean;
   sensors: SensorDescriptor<SensorOptions>[];
@@ -142,6 +145,7 @@ export function TaskBoardSection({
   boardColumns,
   priorityOptions,
   taskFilterProjectOptions,
+  taskFilterSubProjectOptions,
   isEmptyBoard,
   isFilteredBoardEmpty,
   sensors,
@@ -305,6 +309,7 @@ export function TaskBoardSection({
                     setTaskFilterValues((currentValues) => ({
                       ...currentValues,
                       project: event.target.value,
+                      subProject: "",
                     }));
                   }}
                   className={`${boardFilterFieldClass} mt-2`}
@@ -317,6 +322,29 @@ export function TaskBoardSection({
                   ))}
                 </select>
               </label>
+
+              {taskFilterValues.project && taskFilterSubProjectOptions.length > 0 ? (
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  {isFrench ? "Sous-projet" : "Sub-project"}
+                  <select
+                    value={taskFilterValues.subProject}
+                    onChange={(event) => {
+                      setTaskFilterValues((currentValues) => ({
+                        ...currentValues,
+                        subProject: event.target.value,
+                      }));
+                    }}
+                    className={`${boardFilterFieldClass} mt-2`}
+                  >
+                    <option value="">{isFrench ? "Tous les sous-projets" : "All sub-projects"}</option>
+                    {taskFilterSubProjectOptions.map((subProjectName) => (
+                      <option key={subProjectName} value={subProjectName}>
+                        {subProjectName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
 
               <div className="flex items-end">
                 <button

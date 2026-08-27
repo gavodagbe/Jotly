@@ -59,6 +59,7 @@ export function createAssistantContextSearchPlugin(
           bodyText: normalizePlainText(
             reminder.description,
             reminder.project,
+            reminder.subProject,
             reminder.assignees
           ),
           metadata: {

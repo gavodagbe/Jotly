@@ -273,6 +273,7 @@ const googleCalendarOAuthRoutes: FastifyPluginAsync<GoogleCalendarOAuthRoutesOpt
             color: c.color,
             calendarId: c.calendarId,
             lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
+            needsReconnect: c.needsReconnect,
           })),
         },
       });

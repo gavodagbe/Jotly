@@ -35,6 +35,10 @@ export type GoogleCalendarConnectionStore = {
     connectionId: string,
     calendarId: string
   ): Promise<GoogleCalendarConnection | null>;
+  setNeedsReconnect(
+    connectionId: string,
+    needsReconnect: boolean
+  ): Promise<GoogleCalendarConnection | null>;
   close?: () => Promise<void>;
 };
 
@@ -84,6 +88,7 @@ export function createPrismaGoogleCalendarConnectionStore(
           accessToken: input.accessToken,
           refreshToken: input.refreshToken,
           tokenExpiresAt: input.tokenExpiresAt,
+          needsReconnect: false,
         },
       });
     },
@@ -100,7 +105,7 @@ export function createPrismaGoogleCalendarConnectionStore(
       try {
         return await prisma.googleCalendarConnection.update({
           where: { id: connectionId },
-          data: { accessToken, refreshToken, tokenExpiresAt },
+          data: { accessToken, refreshToken, tokenExpiresAt, needsReconnect: false },
         });
       } catch {
         return null;
@@ -134,6 +139,17 @@ export function createPrismaGoogleCalendarConnectionStore(
         return await prisma.googleCalendarConnection.update({
           where: { id: connectionId },
           data: { calendarId, lastSyncToken: null, lastSyncedAt: null },
+        });
+      } catch {
+        return null;
+      }
+    },
+
+    async setNeedsReconnect(connectionId, needsReconnect) {
+      try {
+        return await prisma.googleCalendarConnection.update({
+          where: { id: connectionId },
+          data: { needsReconnect },
         });
       } catch {
         return null;

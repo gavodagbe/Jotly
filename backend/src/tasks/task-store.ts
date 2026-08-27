@@ -10,6 +10,8 @@ export type TaskCreateInput = {
   dueDate: Date | null;
   priority: TaskPriority;
   project: string | null;
+  subProject?: string | null;
+  projectId?: string | null;
   assignees?: string | null;
   plannedTime: number | null;
   recurrenceSourceTaskId?: string | null;
@@ -28,6 +30,13 @@ export type TaskStore = {
   create(input: TaskCreateInput): Promise<Task>;
   update(id: string, input: TaskUpdateInput, userId: string): Promise<Task | null>;
   remove(id: string, userId: string): Promise<Task | null>;
+  /** Number of tasks linked to any of the given project ids (used before project deletion). */
+  countByProjectIds?(userId: string, projectIds: string[]): Promise<number>;
+  /** Refreshes the denormalized project/subProject name cache for the given project ids. */
+  updateDenormalizedProjectFields?(
+    projectIds: string[],
+    fields: { project?: string | null; subProject?: string | null }
+  ): Promise<number>;
   close?: () => Promise<void>;
 };
 
@@ -135,6 +144,26 @@ export function createPrismaTaskStore(prisma = new PrismaClient()): TaskStore {
       return prisma.task.delete({
         where: { id }
       });
+    },
+
+    async countByProjectIds(userId, projectIds) {
+      if (projectIds.length === 0) {
+        return 0;
+      }
+      return prisma.task.count({
+        where: { userId, projectId: { in: projectIds } },
+      });
+    },
+
+    async updateDenormalizedProjectFields(projectIds, fields) {
+      if (projectIds.length === 0 || Object.keys(fields).length === 0) {
+        return 0;
+      }
+      const result = await prisma.task.updateMany({
+        where: { projectId: { in: projectIds } },
+        data: fields,
+      });
+      return result.count;
     },
 
     async close() {

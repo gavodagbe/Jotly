@@ -160,6 +160,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
       color: input.color ?? "#6366f1",
       lastSyncToken: existing?.lastSyncToken ?? null,
       lastSyncedAt: existing?.lastSyncedAt ?? null,
+      needsReconnect: false,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -179,7 +180,14 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
   ): Promise<GoogleCalendarConnection | null> {
     const conn = this.connections.get(connectionId);
     if (!conn) return null;
-    const updated = { ...conn, accessToken, refreshToken, tokenExpiresAt, updatedAt: new Date() };
+    const updated = {
+      ...conn,
+      accessToken,
+      refreshToken,
+      tokenExpiresAt,
+      needsReconnect: false,
+      updatedAt: new Date(),
+    };
     this.connections.set(connectionId, updated);
     return updated;
   }
@@ -214,6 +222,17 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
       lastSyncedAt: null,
       updatedAt: new Date(),
     };
+    this.connections.set(connectionId, updated);
+    return updated;
+  }
+
+  async setNeedsReconnect(
+    connectionId: string,
+    needsReconnect: boolean
+  ): Promise<GoogleCalendarConnection | null> {
+    const conn = this.connections.get(connectionId);
+    if (!conn) return null;
+    const updated = { ...conn, needsReconnect, updatedAt: new Date() };
     this.connections.set(connectionId, updated);
     return updated;
   }
@@ -296,6 +315,7 @@ type MockConnection = {
   color?: string;
   calendarId?: string;
   lastSyncedAt: Date | null;
+  needsReconnect?: boolean;
   userId: string;
 };
 
@@ -358,6 +378,7 @@ function createMockOAuthService(initialConnections: MockConnection[] = []): Mock
               color: connection.color ?? "#6366f1",
               calendarId: connection.calendarId ?? "primary",
               lastSyncedAt: connection.lastSyncedAt,
+              needsReconnect: connection.needsReconnect ?? false,
             })),
         };
       },
@@ -650,6 +671,45 @@ test("GET /api/google-calendar/status returns single connected account", async (
   assert.ok(data.connections[0].id);
 });
 
+test("GET /api/google-calendar/status exposes needsReconnect per connection", async (t) => {
+  const oauth = createMockOAuthService([
+    {
+      id: "gcal-conn-1",
+      email: "healthy@gmail.com",
+      lastSyncedAt: new Date("2026-03-08T12:00:00Z"),
+      needsReconnect: false,
+      userId: "user-1",
+    },
+    {
+      id: "gcal-conn-2",
+      email: "expired@gmail.com",
+      lastSyncedAt: new Date("2026-03-08T12:00:00Z"),
+      needsReconnect: true,
+      userId: "user-1",
+    },
+  ]);
+  const app = createAppForTest({ oauthService: oauth.service });
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/google-calendar/status",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = parsePayload(response.payload);
+  const data = body.data as {
+    connections: Array<{ email: string; needsReconnect: boolean }>;
+  };
+  const byEmail = new Map(data.connections.map((c) => [c.email, c.needsReconnect]));
+  assert.equal(byEmail.get("healthy@gmail.com"), false);
+  assert.equal(byEmail.get("expired@gmail.com"), true);
+});
+
 test("GET /api/google-calendar/status returns multiple connected accounts", async (t) => {
   const oauth = createMultiConnectedMockOAuthService();
   const app = createAppForTest({ oauthService: oauth.service });
@@ -716,6 +776,7 @@ test("PATCH /api/google-calendar/connection/:connectionId/calendar rejects switc
       color: "#6366f1",
       lastSyncToken: "sync-token",
       lastSyncedAt: new Date("2026-03-10T08:00:00.000Z"),
+      needsReconnect: false,
       createdAt: now,
       updatedAt: now,
     },
@@ -734,6 +795,8 @@ test("PATCH /api/google-calendar/connection/:connectionId/calendar rejects switc
       dueDate: null,
       priority: "medium",
       project: null,
+      subProject: null,
+      projectId: null,
       assignees: null,
       plannedTime: null,
       rolledFromTaskId: null,

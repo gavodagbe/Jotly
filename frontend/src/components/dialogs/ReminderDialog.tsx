@@ -17,6 +17,7 @@ type ReminderFormValues = {
   title: string;
   description: string;
   project: string;
+  subProject: string;
   assignees: string;
   remindAt: string;
 };
@@ -48,6 +49,7 @@ export type ReminderDialogProps = {
   isCreatingReminderAttachment: boolean;
   reminderAttachmentErrorMessage: string | null;
   projectSelectOptions: string[];
+  subProjectSelectOptions: string[];
   assigneeOptions: string[];
   selectedReminderAssignees: string[];
   newAssigneeDraft: string;
@@ -85,6 +87,7 @@ export function ReminderDialog({
   isCreatingReminderAttachment,
   reminderAttachmentErrorMessage,
   projectSelectOptions,
+  subProjectSelectOptions,
   assigneeOptions,
   selectedReminderAssignees,
   newAssigneeDraft,
@@ -197,7 +200,7 @@ export function ReminderDialog({
               <select
                 value={reminderFormValues.project}
                 onChange={(event) => {
-                  setReminderFormValues((v) => ({ ...v, project: event.target.value }));
+                  setReminderFormValues((v) => ({ ...v, project: event.target.value, subProject: "" }));
                 }}
                 className={textFieldClass}
                 disabled={isSubmittingReminder}
@@ -210,6 +213,27 @@ export function ReminderDialog({
                 ))}
               </select>
             </label>
+
+            {reminderFormValues.project && subProjectSelectOptions.length > 0 ? (
+              <label className="block text-sm font-semibold text-foreground">
+                {isFrench ? "Sous-projet (optionnel)" : "Sub-project (optional)"}
+                <select
+                  value={reminderFormValues.subProject}
+                  onChange={(event) => {
+                    setReminderFormValues((v) => ({ ...v, subProject: event.target.value }));
+                  }}
+                  className={textFieldClass}
+                  disabled={isSubmittingReminder}
+                >
+                  <option value="">{isFrench ? "Aucun sous-projet" : "No sub-project"}</option>
+                  {subProjectSelectOptions.map((subProjectName) => (
+                    <option key={subProjectName} value={subProjectName}>
+                      {subProjectName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
             <div>
               <p className="text-sm font-semibold text-foreground">

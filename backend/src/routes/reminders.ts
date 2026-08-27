@@ -4,6 +4,8 @@ import { AuthService } from "../auth/auth-service";
 import { ReminderAttachmentStore } from "../reminders/reminder-attachment-store";
 import { ReminderStore } from "../reminders/reminder-store";
 import { parseDateOnly } from "../tasks/task-store";
+import { ProjectStore } from "../projects/project-store";
+import { resolveProjectSelection } from "../projects/project-selection";
 import {
   getBearerToken,
   isStorageNotInitializedPrismaError,
@@ -21,6 +23,7 @@ type ReminderRoutesOptions = {
   reminderStore: ReminderStore;
   reminderAttachmentStore?: ReminderAttachmentStore;
   assistantSearchSyncService?: AssistantSearchSyncService;
+  projectStore?: ProjectStore;
 };
 
 const dateQuerySchema = z
@@ -33,6 +36,7 @@ const createReminderBodySchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200, "Title is too long"),
   description: z.string().max(2000, "Description is too long").optional().nullable(),
   project: z.string().max(200, "Project is too long").optional().nullable(),
+  projectId: z.string().trim().min(1, "projectId must not be empty").optional().nullable(),
   assignees: z.string().max(500, "Assignees is too long").optional().nullable(),
   remindAt: z.string().refine(
     (value) => !isNaN(Date.parse(value)),
@@ -44,6 +48,7 @@ const updateReminderBodySchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200, "Title is too long").optional(),
   description: z.string().max(2000, "Description is too long").optional().nullable(),
   project: z.string().max(200, "Project is too long").optional().nullable(),
+  projectId: z.string().trim().min(1, "projectId must not be empty").optional().nullable(),
   assignees: z.string().max(500, "Assignees is too long").optional().nullable(),
   remindAt: z
     .string()
@@ -65,6 +70,8 @@ function serializeReminder(reminder: {
   title: string;
   description: string | null;
   project: string | null;
+  subProject: string | null;
+  projectId: string | null;
   assignees: string | null;
   remindAt: Date;
   status: string;
@@ -82,6 +89,8 @@ function serializeReminder(reminder: {
     title: reminder.title,
     description: reminder.description,
     project: reminder.project,
+    subProject: reminder.subProject,
+    projectId: reminder.projectId,
     assignees: reminder.assignees,
     remindAt: reminder.remindAt.toISOString(),
     status: reminder.status,
@@ -135,7 +144,7 @@ function serializeAttachment(a: {
 }
 
 const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, options) => {
-  const { authService, reminderStore, reminderAttachmentStore, assistantSearchSyncService } = options;
+  const { authService, reminderStore, reminderAttachmentStore, assistantSearchSyncService, projectStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -253,12 +262,31 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
       return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid request body", details);
     }
 
+    const projectResolution = await resolveProjectSelection(
+      bodyResult.data,
+      authUserId,
+      projectStore,
+      "create"
+    );
+    if (!projectResolution.ok) {
+      return sendError(
+        reply,
+        projectResolution.error === "PROJECT_NOT_FOUND" ? 404 : 400,
+        projectResolution.error === "PROJECT_NOT_FOUND" ? "NOT_FOUND" : "VALIDATION_ERROR",
+        projectResolution.error === "PROJECT_NOT_FOUND"
+          ? "Project not found"
+          : "Project selection is not available"
+      );
+    }
+
     try {
       const reminder = await reminderStore.create({
         userId: authUserId,
         title: bodyResult.data.title,
         description: bodyResult.data.description ?? null,
-        project: bodyResult.data.project ?? null,
+        project: projectResolution.fields.project ?? null,
+        subProject: projectResolution.fields.subProject ?? null,
+        projectId: projectResolution.fields.projectId ?? null,
         assignees: bodyResult.data.assignees ?? null,
         remindAt: new Date(bodyResult.data.remindAt),
       });
@@ -287,11 +315,36 @@ const reminderRoutes: FastifyPluginAsync<ReminderRoutesOptions> = async (app, op
       return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid request body", details);
     }
 
+    const projectResolution = await resolveProjectSelection(
+      bodyResult.data,
+      authUserId,
+      projectStore,
+      "update"
+    );
+    if (!projectResolution.ok) {
+      return sendError(
+        reply,
+        projectResolution.error === "PROJECT_NOT_FOUND" ? 404 : 400,
+        projectResolution.error === "PROJECT_NOT_FOUND" ? "NOT_FOUND" : "VALIDATION_ERROR",
+        projectResolution.error === "PROJECT_NOT_FOUND"
+          ? "Project not found"
+          : "Project selection is not available"
+      );
+    }
+
     try {
-      const updateInput: { title?: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt?: Date } = {};
+      const updateInput: {
+        title?: string;
+        description?: string | null;
+        project?: string | null;
+        subProject?: string | null;
+        projectId?: string | null;
+        assignees?: string | null;
+        remindAt?: Date;
+      } = {};
       if (bodyResult.data.title !== undefined) updateInput.title = bodyResult.data.title;
       if (bodyResult.data.description !== undefined) updateInput.description = bodyResult.data.description;
-      if (bodyResult.data.project !== undefined) updateInput.project = bodyResult.data.project;
+      Object.assign(updateInput, projectResolution.fields);
       if (bodyResult.data.assignees !== undefined) updateInput.assignees = bodyResult.data.assignees;
       if (bodyResult.data.remindAt !== undefined) updateInput.remindAt = new Date(bodyResult.data.remindAt);
 

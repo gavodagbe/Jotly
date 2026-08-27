@@ -28,6 +28,7 @@ export type GoogleCalendarConnectionInfo = {
   color: string;
   calendarId: string;
   lastSyncedAt: Date | null;
+  needsReconnect: boolean;
 };
 
 export type GoogleCalendarOAuthService = {
@@ -174,6 +175,7 @@ export function createGoogleCalendarOAuthService(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("invalid_grant")) {
+        await connectionStore.setNeedsReconnect(connectionId, true);
         throw new Error("GOOGLE_CALENDAR_RECONNECT_REQUIRED");
       }
       throw error;
@@ -327,6 +329,7 @@ export function createGoogleCalendarOAuthService(
           color: c.color,
           calendarId: c.calendarId,
           lastSyncedAt: c.lastSyncedAt,
+          needsReconnect: c.needsReconnect,
         })),
       };
     },

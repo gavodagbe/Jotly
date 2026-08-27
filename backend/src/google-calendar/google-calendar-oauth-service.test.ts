@@ -61,6 +61,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
       accessToken,
       refreshToken,
       tokenExpiresAt,
+      needsReconnect: false,
       updatedAt: new Date(),
     };
     this.connections.set(connectionId, updated);
@@ -77,6 +78,19 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
 
   async updateCalendarId(): Promise<GoogleCalendarConnection | null> {
     return null;
+  }
+
+  async setNeedsReconnect(
+    connectionId: string,
+    needsReconnect: boolean
+  ): Promise<GoogleCalendarConnection | null> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      return null;
+    }
+    const updated: GoogleCalendarConnection = { ...connection, needsReconnect, updatedAt: new Date() };
+    this.connections.set(connectionId, updated);
+    return updated;
   }
 }
 
@@ -96,6 +110,7 @@ function createConnection(
     color: "#6366f1",
     lastSyncToken: null,
     lastSyncedAt: null,
+    needsReconnect: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -140,6 +155,50 @@ test(
     const accessToken = await service.getValidAccessToken("connection-1");
 
     assert.equal(accessToken, "stored-access-token");
+  }
+);
+
+test(
+  "getValidAccessToken flags the connection as needing reconnect when the refresh token is invalid",
+  async () => {
+    const store = new InMemoryGoogleCalendarConnectionStore([createConnection()]);
+    const service = createGoogleCalendarOAuthService({
+      oauth2ClientFactory: createOAuth2ClientFactoryStub({
+        refreshAccessTokenImplementation: async () => {
+          throw new Error("invalid_grant");
+        },
+      }),
+      encryptionKey: ENCRYPTION_KEY,
+      connectionStore: store,
+    });
+
+    await service.getValidAccessToken("connection-1");
+
+    const connection = await store.getById("connection-1");
+    assert.equal(connection?.needsReconnect, true);
+
+    const status = await service.getConnectionStatus("user-1");
+    assert.equal(status.connections[0].needsReconnect, true);
+  }
+);
+
+test(
+  "a successful token refresh clears the needsReconnect flag",
+  async () => {
+    const store = new InMemoryGoogleCalendarConnectionStore([
+      createConnection({ needsReconnect: true }),
+    ]);
+    const service = createGoogleCalendarOAuthService({
+      oauth2ClientFactory: createOAuth2ClientFactoryStub(),
+      encryptionKey: ENCRYPTION_KEY,
+      connectionStore: store,
+    });
+
+    const accessToken = await service.getValidAccessToken("connection-1");
+
+    assert.equal(accessToken, "fresh-access-token");
+    const connection = await store.getById("connection-1");
+    assert.equal(connection?.needsReconnect, false);
   }
 );
 

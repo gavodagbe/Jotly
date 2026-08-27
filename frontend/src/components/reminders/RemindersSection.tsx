@@ -14,6 +14,7 @@ type Reminder = {
   title: string;
   description: string | null;
   project: string | null;
+  subProject?: string | null;
   assignees: string | null;
   remindAt: string;
   status: ReminderStatus;
@@ -193,7 +194,10 @@ export function RemindersSection({
                       <p className="truncate text-sm font-medium text-foreground">
                         {reminder.title}
                         {reminder.project ? (
-                          <span className="ml-2 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{reminder.project}</span>
+                          <span className="ml-2 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
+                            {reminder.project}
+                            {reminder.subProject ? ` › ${reminder.subProject}` : ""}
+                          </span>
                         ) : null}
                       </p>
                       {reminder.assignees ? (
