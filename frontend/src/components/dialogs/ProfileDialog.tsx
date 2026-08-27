@@ -25,6 +25,7 @@ type GoogleCalendarConnection = {
   color: string;
   calendarId: string;
   lastSyncedAt: string | null;
+  needsReconnect: boolean;
 };
 
 export type ProfileDialogProps = {
@@ -196,6 +197,22 @@ export function ProfileDialog({
                         {isFrench ? "Deconnecter" : "Disconnect"}
                       </button>
                     </div>
+                    {conn.needsReconnect ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        <p>
+                          {isFrench
+                            ? "La connexion a ce compte a expire. Reconnectez-vous au meme compte Google pour reprendre la synchronisation (vos notes et taches liees sont conservees)."
+                            : "The connection to this account has expired. Reconnect to the same Google account to resume syncing (your linked notes and tasks are kept)."}
+                        </p>
+                        <button
+                          type="button"
+                          className={`${controlButtonClass} mt-2`}
+                          onClick={handleConnectGoogleCalendar}
+                        >
+                          {isFrench ? "Reconnecter" : "Reconnect"}
+                        </button>
+                      </div>
+                    ) : null}
                     <select
                       value={conn.calendarId}
                       onFocus={() => {

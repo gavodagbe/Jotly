@@ -98,6 +98,8 @@ import { createPrismaNoteStore, NoteStore } from "./notes/note-store";
 import { createPrismaReminderAttachmentStore, ReminderAttachmentStore } from "./reminders/reminder-attachment-store";
 import { createPrismaReminderStore, ReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
+import { createPrismaProjectStore, ProjectStore } from "./projects/project-store";
+import projectsRoutes from "./routes/projects";
 
 export type BuildAppOptions = {
   logLevel: string;
@@ -117,6 +119,7 @@ export type BuildAppOptions = {
   noteAttachmentStore?: NoteAttachmentStore;
   reminderStore?: ReminderStore;
   reminderAttachmentStore?: ReminderAttachmentStore;
+  projectStore?: ProjectStore;
   profileStore?: ProfileStore;
   assistantContextStore?: AssistantContextStore;
   assistantSearchDocumentStore?: AssistantSearchDocumentStore;
@@ -237,6 +240,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const reminderAttachmentStore =
     options.reminderAttachmentStore ??
     (options.taskStore ? undefined : createPrismaReminderAttachmentStore());
+  const projectStore =
+    options.projectStore ??
+    (options.taskStore ? undefined : createPrismaProjectStore());
   const gamingTrackStore =
     options.gamingTrackStore ??
     (options.taskStore ? undefined : createPrismaGamingTrackStore());
@@ -363,7 +369,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (profileStore) {
     app.register(profileRoutes, { authService, profileStore });
   }
-  app.register(tasksRoutes, { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService });
+  app.register(tasksRoutes, { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore });
   if (commentStore) {
     app.register(commentsRoutes, { taskStore, commentStore, authService });
   }
@@ -412,7 +418,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     });
   }
   if (reminderStore) {
-    app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService, assistantSearchSyncService });
+    app.register(reminderRoutes, { reminderStore, reminderAttachmentStore, authService, assistantSearchSyncService, projectStore });
+  }
+  if (projectStore) {
+    app.register(projectsRoutes, { authService, projectStore, taskStore, reminderStore });
   }
   if (taskStore && reminderStore) {
     app.register(assigneesRoutes, { authService, taskStore, reminderStore });
@@ -553,6 +562,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     if (reminderAttachmentStore?.close) {
       await reminderAttachmentStore.close();
+    }
+
+    if (projectStore?.close) {
+      await projectStore.close();
     }
 
     if (profileStore?.close) {

@@ -128,6 +128,8 @@ function makeTask(input: { id: string; userId: string; title: string; descriptio
     dueDate: null,
     priority: "medium",
     project: "Search",
+    subProject: null,
+    projectId: null,
     assignees: null,
     plannedTime: null,
     recurrenceSourceTaskId: null,

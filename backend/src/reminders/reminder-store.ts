@@ -5,6 +5,8 @@ export type ReminderCreateInput = {
   title: string;
   description?: string | null;
   project?: string | null;
+  subProject?: string | null;
+  projectId?: string | null;
   assignees?: string | null;
   remindAt: Date;
 };
@@ -13,6 +15,8 @@ export type ReminderUpdateInput = {
   title?: string;
   description?: string | null;
   project?: string | null;
+  subProject?: string | null;
+  projectId?: string | null;
   assignees?: string | null;
   remindAt?: Date;
 };
@@ -34,6 +38,13 @@ export type ReminderStore = {
   markFired(id: string, userId: string): Promise<Reminder | null>;
   complete(id: string, userId: string): Promise<Reminder | null>;
   cancel(id: string, userId: string): Promise<Reminder | null>;
+  /** Number of reminders linked to any of the given project ids (used before project deletion). */
+  countByProjectIds?(userId: string, projectIds: string[]): Promise<number>;
+  /** Refreshes the denormalized project/subProject name cache for the given project ids. */
+  updateDenormalizedProjectFields?(
+    projectIds: string[],
+    fields: { project?: string | null; subProject?: string | null }
+  ): Promise<number>;
   close?: () => Promise<void>;
 };
 
@@ -85,6 +96,8 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
           title: input.title,
           description: input.description ?? null,
           project: input.project ?? null,
+          subProject: input.subProject ?? null,
+          projectId: input.projectId ?? null,
           assignees: input.assignees ?? null,
           remindAt: input.remindAt,
           status: "pending",
@@ -102,6 +115,8 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
           ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.project !== undefined ? { project: input.project } : {}),
+          ...(input.subProject !== undefined ? { subProject: input.subProject } : {}),
+          ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
           ...(input.assignees !== undefined ? { assignees: input.assignees } : {}),
           ...(input.remindAt !== undefined ? { remindAt: input.remindAt } : {}),
           ...(input.remindAt !== undefined && existing.status === "fired" && input.remindAt.getTime() > Date.now()
@@ -116,6 +131,26 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
       if (!existing) return null;
 
       return prisma.reminder.delete({ where: { id } });
+    },
+
+    async countByProjectIds(userId, projectIds) {
+      if (projectIds.length === 0) {
+        return 0;
+      }
+      return prisma.reminder.count({
+        where: { userId, projectId: { in: projectIds } },
+      });
+    },
+
+    async updateDenormalizedProjectFields(projectIds, fields) {
+      if (projectIds.length === 0 || Object.keys(fields).length === 0) {
+        return 0;
+      }
+      const result = await prisma.reminder.updateMany({
+        where: { projectId: { in: projectIds } },
+        data: fields,
+      });
+      return result.count;
     },
 
     async markFired(id, userId) {

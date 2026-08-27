@@ -18,6 +18,7 @@ type Task = {
   dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
+  subProject?: string | null;
   assignees: string | null;
   plannedTime: number | null;
   rolledFromTaskId: string | null;
@@ -32,11 +33,12 @@ type ProjectPlanningViewProps = {
   isLoading: boolean;
   isBusy: boolean;
   errorMessage: string | null;
-  filters: { project: string; status: string; dateFrom: string; dateTo: string };
+  filters: { project: string; subProject: string; status: string; dateFrom: string; dateTo: string };
   sort: { column: string; dir: "asc" | "desc" };
   viewMode: "table" | "gantt";
   projectOptions: string[];
-  onFilterChange: (key: "project" | "status" | "dateFrom" | "dateTo", value: string) => void;
+  subProjectOptions: string[];
+  onFilterChange: (key: "project" | "subProject" | "status" | "dateFrom" | "dateTo", value: string) => void;
   onSortChange: (column: string) => void;
   onViewModeChange: (mode: "table" | "gantt") => void;
   onClose: () => void;
@@ -123,6 +125,7 @@ export function ProjectPlanningView({
   sort,
   viewMode,
   projectOptions,
+  subProjectOptions,
   onFilterChange,
   onSortChange,
   onViewModeChange,
@@ -133,7 +136,16 @@ export function ProjectPlanningView({
   const isFrench = locale === "fr";
   const today = new Date().toISOString().slice(0, 10);
 
-  const sorted = useMemo(() => sortTasks(tasks, sort.column, sort.dir), [tasks, sort]);
+  const scopedTasks = useMemo(() => {
+    const wanted = filters.subProject.trim().toLocaleLowerCase();
+    if (!wanted) return tasks;
+    return tasks.filter((task) => (task.subProject ?? "").trim().toLocaleLowerCase() === wanted);
+  }, [tasks, filters.subProject]);
+
+  const sorted = useMemo(
+    () => sortTasks(scopedTasks, sort.column, sort.dir),
+    [scopedTasks, sort]
+  );
 
   const ganttData = useMemo(() => {
     if (sorted.length === 0) return null;
@@ -203,14 +215,15 @@ export function ProjectPlanningView({
     return { totalDays, months, days, bars, todayLeft, showTodayMarker };
   }, [sorted, isFrench, today]);
 
-  const statsDone = tasks.filter((t) => t.status === "done").length;
-  const statsInProgress = tasks.filter((t) => t.status === "in_progress").length;
-  const statsTodo = tasks.filter((t) => t.status === "todo").length;
-  const statsCancelled = tasks.filter((t) => t.status === "cancelled").length;
-  const totalPlanned = tasks.reduce((s, t) => s + (t.plannedTime ?? 0), 0);
-  const completionRate = tasks.length > 0 ? Math.round((statsDone / tasks.length) * 100) : 0;
+  const statsDone = scopedTasks.filter((t) => t.status === "done").length;
+  const statsInProgress = scopedTasks.filter((t) => t.status === "in_progress").length;
+  const statsTodo = scopedTasks.filter((t) => t.status === "todo").length;
+  const statsCancelled = scopedTasks.filter((t) => t.status === "cancelled").length;
+  const totalPlanned = scopedTasks.reduce((s, t) => s + (t.plannedTime ?? 0), 0);
+  const completionRate = scopedTasks.length > 0 ? Math.round((statsDone / scopedTasks.length) * 100) : 0;
 
-  const hasActiveFilters = filters.project || filters.status !== "all" || filters.dateFrom || filters.dateTo;
+  const hasActiveFilters =
+    filters.project || filters.subProject || filters.status !== "all" || filters.dateFrom || filters.dateTo;
 
   function SortIcon({ column }: { column: string }) {
     if (sort.column !== column) {
@@ -447,6 +460,25 @@ export function ProjectPlanningView({
           </select>
         </div>
 
+        {filters.project && subProjectOptions.length > 0 ? (
+          <div className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/20">
+            <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M3 2v7a2 2 0 0 0 2 2h6" />
+              <rect x="8" y="8" width="5" height="5" rx="1.2" />
+            </svg>
+            <select
+              className="border-0 bg-transparent text-xs text-foreground outline-none"
+              value={filters.subProject}
+              onChange={(event) => onFilterChange("subProject", event.target.value)}
+            >
+              <option value="">{isFrench ? "Tous les sous-projets" : "All sub-projects"}</option>
+              {subProjectOptions.map((subProject) => (
+                <option key={subProject} value={subProject}>{subProject}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         <div className="flex items-center gap-1">
           {(["all", "todo", "in_progress", "done", "cancelled"] as const).map((status) => {
             const label = status === "all"
@@ -627,8 +659,15 @@ export function ProjectPlanningView({
                     </td>
                     <td className="px-4 py-3.5">
                       {task.project ? (
-                        <span className="rounded-md bg-accent/8 px-2 py-0.5 text-xs font-medium text-accent">
-                          {task.project}
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          <span className="rounded-md bg-accent/8 px-2 py-0.5 text-xs font-medium text-accent">
+                            {task.project}
+                          </span>
+                          {task.subProject ? (
+                            <span className="rounded-md bg-accent/[0.04] px-2 py-0.5 text-xs font-medium text-accent/80">
+                              {task.subProject}
+                            </span>
+                          ) : null}
                         </span>
                       ) : (
                         <span className="text-xs text-muted/30">—</span>

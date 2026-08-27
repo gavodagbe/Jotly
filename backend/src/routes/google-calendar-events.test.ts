@@ -398,6 +398,8 @@ test("GET /api/google-calendar/events includes linked tasks and notes", async (t
     dueDate: parseDateOnly("2026-03-11")!,
     priority: "medium",
     project: "Calendar",
+    subProject: null,
+    projectId: null,
     assignees: null,
     plannedTime: null,
     rolledFromTaskId: null,

@@ -85,6 +85,10 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
   async updateCalendarId(): Promise<GoogleCalendarConnection | null> {
     return null;
   }
+
+  async setNeedsReconnect(): Promise<GoogleCalendarConnection | null> {
+    return null;
+  }
 }
 
 class SpyCalendarEventStore implements CalendarEventStore {
@@ -177,6 +181,7 @@ function createConnection(overrides: Partial<GoogleCalendarConnection> = {}): Go
     color: "#6366f1",
     lastSyncToken: "existing-sync-token",
     lastSyncedAt: new Date("2026-03-10T08:00:00.000Z"),
+    needsReconnect: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,

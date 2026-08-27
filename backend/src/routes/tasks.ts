@@ -14,6 +14,8 @@ import {
 } from "./route-helpers";
 import { formatDateOnly, parseDateOnly, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
+import { ProjectStore } from "../projects/project-store";
+import { resolveProjectSelection } from "../projects/project-selection";
 
 type TasksRouteOptions = {
   taskStore: TaskStore;
@@ -21,6 +23,7 @@ type TasksRouteOptions = {
   recurrenceStore?: RecurrenceStore;
   calendarEventStore?: CalendarEventStore;
   assistantSearchSyncService?: AssistantSearchSyncService;
+  projectStore?: ProjectStore;
 };
 
 const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -40,6 +43,7 @@ const createTaskBodySchema = z.object({
   dueDate: targetDateSchema.optional(),
   priority: taskPrioritySchema.optional(),
   project: z.string().trim().optional().nullable(),
+  projectId: z.string().trim().min(1, "projectId must not be empty").optional().nullable(),
   assignees: z.string().trim().optional().nullable(),
   plannedTime: z.number().int().nonnegative().optional().nullable(),
   calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
@@ -54,6 +58,7 @@ const updateTaskBodySchema = z
     dueDate: targetDateSchema.optional(),
     priority: taskPrioritySchema.optional(),
     project: z.string().trim().optional().nullable(),
+    projectId: z.string().trim().min(1, "projectId must not be empty").optional().nullable(),
     assignees: z.string().trim().optional().nullable(),
     plannedTime: z.number().int().nonnegative().optional().nullable(),
     calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
@@ -72,6 +77,7 @@ const listTasksQuerySchema = z.object({
 
 const listAllTasksQuerySchema = z.object({
   project: z.string().trim().optional(),
+  projectId: z.string().trim().min(1).optional(),
   status: z.enum(["all", "todo", "in_progress", "done", "cancelled"]).optional(),
   dateFrom: targetDateSchema.optional(),
   dateTo: targetDateSchema.optional(),
@@ -118,6 +124,8 @@ function serializeTask(task: Task) {
     dueDate: task.dueDate ? formatDateOnly(task.dueDate) : null,
     priority: task.priority,
     project: task.project,
+    subProject: task.subProject,
+    projectId: task.projectId ?? null,
     assignees: task.assignees,
     plannedTime: task.plannedTime,
     rolledFromTaskId: task.rolledFromTaskId ?? null,
@@ -277,7 +285,7 @@ async function resolveCalendarEventId(
 }
 
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService } = options;
+  const { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -366,7 +374,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
       );
     }
 
-    const { project, status, dateFrom, dateTo } = queryResult.data;
+    const { project, projectId, status, dateFrom, dateTo } = queryResult.data;
 
     const parsedDateFrom = dateFrom ? parseDateOnly(dateFrom) : null;
     const parsedDateTo = dateTo ? parseDateOnly(dateTo) : null;
@@ -374,7 +382,17 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
     try {
       let tasks = await taskStore.listByUser(authUserId);
 
-      if (project && project.trim() !== "") {
+      if (projectId) {
+        // A top-level project filter also matches tasks assigned to its sub-projects.
+        const scopedIds = new Set<string>([projectId]);
+        if (projectStore) {
+          const children = await projectStore.listChildren(projectId, authUserId);
+          for (const child of children) {
+            scopedIds.add(child.id);
+          }
+        }
+        tasks = tasks.filter((task) => task.projectId !== null && scopedIds.has(task.projectId));
+      } else if (project && project.trim() !== "") {
         const normalizedProject = project.trim().toLowerCase();
         tasks = tasks.filter(
           (task) => task.project !== null && task.project.trim().toLowerCase() === normalizedProject
@@ -543,6 +561,23 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         return sendError(reply, 404, "NOT_FOUND", "Calendar event not found");
       }
 
+      const projectResolution = await resolveProjectSelection(
+        bodyResult.data,
+        authUserId,
+        projectStore,
+        "create"
+      );
+      if (!projectResolution.ok) {
+        return sendError(
+          reply,
+          projectResolution.error === "PROJECT_NOT_FOUND" ? 404 : 400,
+          projectResolution.error === "PROJECT_NOT_FOUND" ? "NOT_FOUND" : "VALIDATION_ERROR",
+          projectResolution.error === "PROJECT_NOT_FOUND"
+            ? "Project not found"
+            : "Project selection is not available"
+        );
+      }
+
       const task = await taskStore.create({
         userId: authUserId,
         title: bodyResult.data.title,
@@ -551,7 +586,9 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         targetDate: parsedDate,
         dueDate: parsedDueDate,
         priority: bodyResult.data.priority ?? "medium",
-        project: normalizeNullableText(bodyResult.data.project) ?? null,
+        project: projectResolution.fields.project ?? null,
+        subProject: projectResolution.fields.subProject ?? null,
+        projectId: projectResolution.fields.projectId ?? null,
         assignees: normalizeNullableText(bodyResult.data.assignees) ?? null,
         plannedTime: bodyResult.data.plannedTime ?? null,
         calendarEventId: linkedCalendarEvent.hasValue ? linkedCalendarEvent.value : null,
@@ -624,6 +661,8 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
             dueDate: getCarryOverDueDate(sourceTask, targetDate),
             priority: sourceTask.priority,
             project: sourceTask.project,
+            subProject: sourceTask.subProject,
+            projectId: sourceTask.projectId,
             plannedTime: sourceTask.plannedTime,
             recurrenceSourceTaskId: null,
             recurrenceOccurrenceDate: null,
@@ -788,8 +827,24 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         updateInput.priority = updateBody.priority;
       }
 
-      if (updateBody.project !== undefined) {
-        updateInput.project = normalizeNullableText(updateBody.project) ?? null;
+      if (updateBody.project !== undefined || updateBody.projectId !== undefined) {
+        const projectResolution = await resolveProjectSelection(
+          updateBody,
+          authUserId,
+          projectStore,
+          "update"
+        );
+        if (!projectResolution.ok) {
+          return sendError(
+            reply,
+            projectResolution.error === "PROJECT_NOT_FOUND" ? 404 : 400,
+            projectResolution.error === "PROJECT_NOT_FOUND" ? "NOT_FOUND" : "VALIDATION_ERROR",
+            projectResolution.error === "PROJECT_NOT_FOUND"
+              ? "Project not found"
+              : "Project selection is not available"
+          );
+        }
+        Object.assign(updateInput, projectResolution.fields);
       }
 
       if (updateBody.assignees !== undefined) {

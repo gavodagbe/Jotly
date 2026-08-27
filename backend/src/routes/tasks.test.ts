@@ -55,6 +55,8 @@ class InMemoryTaskStore implements TaskStore {
       dueDate: input.dueDate,
       priority: input.priority,
       project: input.project,
+      subProject: input.subProject ?? null,
+      projectId: input.projectId ?? null,
       assignees: input.assignees ?? null,
       plannedTime: input.plannedTime,
       rolledFromTaskId: input.rolledFromTaskId ?? null,

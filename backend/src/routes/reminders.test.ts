@@ -76,6 +76,8 @@ class InMemoryReminderStore implements ReminderStore {
       title: input.title,
       description: input.description ?? null,
       project: input.project ?? null,
+      subProject: input.subProject ?? null,
+      projectId: input.projectId ?? null,
       assignees: input.assignees ?? null,
       remindAt: input.remindAt,
       status: "pending",
@@ -100,6 +102,8 @@ class InMemoryReminderStore implements ReminderStore {
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.project !== undefined ? { project: input.project } : {}),
+      ...(input.subProject !== undefined ? { subProject: input.subProject } : {}),
+      ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
       ...(input.assignees !== undefined ? { assignees: input.assignees } : {}),
       ...(input.remindAt !== undefined ? { remindAt: input.remindAt } : {}),
       ...(input.remindAt !== undefined && existing.status === "fired" && input.remindAt.getTime() > Date.now()

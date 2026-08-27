@@ -111,6 +111,8 @@ function buildGeneratedTaskInput(task: Task, occurrenceDate: Date): TaskCreateIn
     dueDate: getGeneratedDueDate(task, occurrenceDate),
     priority: task.priority,
     project: task.project,
+    subProject: task.subProject,
+    projectId: task.projectId,
     plannedTime: task.plannedTime,
     recurrenceSourceTaskId: task.id,
     recurrenceOccurrenceDate: toUtcDateOnly(occurrenceDate),

@@ -20,7 +20,7 @@ export function createTaskSearchPlugin(options: {
           sourceType: "task",
           sourceId: task.id,
           title: task.title,
-          bodyText: normalizePlainText(task.description, task.project),
+          bodyText: normalizePlainText(task.description, task.project, task.subProject),
           metadata: {
             targetDate: formatDateOnly(task.targetDate),
             dueDate: task.dueDate ? formatDateOnly(task.dueDate) : null,
@@ -28,6 +28,7 @@ export function createTaskSearchPlugin(options: {
             priority: task.priority,
             plannedTime: task.plannedTime,
             project: task.project,
+            subProject: task.subProject,
           },
           updatedAt: task.updatedAt,
         });

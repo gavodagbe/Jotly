@@ -27,6 +27,7 @@ export type AssistantTaskContext = {
   targetDate: string;
   priority: TaskPriority;
   project: string | null;
+  subProject: string | null;
   plannedTime: number | null;
   comments: string[];
 };
@@ -72,6 +73,7 @@ export type AssistantReminderContext = {
   title: string;
   description: string | null;
   project: string | null;
+  subProject: string | null;
   assignees: string | null;
   remindAt: string;
   isFired: boolean;
@@ -334,6 +336,7 @@ async function retrieveByDomain(
                     targetDate: formatDateOnly(task.targetDate),
                     priority: task.priority,
                     project: task.project,
+                    subProject: task.subProject,
                     plannedTime: task.plannedTime,
                     comments: comments
                       .map((comment) => comment.body)
@@ -358,6 +361,7 @@ async function retrieveByDomain(
                 title: reminder.title,
                 description: reminder.description,
                 project: reminder.project,
+                subProject: reminder.subProject,
                 assignees: reminder.assignees,
                 remindAt: reminder.remindAt.toISOString(),
                 isFired: reminder.isFired,
@@ -485,6 +489,7 @@ async function retrieveByDomain(
                     title: reminder.title,
                     description: reminder.description,
                     project: reminder.project,
+                    subProject: reminder.subProject,
                     assignees: reminder.assignees,
                     remindAt: reminder.remindAt.toISOString(),
                     isFired: reminder.isFired,
@@ -557,6 +562,7 @@ async function retrieveByDomain(
                     targetDate: formatDateOnly(task.targetDate),
                     priority: task.priority,
                     project: task.project,
+                    subProject: task.subProject,
                     plannedTime: task.plannedTime,
                     comments: [],
                   }));
@@ -791,6 +797,7 @@ function summarizeTask(task: AssistantTaskContext): string {
     task.status,
     task.title,
     task.project ? `project: ${task.project}` : null,
+    task.subProject ? `sub-project: ${task.subProject}` : null,
     typeof task.plannedTime === "number" ? `planned: ${task.plannedTime}m` : null,
   ].filter((value): value is string => Boolean(value));
 
@@ -934,6 +941,7 @@ function buildRemindersBlock(input: AssistantReplyInput): string {
         formatIsoTimestamp(reminder.remindAt),
         reminder.title,
         reminder.project ? `project: ${reminder.project}` : null,
+        reminder.subProject ? `sub-project: ${reminder.subProject}` : null,
         reminder.assignees ? `assignees: ${reminder.assignees}` : null,
         reminder.isDismissed ? "dismissed" : reminder.isFired ? "fired" : "scheduled",
         reminder.description

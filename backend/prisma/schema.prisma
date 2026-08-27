@@ -59,6 +59,7 @@ model User {
   calendarEvents CalendarEvent[]
   reminders    Reminder[]
   notes        Note[]
+  projects     Project[]
   routineTemplates RoutineTemplate[]
   routineCompletions RoutineCompletion[]
   createdAt    DateTime  @default(now())
@@ -103,6 +104,8 @@ model Task {
   dueDate                  DateTime?           @db.Date
   priority                 TaskPriority
   project                  String?
+  subProject               String?
+  projectId                String?
   assignees                String?
   plannedTime              Int?
   recurrenceSourceTaskId   String?
@@ -116,6 +119,7 @@ model Task {
   attachments              TaskAttachment[]
   recurrenceRule           TaskRecurrenceRule?
   user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectRef               Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   calendarEvent            CalendarEvent?      @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
   rolledFromTask           Task?               @relation("TaskCarryOverInstances", fields: [rolledFromTaskId], references: [id], onDelete: SetNull)
   carryOverInstances       Task[]              @relation("TaskCarryOverInstances")
@@ -132,6 +136,7 @@ model Task {
   @@index([rolledFromTaskId])
   @@index([recurrenceSourceTaskId])
   @@index([calendarEventId])
+  @@index([projectId])
   @@unique([rolledFromTaskId, targetDate])
   @@unique([recurrenceSourceTaskId, recurrenceOccurrenceDate])
 }
@@ -283,6 +288,7 @@ model GoogleCalendarConnection {
   color              String    @default("#6366f1")
   lastSyncToken      String?
   lastSyncedAt       DateTime?
+  needsReconnect     Boolean   @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -359,6 +365,8 @@ model Reminder {
   title       String
   description String?
   project     String?
+  subProject  String?
+  projectId   String?
   assignees   String?
   remindAt    DateTime
   status      ReminderStatus       @default(pending)
@@ -371,9 +379,11 @@ model Reminder {
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectRef  Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
   attachments ReminderAttachment[]
 
   @@index([userId, remindAt])
+  @@index([projectId])
   @@index([userId, isFired, isDismissed])
   @@index([userId, status, remindAt])
 }
@@ -485,4 +495,22 @@ model AssistantSearchDocument {
   @@index([userId, sourceType])
   @@index([userId, updatedAt])
   @@index([userId, sourceUpdatedAt])
+}
+
+model Project {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  parentId  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Project[] @relation("ProjectHierarchy")
+  tasks     Task[]
+  reminders Reminder[]
+
+  @@unique([userId, parentId, name])
+  @@index([userId])
+  @@index([parentId])
 }

@@ -17,6 +17,7 @@ type Task = {
   dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
+  subProject?: string | null;
   assignees: string | null;
   plannedTime: number | null;
   rolledFromTaskId: string | null;
@@ -30,6 +31,7 @@ type Reminder = {
   title: string;
   description: string | null;
   project: string | null;
+  subProject?: string | null;
   assignees: string | null;
   remindAt: string;
   status: ReminderStatus;
@@ -213,7 +215,9 @@ export function TaskAlertsPanel({
                       </p>
                       <p className="mt-1 text-[11px] text-muted">
                         {isFrench ? "Planifiee" : "Scheduled"} {formatDateOnlyForLocale(item.task.targetDate, locale)}
-                        {item.task.project ? ` · ${item.task.project}` : ""}
+                        {item.task.project
+                          ? ` · ${item.task.project}${item.task.subProject ? ` › ${item.task.subProject}` : ""}`
+                          : ""}
                       </p>
                     </div>
                     <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[item.task.priority]}`}>
@@ -249,8 +253,14 @@ export function TaskAlertsPanel({
                         )} · ${formatDateTime(item.reminder.remindAt, locale, activeTimeZone)}`}
                       </p>
                       <p className="mt-1 text-[11px] text-muted">
-                        {[item.reminder.project, item.reminder.assignees].filter(Boolean).join(" · ") ||
-                          (isFrench ? "Rappel actif" : "Active reminder")}
+                        {[
+                          item.reminder.project
+                            ? `${item.reminder.project}${item.reminder.subProject ? ` › ${item.reminder.subProject}` : ""}`
+                            : null,
+                          item.reminder.assignees,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || (isFrench ? "Rappel actif" : "Active reminder")}
                       </p>
                     </button>
                     <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${reminderStatusChipClassByStatus[item.reminder.status]}`}>

@@ -43,6 +43,8 @@ type Task = {
   dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
+  subProject?: string | null;
+  projectId?: string | null;
   assignees: string | null;
   plannedTime: number | null;
   rolledFromTaskId: string | null;
@@ -59,9 +61,17 @@ type TaskMutationInput = {
   dueDate: string;
   priority: TaskPriority;
   project: string | null;
+  projectId?: string | null;
   assignees: string | null;
   plannedTime: number | null;
   calendarEventId?: string | null;
+};
+
+type ProjectNode = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  children: Array<{ id: string; name: string; parentId: string | null }>;
 };
 
 type CalendarEventLinkedTask = {
@@ -376,6 +386,8 @@ type Reminder = {
   title: string;
   description: string | null;
   project: string | null;
+  subProject?: string | null;
+  projectId?: string | null;
   assignees: string | null;
   remindAt: string;
   status: ReminderStatus;
@@ -393,6 +405,7 @@ type ReminderFormValues = {
   title: string;
   description: string;
   project: string;
+  subProject: string;
   assignees: string;
   remindAt: string;
 };
@@ -568,6 +581,7 @@ type TaskFormValues = {
   dueDate: string;
   priority: TaskPriority;
   project: string;
+  subProject: string;
   assignees: string;
   plannedTime: string;
   calendarEventId: string | null;
@@ -589,6 +603,7 @@ type TaskFilterValues = {
   status: TaskFilterStatus;
   priority: TaskFilterPriority;
   project: string;
+  subProject: string;
 };
 type SearchSourceType =
   | "task"
@@ -673,6 +688,7 @@ const DEFAULT_TASK_FILTER_VALUES: TaskFilterValues = {
   status: "all",
   priority: "all",
   project: "",
+  subProject: "",
 };
 const DASHBOARD_BLOCK_IDS: ReadonlyArray<DashboardBlockId> = [
   "overview",
@@ -1604,6 +1620,54 @@ function getUniqueSortedProjectNames(values: string[]): string[] {
   );
 }
 
+function projectNamesEqual(left: string, right: string): boolean {
+  return (
+    normalizeProjectName(left).toLocaleLowerCase() ===
+    normalizeProjectName(right).toLocaleLowerCase()
+  );
+}
+
+function findTopLevelProjectNode(tree: ProjectNode[], name: string): ProjectNode | null {
+  if (!normalizeProjectName(name)) return null;
+  return tree.find((node) => projectNamesEqual(node.name, name)) ?? null;
+}
+
+function getSubProjectNames(tree: ProjectNode[], projectName: string): string[] {
+  const node = findTopLevelProjectNode(tree, projectName);
+  if (!node) return [];
+  return getUniqueSortedProjectNames(node.children.map((child) => child.name));
+}
+
+/**
+ * Resolves a (project name, sub-project name) pair to the id of the selected
+ * catalog node — the sub-project when one is chosen, otherwise the top-level
+ * project. Missing catalog entries are created on the fly so a freshly typed
+ * name is never silently dropped.
+ */
+async function resolveProjectIdForSelection(
+  tree: ProjectNode[],
+  projectName: string,
+  subProjectName: string,
+  token: string
+): Promise<string | null> {
+  const project = normalizeProjectName(projectName);
+  if (!project) return null;
+
+  const topNode = findTopLevelProjectNode(tree, project);
+  let topId = topNode?.id;
+  if (!topId) {
+    topId = (await createProjectApi({ name: project }, token)).id;
+  }
+
+  const sub = normalizeProjectName(subProjectName);
+  if (!sub) return topId;
+
+  const existingChild = topNode?.children.find((child) => projectNamesEqual(child.name, sub));
+  if (existingChild) return existingChild.id;
+
+  return (await createProjectApi({ name: sub, parentId: topId }, token)).id;
+}
+
 function parseStoredProjectOptions(rawValue: string | null): string[] {
   if (!rawValue) {
     return [];
@@ -1690,6 +1754,7 @@ function getDefaultTaskFormValues(targetDate: string): TaskFormValues {
     dueDate: targetDate,
     priority: "medium",
     project: "",
+    subProject: "",
     assignees: "",
     plannedTime: "",
     calendarEventId: null,
@@ -1800,6 +1865,7 @@ function getTaskFormValues(task: Task): TaskFormValues {
     dueDate: task.dueDate ?? task.targetDate,
     priority: task.priority,
     project: task.project ?? "",
+    subProject: task.subProject ?? "",
     assignees: task.assignees ?? "",
     plannedTime: typeof task.plannedTime === "number" ? String(task.plannedTime) : "",
     calendarEventId: task.calendarEventId,
@@ -3013,8 +3079,50 @@ async function deleteCalendarEventNoteAttachmentApi(
   }
 }
 
+async function fetchProjectTree(token: string): Promise<ProjectNode[]> {
+  const response = await fetch("/backend-api/projects", {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("Unable to load projects");
+  }
+  const payload = (await response.json().catch(() => null)) as { data?: ProjectNode[] } | null;
+  return payload?.data ?? [];
+}
+
+async function createProjectApi(
+  input: { name: string; parentId?: string | null },
+  token: string
+): Promise<{ id: string; name: string; parentId: string | null }> {
+  const response = await fetch("/backend-api/projects", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { id: string; name: string; parentId: string | null }; error?: { message?: string } }
+    | null;
+  if (!response.ok || !payload?.data) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create project"));
+  }
+  return payload.data;
+}
+
+async function deleteProjectApi(projectId: string, token: string): Promise<void> {
+  const response = await fetch(`/backend-api/projects/${encodeURIComponent(projectId)}`, {
+    method: "DELETE",
+    headers: createAuthHeaders(token, false),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete project"));
+  }
+}
+
 async function createReminderApi(
-  input: { title: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt: string },
+  input: { title: string; description?: string | null; project?: string | null; projectId?: string | null; assignees?: string | null; remindAt: string },
   token: string
 ): Promise<Reminder> {
   const response = await fetch("/backend-api/reminders", {
@@ -3040,7 +3148,7 @@ async function createReminderApi(
 
 async function updateReminderApi(
   id: string,
-  input: { title?: string; description?: string | null; project?: string | null; assignees?: string | null; remindAt?: string },
+  input: { title?: string; description?: string | null; project?: string | null; projectId?: string | null; assignees?: string | null; remindAt?: string },
   token: string
 ): Promise<Reminder> {
   const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}`, {
@@ -3492,7 +3600,7 @@ export function AppShell() {
   const [profileSuccessMessage, setProfileSuccessMessage] = useState<string | null>(null);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [googleCalendarConnections, setGoogleCalendarConnections] = useState<
-    Array<{ id: string; email: string; color: string; calendarId: string; lastSyncedAt: string | null }>
+    Array<{ id: string; email: string; color: string; calendarId: string; lastSyncedAt: string | null; needsReconnect: boolean }>
   >([]);
   const [isGoogleCalendarAvailable, setIsGoogleCalendarAvailable] = useState(true);
   const [isGoogleCalendarLoading, setIsGoogleCalendarLoading] = useState(false);
@@ -3569,7 +3677,7 @@ export function AppShell() {
   const [isLoadingReminders, setIsLoadingReminders] = useState(false);
   const [reminderDialogMode, setReminderDialogMode] = useState<"create" | "edit" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
-  const [reminderFormValues, setReminderFormValues] = useState<ReminderFormValues>({ title: "", description: "", project: "", assignees: "", remindAt: "" });
+  const [reminderFormValues, setReminderFormValues] = useState<ReminderFormValues>({ title: "", description: "", project: "", subProject: "", assignees: "", remindAt: "" });
   const [reminderErrorMessage, setReminderErrorMessage] = useState<string | null>(null);
   const [isSubmittingReminder, setIsSubmittingReminder] = useState(false);
   const [pendingReminders, setPendingReminders] = useState<Reminder[]>([]);
@@ -3860,8 +3968,11 @@ export function AppShell() {
   const [pendingAttachmentIds, setPendingAttachmentIds] = useState<string[]>([]);
 
   const [projectOptions, setProjectOptions] = useState<string[]>([]);
+  const [projectTree, setProjectTree] = useState<ProjectNode[]>([]);
   const [newProjectDraft, setNewProjectDraft] = useState("");
+  const [newSubProjectDraft, setNewSubProjectDraft] = useState("");
   const [projectFormErrorMessage, setProjectFormErrorMessage] = useState<string | null>(null);
+  const projectCatalogMigratedRef = useRef(false);
 
   const [assigneeOptions, setAssigneeOptions] = useState<string[]>([]);
   const [newAssigneeDraft, setNewAssigneeDraft] = useState("");
@@ -3877,6 +3988,7 @@ export function AppShell() {
   const [projectPlanningViewMode, setProjectPlanningViewMode] = useState<"table" | "gantt">("table");
   const [projectPlanningFilters, setProjectPlanningFilters] = useState({
     project: "",
+    subProject: "",
     status: "all",
     dateFrom: "",
     dateTo: "",
@@ -4138,6 +4250,24 @@ export function AppShell() {
     [normalizedSelectedProject, normalizedReminderProject, projectOptions]
   );
 
+  const taskSubProjectSelectOptions = useMemo(
+    () =>
+      getUniqueSortedProjectNames([
+        ...getSubProjectNames(projectTree, taskFormValues.project),
+        normalizeProjectName(taskFormValues.subProject),
+      ]),
+    [projectTree, taskFormValues.project, taskFormValues.subProject]
+  );
+
+  const reminderSubProjectSelectOptions = useMemo(
+    () =>
+      getUniqueSortedProjectNames([
+        ...getSubProjectNames(projectTree, reminderFormValues.project),
+        normalizeProjectName(reminderFormValues.subProject),
+      ]),
+    [projectTree, reminderFormValues.project, reminderFormValues.subProject]
+  );
+
   const selectedTaskAssignees = useMemo(
     () => parseAssignees(taskFormValues.assignees),
     [taskFormValues.assignees]
@@ -4157,6 +4287,23 @@ export function AppShell() {
     window.localStorage.setItem(PROJECT_OPTIONS_STORAGE_KEY, JSON.stringify(nextOptions));
     return nextOptions;
   }, []);
+
+  const refreshProjectTree = useCallback(async () => {
+    if (!authToken) return [] as ProjectNode[];
+    try {
+      const tree = await fetchProjectTree(authToken);
+      setProjectTree(tree);
+      const topLevelNames = tree.map((node) => node.name);
+      if (topLevelNames.length > 0) {
+        setProjectOptions((current) =>
+          getUniqueSortedProjectNames([...current, ...topLevelNames])
+        );
+      }
+      return tree;
+    } catch {
+      return [] as ProjectNode[];
+    }
+  }, [authToken]);
 
   const saveAssigneeOptions = useCallback((values: string[]) => {
     const nextOptions = [...new Set(values.filter((v) => v.trim().length > 0))].sort((a, b) =>
@@ -4603,6 +4750,10 @@ export function AppShell() {
         await fetchCalendarEvents(selectedDate, true);
       } else {
         const payload = await response.json().catch(() => null);
+        // Refresh connection status first so a per-account "Reconnect" prompt
+        // appears when the backend flagged the connection as needing re-consent
+        // (fetchGoogleCalendarStatus clears the error, so set it afterwards).
+        await fetchGoogleCalendarStatus();
         setGoogleCalendarError(
           payload?.error?.message ??
             (isFrench ? "La synchronisation a echoue." : "Sync failed.")
@@ -5266,9 +5417,24 @@ export function AppShell() {
 
   function handleProjectPlanningFilterChange(key: keyof typeof projectPlanningFilters, value: string) {
     const nextFilters = { ...projectPlanningFilters, [key]: value };
+    // Switching the project scope drops any sub-project selection.
+    if (key === "project") {
+      nextFilters.subProject = "";
+    }
     setProjectPlanningFilters(nextFilters);
     void fetchAllProjectTasks(nextFilters);
   }
+
+  const projectPlanningSubProjectOptions = useMemo(() => {
+    if (!projectPlanningFilters.project) return [];
+    return getUniqueSortedProjectNames([
+      ...getSubProjectNames(projectTree, projectPlanningFilters.project),
+      ...allProjectTasks
+        .filter((task) => projectNamesEqual(task.project ?? "", projectPlanningFilters.project))
+        .map((task) => task.subProject ?? ""),
+      projectPlanningFilters.subProject,
+    ]);
+  }, [projectTree, projectPlanningFilters.project, projectPlanningFilters.subProject, allProjectTasks]);
 
   function handleProjectPlanningSort(column: string) {
     setProjectPlanningSort((current) => ({
@@ -5579,7 +5745,7 @@ export function AppShell() {
     now.setMinutes(now.getMinutes() + 30);
     const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     const defaultAssignee = (authUser?.displayName || authUser?.email || "").trim();
-    return { title: "", description: "", project: "", assignees: defaultAssignee, remindAt: localIso };
+    return { title: "", description: "", project: "", subProject: "", assignees: defaultAssignee, remindAt: localIso };
   }
 
   function openCreateReminderDialog() {
@@ -5600,6 +5766,7 @@ export function AppShell() {
       title: reminder.title,
       description: reminder.description ?? "",
       project: reminder.project ?? "",
+      subProject: reminder.subProject ?? "",
       assignees: reminder.assignees ?? "",
       remindAt: remindAtLocal,
     });
@@ -5628,7 +5795,7 @@ export function AppShell() {
     event.preventDefault();
     if (isSubmittingReminder || !authToken) return;
 
-    const { title, description, project, assignees, remindAt } = reminderFormValues;
+    const { title, description, project, subProject, assignees, remindAt } = reminderFormValues;
     if (!title.trim()) {
       setReminderErrorMessage(isFrench ? "Le titre est requis." : "Title is required.");
       return;
@@ -5644,17 +5811,31 @@ export function AppShell() {
     try {
       const remindAtIso = new Date(remindAt).toISOString();
 
+      let resolvedProjectId: string | null = null;
+      try {
+        resolvedProjectId = await resolveProjectIdForSelection(projectTree, project, subProject, authToken);
+      } catch {
+        resolvedProjectId = null;
+      }
+      if (resolvedProjectId) {
+        void refreshProjectTree();
+      }
+      const projectFields = {
+        project: normalizeProjectName(project) || null,
+        projectId: resolvedProjectId,
+      };
+
       if (reminderDialogMode === "edit" && editingReminderId) {
         const updated = await updateReminderApi(
           editingReminderId,
-          { title: title.trim(), description: description.trim() || null, project: normalizeProjectName(project) || null, assignees: assignees.trim() || null, remindAt: remindAtIso },
+          { title: title.trim(), description: description.trim() || null, ...projectFields, assignees: assignees.trim() || null, remindAt: remindAtIso },
           authToken
         );
         setReminders((prev) => sortRemindersByRemindAt(prev.map((r) => (r.id === updated.id ? updated : r))));
         refreshTaskAlerts();
       } else {
         const created = await createReminderApi(
-          { title: title.trim(), description: description.trim() || null, project: normalizeProjectName(project) || null, assignees: assignees.trim() || null, remindAt: remindAtIso },
+          { title: title.trim(), description: description.trim() || null, ...projectFields, assignees: assignees.trim() || null, remindAt: remindAtIso },
           authToken
         );
         setReminders((prev) => sortRemindersByRemindAt([...prev, created]));
@@ -6130,6 +6311,11 @@ export function AppShell() {
         };
       }
 
+      // Changing the project invalidates any previously selected sub-project.
+      if (field === "project") {
+        return { ...current, project: value ?? "", subProject: "" };
+      }
+
       return {
         ...current,
         [field]: value,
@@ -6193,7 +6379,7 @@ export function AppShell() {
     });
   }
 
-  function handleCreateProjectOption() {
+  async function handleCreateProjectOption() {
     const normalizedName = normalizeProjectName(newProjectDraft);
 
     if (!normalizedName) {
@@ -6203,26 +6389,81 @@ export function AppShell() {
       return;
     }
 
-    const existingProject = projectOptions.find(
-      (projectName) =>
-        projectName.toLocaleLowerCase() === normalizedName.toLocaleLowerCase()
-    );
-
-    if (existingProject) {
-      updateTaskFormField("project", existingProject);
+    const existingNode = findTopLevelProjectNode(projectTree, normalizedName);
+    if (existingNode) {
+      updateTaskFormField("project", existingNode.name);
       setNewProjectDraft("");
       setProjectFormErrorMessage(null);
       return;
     }
 
-    saveProjectOptions([...projectOptions, normalizedName]);
-    updateTaskFormField("project", normalizedName);
-    setNewProjectDraft("");
-    setProjectFormErrorMessage(null);
+    if (!authToken) return;
+    try {
+      const created = await createProjectApi({ name: normalizedName }, authToken);
+      await refreshProjectTree();
+      saveProjectOptions([...projectOptions, created.name]);
+      updateTaskFormField("project", created.name);
+      setNewProjectDraft("");
+      setProjectFormErrorMessage(null);
+    } catch (error) {
+      setProjectFormErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de creer le projet."
+          : "Unable to create the project."
+      );
+    }
   }
 
-  function handleDeleteSelectedProjectOption() {
+  async function handleCreateSubProjectOption() {
+    const parentName = normalizeProjectName(taskFormValues.project);
+    if (!parentName) {
+      setProjectFormErrorMessage(
+        isFrench ? "Selectionnez d'abord un projet." : "Select a project first."
+      );
+      return;
+    }
+
+    const normalizedName = normalizeProjectName(newSubProjectDraft);
+    if (!normalizedName) {
+      setProjectFormErrorMessage(
+        isFrench ? "Le nom du sous-projet est requis." : "Sub-project name is required."
+      );
+      return;
+    }
+
+    if (!authToken) return;
+    try {
+      const parentNode = findTopLevelProjectNode(projectTree, parentName);
+      const parentId = parentNode?.id ?? (await createProjectApi({ name: parentName }, authToken)).id;
+
+      const existingChild = parentNode?.children.find((child) =>
+        projectNamesEqual(child.name, normalizedName)
+      );
+      const child =
+        existingChild ?? (await createProjectApi({ name: normalizedName, parentId }, authToken));
+
+      await refreshProjectTree();
+      setTaskFormValues((current) => ({ ...current, subProject: child.name }));
+      setNewSubProjectDraft("");
+      setProjectFormErrorMessage(null);
+    } catch (error) {
+      setProjectFormErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de creer le sous-projet."
+          : "Unable to create the sub-project."
+      );
+    }
+  }
+
+  async function handleDeleteSelectedProjectOption() {
+    if (!authToken) return;
+
     const selectedProject = normalizeProjectName(taskFormValues.project);
+    const selectedSubProject = normalizeProjectName(taskFormValues.subProject);
 
     if (!selectedProject) {
       setProjectFormErrorMessage(
@@ -6231,23 +6472,39 @@ export function AppShell() {
       return;
     }
 
-    if (selectedProjectIsUsed) {
+    const parentNode = findTopLevelProjectNode(projectTree, selectedProject);
+    const targetNode = selectedSubProject
+      ? parentNode?.children.find((child) => projectNamesEqual(child.name, selectedSubProject)) ?? null
+      : parentNode;
+
+    if (!targetNode) {
       setProjectFormErrorMessage(
-        isFrench
-          ? "Ce projet est utilise sur le tableau actuel et ne peut pas etre supprime."
-          : "This project is in use on the current board and cannot be deleted."
+        isFrench ? "Projet introuvable dans le catalogue." : "Project not found in the catalog."
       );
       return;
     }
 
-    const nextOptions = projectOptions.filter(
-      (projectName) =>
-        projectName.toLocaleLowerCase() !== selectedProject.toLocaleLowerCase()
-    );
-
-    saveProjectOptions(nextOptions);
-    updateTaskFormField("project", "");
-    setProjectFormErrorMessage(null);
+    try {
+      await deleteProjectApi(targetNode.id, authToken);
+      await refreshProjectTree();
+      if (selectedSubProject) {
+        setTaskFormValues((current) => ({ ...current, subProject: "" }));
+      } else {
+        saveProjectOptions(
+          projectOptions.filter((name) => !projectNamesEqual(name, selectedProject))
+        );
+        updateTaskFormField("project", "");
+      }
+      setProjectFormErrorMessage(null);
+    } catch (error) {
+      setProjectFormErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de supprimer le projet."
+          : "Unable to delete the project."
+      );
+    }
   }
 
   function handleAddNewAssigneeToTask() {
@@ -6481,10 +6738,30 @@ export function AppShell() {
         saveProjectOptions([...projectOptions, selectedProjectName]);
       }
 
+      let resolvedProjectId: string | null = null;
+      try {
+        resolvedProjectId = await resolveProjectIdForSelection(
+          projectTree,
+          taskFormValues.project,
+          taskFormValues.subProject,
+          authToken
+        );
+      } catch {
+        // Fall back to the legacy free-text project field if catalog resolution fails.
+        resolvedProjectId = null;
+      }
+      const taskMutationInput: TaskMutationInput = {
+        ...inputResult.data,
+        projectId: resolvedProjectId,
+      };
+      if (resolvedProjectId) {
+        void refreshProjectTree();
+      }
+
       let savedTask: Task;
 
       if (taskDialogMode === "create") {
-        const createdTask = await createTask(inputResult.data, authToken);
+        const createdTask = await createTask(taskMutationInput, authToken);
 
         setTasks((currentTasks) =>
           createdTask.targetDate === selectedDate ? [...currentTasks, createdTask] : currentTasks
@@ -6495,7 +6772,7 @@ export function AppShell() {
           throw new Error("Task not found.");
         }
 
-        const updatedTask = await updateTask(editingTaskId, inputResult.data, authToken);
+        const updatedTask = await updateTask(editingTaskId, taskMutationInput, authToken);
 
         setTasks((currentTasks) => {
           const hasTask = currentTasks.some((task) => task.id === editingTaskId);
@@ -6752,6 +7029,41 @@ export function AppShell() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.id]);
+
+  useEffect(() => {
+    if (!isAuthReady || !authToken) return;
+    let cancelled = false;
+
+    void (async () => {
+      const tree = await refreshProjectTree();
+      if (cancelled || projectCatalogMigratedRef.current) return;
+      projectCatalogMigratedRef.current = true;
+
+      // One-time migration: push project names that only ever lived in
+      // localStorage (or were derived from legacy task data) into the server
+      // catalog so the hierarchy has a home for them.
+      const knownNames = new Set(tree.map((node) => normalizeProjectName(node.name).toLocaleLowerCase()));
+      const legacyNames = getUniqueSortedProjectNames([
+        ...parseStoredProjectOptions(window.localStorage.getItem(PROJECT_OPTIONS_STORAGE_KEY)),
+        ...projectOptions,
+      ]).filter((name) => !knownNames.has(normalizeProjectName(name).toLocaleLowerCase()));
+
+      if (legacyNames.length === 0) return;
+      for (const name of legacyNames) {
+        try {
+          await createProjectApi({ name }, authToken);
+        } catch {
+          // Ignore duplicates / races — the refresh below reconciles state.
+        }
+      }
+      if (!cancelled) await refreshProjectTree();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthReady, authToken]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -7474,6 +7786,17 @@ export function AppShell() {
     ]);
   }, [projectOptions, taskFilterValues.project, tasks]);
 
+  const taskFilterSubProjectOptions = useMemo(() => {
+    if (!taskFilterValues.project) return [];
+    return getUniqueSortedProjectNames([
+      ...getSubProjectNames(projectTree, taskFilterValues.project),
+      ...tasks
+        .filter((task) => projectNamesEqual(task.project ?? "", taskFilterValues.project))
+        .map((task) => task.subProject ?? ""),
+      taskFilterValues.subProject,
+    ]);
+  }, [projectTree, taskFilterValues.project, taskFilterValues.subProject, tasks]);
+
   const tasksByStatus = useMemo(() => {
     return {
       todo: tasks.filter((task) => task.status === "todo"),
@@ -7496,13 +7819,20 @@ export function AppShell() {
         return false;
       }
 
+      if (
+        taskFilterValues.subProject &&
+        normalizeProjectName(task.subProject ?? "") !== taskFilterValues.subProject
+      ) {
+        return false;
+      }
+
       if (!taskSearchQuery) {
         return true;
       }
 
       return getTaskSearchableText(task, activeLocale).includes(taskSearchQuery);
     });
-  }, [activeLocale, taskFilterValues.priority, taskFilterValues.project, taskFilterValues.status, taskSearchQuery, tasks]);
+  }, [activeLocale, taskFilterValues.priority, taskFilterValues.project, taskFilterValues.subProject, taskFilterValues.status, taskSearchQuery, tasks]);
   const filteredTasksByStatus = useMemo(() => {
     return {
       todo: filteredTasks.filter((task) => task.status === "todo"),
@@ -7515,7 +7845,8 @@ export function AppShell() {
     taskFilterValues.query.trim().length > 0 ||
     taskFilterValues.status !== "all" ||
     taskFilterValues.priority !== "all" ||
-    taskFilterValues.project.length > 0;
+    taskFilterValues.project.length > 0 ||
+    taskFilterValues.subProject.length > 0;
 
   const isEmptyBoard = !isLoading && !errorMessage && tasks.length === 0;
   const isFilteredBoardEmpty = !isLoading && !errorMessage && tasks.length > 0 && filteredTasks.length === 0;
@@ -8129,6 +8460,7 @@ export function AppShell() {
         sort={projectPlanningSort}
         viewMode={projectPlanningViewMode}
         projectOptions={projectOptions}
+        subProjectOptions={projectPlanningSubProjectOptions}
         onFilterChange={handleProjectPlanningFilterChange}
         onSortChange={handleProjectPlanningSort}
         onViewModeChange={setProjectPlanningViewMode}
@@ -8138,6 +8470,7 @@ export function AppShell() {
             isTaskStatus(projectPlanningFilters.status) ? projectPlanningFilters.status : "todo",
             {
               project: projectPlanningFilters.project,
+              subProject: projectPlanningFilters.subProject,
             }
           )
         }
@@ -8258,6 +8591,7 @@ export function AppShell() {
         boardColumns={boardColumns}
         priorityOptions={priorityOptions}
         taskFilterProjectOptions={taskFilterProjectOptions}
+        taskFilterSubProjectOptions={taskFilterSubProjectOptions}
         isEmptyBoard={isEmptyBoard}
         isFilteredBoardEmpty={isFilteredBoardEmpty}
         sensors={sensors}
@@ -11030,11 +11364,17 @@ export function AppShell() {
                     disabled={
                       isSubmittingTask ||
                       !normalizedSelectedProject ||
-                      selectedProjectIsUsed
+                      (!taskFormValues.subProject && selectedProjectIsUsed)
                     }
                   >
                     <TrashIcon />
-                    {isFrench ? "Supprimer le projet" : "Delete Project"}
+                    {taskFormValues.subProject
+                      ? isFrench
+                        ? "Supprimer le sous-projet"
+                        : "Delete Sub-Project"
+                      : isFrench
+                      ? "Supprimer le projet"
+                      : "Delete Project"}
                   </button>
                 </div>
 
@@ -11066,6 +11406,32 @@ export function AppShell() {
                   </span>
                 </div>
 
+                {taskFormValues.project ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Sous-projet (optionnel)" : "Sub-project (optional)"}
+                      <select
+                        value={taskFormValues.subProject}
+                        onChange={(event) =>
+                          setTaskFormValues((current) => ({ ...current, subProject: event.target.value }))
+                        }
+                        className={textFieldClass}
+                        disabled={isSubmittingTask}
+                      >
+                        <option value="">{isFrench ? "Aucun sous-projet" : "No sub-project"}</option>
+                        {taskSubProjectSelectOptions.map((subProjectName) => (
+                          <option key={subProjectName} value={subProjectName}>
+                            {subProjectName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="text-xs text-muted">
+                      {isFrench ? "Rattache au projet ci-dessus" : "Nested under the project above"}
+                    </span>
+                  </div>
+                ) : null}
+
                 <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   <label className="block text-sm font-semibold text-foreground">
                     {isFrench ? "Nouveau projet" : "New Project"}
@@ -11076,7 +11442,7 @@ export function AppShell() {
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          handleCreateProjectOption();
+                          void handleCreateProjectOption();
                         }
                       }}
                       className={textFieldClass}
@@ -11087,13 +11453,44 @@ export function AppShell() {
                   <button
                     type="button"
                     className={controlButtonClass}
-                    onClick={handleCreateProjectOption}
+                    onClick={() => void handleCreateProjectOption()}
                     disabled={isSubmittingTask}
                   >
                     <PlusIcon />
                     {isFrench ? "Ajouter le projet" : "Add Project"}
                   </button>
                 </div>
+
+                {taskFormValues.project ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <label className="block text-sm font-semibold text-foreground">
+                      {isFrench ? "Nouveau sous-projet" : "New Sub-Project"}
+                      <input
+                        type="text"
+                        value={newSubProjectDraft}
+                        onChange={(event) => setNewSubProjectDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void handleCreateSubProjectOption();
+                          }
+                        }}
+                        className={textFieldClass}
+                        placeholder={isFrench ? "Saisissez un nom de sous-projet" : "Type a sub-project name"}
+                        disabled={isSubmittingTask}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={controlButtonClass}
+                      onClick={() => void handleCreateSubProjectOption()}
+                      disabled={isSubmittingTask}
+                    >
+                      <PlusIcon />
+                      {isFrench ? "Ajouter le sous-projet" : "Add Sub-Project"}
+                    </button>
+                  </div>
+                ) : null}
 
                 {projectFormErrorMessage ? (
                   <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -11506,6 +11903,7 @@ export function AppShell() {
         isCreatingReminderAttachment={isCreatingReminderAttachment}
         reminderAttachmentErrorMessage={reminderAttachmentErrorMessage}
         projectSelectOptions={projectSelectOptions}
+        subProjectSelectOptions={reminderSubProjectSelectOptions}
         assigneeOptions={assigneeOptions}
         selectedReminderAssignees={selectedReminderAssignees}
         newAssigneeDraft={newAssigneeDraft}
