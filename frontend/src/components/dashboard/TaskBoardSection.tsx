@@ -101,9 +101,15 @@ type TaskBoardSectionProps = {
   onCreateTask: (status?: TaskStatus) => void;
   onEditTask: (task: Task) => void;
   onDeleteTask: (task: Task) => void;
+  taskTimeEntries: Map<string, number>;
+  pendingTimeEntryTaskIds: string[];
+  imputedTimeTotal: number;
+  timeEntryErrorMessage: string | null;
+  onTaskTimeFractionChange: (taskId: string, fraction: number) => void;
   formatPriority: (priority: TaskPriority, locale: UserLocale) => string;
   formatDateOnlyForLocale: (value: string, locale: UserLocale) => string;
   formatPlannedTime: (totalMinutes: number) => string;
+  formatDayFraction: (value: number, locale: UserLocale) => string;
 };
 
 const statusColumnClassByStatus: Record<TaskStatus, string> = {
@@ -168,11 +174,24 @@ export function TaskBoardSection({
   onCreateTask,
   onEditTask,
   onDeleteTask,
+  taskTimeEntries,
+  pendingTimeEntryTaskIds,
+  imputedTimeTotal,
+  timeEntryErrorMessage,
+  onTaskTimeFractionChange,
   formatPriority,
   formatDateOnlyForLocale,
   formatPlannedTime,
+  formatDayFraction,
 }: TaskBoardSectionProps) {
   const isFrench = locale === "fr";
+  const roundedImputedTotal = Math.round(imputedTimeTotal * 100) / 100;
+  const imputedTotalTone =
+    roundedImputedTotal === 1
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : roundedImputedTotal > 1
+        ? "border-rose-200 bg-rose-50 text-rose-700"
+        : "border-line bg-surface-soft text-muted";
 
   return (
     <section
@@ -185,7 +204,20 @@ export function TaskBoardSection({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <SectionIdentityPills sectionId="board" locale={locale} isActive={activeSectionId === "board"} />
-          <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className={sectionHeaderClass}>{isFrench ? "Tableau Kanban" : "Kanban Board"}</h2>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${imputedTotalTone}`}
+              title={
+                isFrench
+                  ? "Somme du temps imputé sur les tâches du jour (objectif : 1)"
+                  : "Sum of time imputed on today's tasks (target: 1)"
+              }
+            >
+              <span aria-hidden>⏱</span>
+              {formatDayFraction(roundedImputedTotal, locale)} / 1
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -399,6 +431,12 @@ export function TaskBoardSection({
             </section>
           ) : null}
 
+          {timeEntryErrorMessage ? (
+            <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {timeEntryErrorMessage}
+            </p>
+          ) : null}
+
           <DndContext
             sensors={sensors}
             collisionDetection={pointerWithin}
@@ -457,11 +495,15 @@ export function TaskBoardSection({
                               task={task}
                               isDragging={activeTaskId === task.id}
                               isSaving={isSavingTask}
+                              timeFraction={taskTimeEntries.get(task.id) ?? null}
+                              isTimeSaving={pendingTimeEntryTaskIds.includes(task.id)}
                               onEdit={onEditTask}
                               onDelete={onDeleteTask}
+                              onTimeFractionChange={onTaskTimeFractionChange}
                               formatPriority={formatPriority}
                               formatDateOnlyForLocale={formatDateOnlyForLocale}
                               formatPlannedTime={formatPlannedTime}
+                              formatDayFraction={formatDayFraction}
                             />
                           );
                         })

@@ -98,12 +98,14 @@ import { createPrismaNoteStore, NoteStore } from "./notes/note-store";
 import { createPrismaReminderAttachmentStore, ReminderAttachmentStore } from "./reminders/reminder-attachment-store";
 import { createPrismaReminderStore, ReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore, TaskStore } from "./tasks/task-store";
+import { createPrismaTaskTimeEntryStore, TaskTimeEntryStore } from "./tasks/task-time-entry-store";
 import { createPrismaProjectStore, ProjectStore } from "./projects/project-store";
 import projectsRoutes from "./routes/projects";
 
 export type BuildAppOptions = {
   logLevel: string;
   taskStore?: TaskStore;
+  taskTimeEntryStore?: TaskTimeEntryStore;
   authStore?: AuthStore;
   commentStore?: CommentStore;
   attachmentStore?: AttachmentStore;
@@ -203,6 +205,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   const taskStore = options.taskStore ?? createPrismaTaskStore();
+  const taskTimeEntryStore =
+    options.taskTimeEntryStore ??
+    (options.taskStore ? undefined : createPrismaTaskTimeEntryStore());
   const authStore = options.authStore ?? createPrismaAuthStore();
   const commentStore =
     options.commentStore ??
@@ -369,7 +374,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (profileStore) {
     app.register(profileRoutes, { authService, profileStore });
   }
-  app.register(tasksRoutes, { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore });
+  app.register(tasksRoutes, { taskStore, taskTimeEntryStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore });
   if (commentStore) {
     app.register(commentsRoutes, { taskStore, commentStore, authService });
   }

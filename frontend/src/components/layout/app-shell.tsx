@@ -28,6 +28,7 @@ import { ProjectPlanningView } from "@/components/projects/ProjectPlanningView";
 import { RemindersSection } from "@/components/reminders/RemindersSection";
 import { AuthPanel } from "@/components/auth/AuthPanel";
 import { TaskBoardSection } from "@/components/dashboard/TaskBoardSection";
+import { DAY_FRACTION_OPTIONS } from "@/components/tasks/TaskBoardParts";
 
 type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
 type TaskPriority = "low" | "medium" | "high";
@@ -456,6 +457,11 @@ type GamingTrackSummary = {
     totalDays: number;
     completionRate: number;
   };
+  imputations: {
+    completedDays: number;
+    totalDays: number;
+    completionRate: number;
+  };
   streaks: {
     executionBest: number;
     executionActive: number;
@@ -481,7 +487,7 @@ type GamingTrackSummary = {
     trackedDays: number;
   };
   missions: Array<{
-    id: "done_tasks" | "affirmation_days" | "bilan_days" | "execution_streak";
+    id: "done_tasks" | "affirmation_days" | "bilan_days" | "execution_streak" | "imputation_days";
     target: number;
     progress: number;
     completed: boolean;
@@ -502,6 +508,7 @@ type GamingTrackSummary = {
       taskCompletionRate: number;
       affirmationCompletionRate: number;
       bilanCompletionRate: number;
+      imputationCompletionRate: number;
       overallScore: number;
     }>;
     weekly: Array<{
@@ -513,6 +520,7 @@ type GamingTrackSummary = {
       taskCompletionRate: number;
       affirmationCompletionRate: number;
       bilanCompletionRate: number;
+      imputationCompletionRate: number;
       overallScore: number;
     }>;
     monthly: Array<{
@@ -524,6 +532,7 @@ type GamingTrackSummary = {
       taskCompletionRate: number;
       affirmationCompletionRate: number;
       bilanCompletionRate: number;
+      imputationCompletionRate: number;
       overallScore: number;
     }>;
   };
@@ -545,6 +554,7 @@ type AuthUser = {
   preferredTimeZone: string | null;
   requireDailyAffirmation: boolean;
   requireDailyBilan: boolean;
+  requireDailyTimeImputation: boolean;
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
   createdAt: string;
@@ -565,6 +575,7 @@ type ProfileFormValues = {
   preferredTimeZone: string;
   requireDailyAffirmation: boolean;
   requireDailyBilan: boolean;
+  requireDailyTimeImputation: boolean;
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
 };
@@ -575,6 +586,7 @@ type ProfileMutationInput = {
   preferredTimeZone: string | null;
   requireDailyAffirmation: boolean;
   requireDailyBilan: boolean;
+  requireDailyTimeImputation: boolean;
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
 };
@@ -1392,6 +1404,9 @@ function formatGamingTrackMissionLabel(
     if (missionId === "bilan_days") {
       return "Jours avec bilan";
     }
+    if (missionId === "imputation_days") {
+      return "Journées imputées";
+    }
     return "Serie d'execution";
   }
 
@@ -1403,6 +1418,9 @@ function formatGamingTrackMissionLabel(
   }
   if (missionId === "bilan_days") {
     return "Bilan days";
+  }
+  if (missionId === "imputation_days") {
+    return "Imputed days";
   }
   return "Execution streak";
 }
@@ -1515,6 +1533,13 @@ function formatPlannedTime(totalMinutes: number): string {
   }
 
   return `${hours}h ${minutes}m`;
+}
+
+function formatDayFraction(value: number, locale: UserLocale): string {
+  return new Intl.NumberFormat(locale === "fr" ? "fr-FR" : "en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function formatFileSize(sizeBytes: number): string {
@@ -2028,6 +2053,7 @@ function getDefaultProfileFormValues(): ProfileFormValues {
     preferredTimeZone: getBrowserTimeZone(),
     requireDailyAffirmation: false,
     requireDailyBilan: false,
+    requireDailyTimeImputation: false,
     requireWeeklySynthesis: false,
     requireMonthlySynthesis: false,
   };
@@ -2044,6 +2070,7 @@ function getProfileFormValues(user: AuthUser | null): ProfileFormValues {
     preferredTimeZone: user.preferredTimeZone ?? getBrowserTimeZone(),
     requireDailyAffirmation: user.requireDailyAffirmation ?? false,
     requireDailyBilan: user.requireDailyBilan ?? false,
+    requireDailyTimeImputation: user.requireDailyTimeImputation ?? false,
     requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
     requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
   };
@@ -2331,6 +2358,68 @@ async function loadAllTasks(
   }
 
   return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+type TaskTimeEntriesPayload = {
+  date: string;
+  total: number;
+  entries: Array<{ taskId: string; fraction: number }>;
+};
+
+type TaskTimeEntrySavePayload = {
+  taskId: string;
+  date: string;
+  fraction: number;
+  dayTotal: number;
+};
+
+async function loadTaskTimeEntries(
+  date: string,
+  token: string,
+  signal?: AbortSignal
+): Promise<TaskTimeEntriesPayload> {
+  const response = await fetch(`/backend-api/tasks/time-entries?date=${encodeURIComponent(date)}`, {
+    method: "GET",
+    headers: createAuthHeaders(token, false),
+    signal,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskTimeEntriesPayload; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load imputed time"));
+  }
+
+  return payload?.data ?? { date, total: 0, entries: [] };
+}
+
+async function saveTaskTimeEntry(
+  taskId: string,
+  input: { date: string; fraction: number },
+  token: string
+): Promise<TaskTimeEntrySavePayload> {
+  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/time-entry`, {
+    method: "PUT",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: TaskTimeEntrySavePayload; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save imputed time"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to save imputed time.");
+  }
+
+  return payload.data;
 }
 
 async function loadTaskAlerts(date: string, token: string, signal?: AbortSignal): Promise<TaskAlertsSummary> {
@@ -3805,6 +3894,10 @@ export function AppShell() {
   const [isTaskTriagePanelOpen, setIsTaskTriagePanelOpen] = useState(false);
   const [taskTriageReloadKey, setTaskTriageReloadKey] = useState(0);
   const [pendingTriageTaskId, setPendingTriageTaskId] = useState<string | null>(null);
+  const [pendingTransferTaskId, setPendingTransferTaskId] = useState<string | null>(null);
+  const [taskTimeEntryByTaskId, setTaskTimeEntryByTaskId] = useState<Map<string, number>>(new Map());
+  const [pendingTimeEntryTaskIds, setPendingTimeEntryTaskIds] = useState<string[]>([]);
+  const [taskTimeEntryErrorMessage, setTaskTimeEntryErrorMessage] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
   const [taskFilterValues, setTaskFilterValues] = useState<TaskFilterValues>(DEFAULT_TASK_FILTER_VALUES);
@@ -5112,6 +5205,7 @@ export function AppShell() {
           preferredTimeZone: preferredTimeZone || null,
           requireDailyAffirmation: profileFormValues.requireDailyAffirmation,
           requireDailyBilan: profileFormValues.requireDailyBilan,
+          requireDailyTimeImputation: profileFormValues.requireDailyTimeImputation,
           requireWeeklySynthesis: profileFormValues.requireWeeklySynthesis,
           requireMonthlySynthesis: profileFormValues.requireMonthlySynthesis,
         },
@@ -5290,6 +5384,14 @@ export function AppShell() {
       if (!bilanFilled) {
         blockers.push(isFrench ? "Bilan du jour non renseigné" : "Daily review not filled");
       }
+    }
+
+    if (authUser?.requireDailyTimeImputation && isPastDay && imputedTimeTotal !== 1) {
+      blockers.push(
+        isFrench
+          ? `Temps du jour non imputé (total ${formatDayFraction(imputedTimeTotal, activeLocale)} ≠ 1)`
+          : `Day time not fully imputed (total ${formatDayFraction(imputedTimeTotal, activeLocale)} ≠ 1)`
+      );
     }
 
     if (authUser?.requireWeeklySynthesis && isMonday(dateObj) && (!weeklyObjective || isRichTextEmpty(weeklyObjective))) {
@@ -5508,6 +5610,99 @@ export function AppShell() {
       );
     } finally {
       setPendingTriageTaskId(null);
+    }
+  }
+
+  async function handleTransferTaskToToday(task: {
+    id: string;
+    targetDate: string;
+    dueDate: string | null;
+  }) {
+    if (!authToken) return;
+
+    const todayValue = taskAlertsAnchorDate;
+    if (task.targetDate === todayValue) return;
+
+    setPendingTransferTaskId(task.id);
+    setTaskTriageErrorMessage(null);
+    setTaskAlertsErrorMessage(null);
+
+    try {
+      const shouldMoveDueDate = task.dueDate !== null && task.dueDate < todayValue;
+      const movedTask = await rescheduleTask(
+        task.id,
+        shouldMoveDueDate
+          ? { targetDate: todayValue, dueDate: todayValue }
+          : { targetDate: todayValue },
+        authToken
+      );
+
+      const previousDateLabel = formatDateOnlyForLocale(task.targetDate, activeLocale);
+      const todayLabel = formatDateOnlyForLocale(todayValue, activeLocale);
+      const commentBody = isFrench
+        ? `Tâche transférée du ${previousDateLabel} au ${todayLabel}.`
+        : `Task transferred from ${previousDateLabel} to ${todayLabel}.`;
+
+      try {
+        await createTaskComment(task.id, commentBody, authToken);
+      } catch {
+        // History comment is best-effort; the transfer itself already succeeded.
+      }
+
+      setTaskTriageSummary((current) =>
+        current
+          ? {
+              count: Math.max(0, current.count - 1),
+              tasks: current.tasks.filter((entry) => entry.id !== task.id),
+            }
+          : current
+      );
+      setTasks((current) => {
+        const withoutTask = current.filter((entry) => entry.id !== task.id);
+        return selectedDate === todayValue ? [...withoutTask, movedTask] : withoutTask;
+      });
+      refreshTaskAlerts();
+      refreshTaskTriage();
+    } catch (error: unknown) {
+      setTaskTriageErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de transférer la tâche."
+          : "Unable to transfer the task."
+      );
+    } finally {
+      setPendingTransferTaskId(null);
+    }
+  }
+
+  async function handleTaskTimeFractionChange(taskId: string, fraction: number) {
+    if (!authToken) return;
+
+    setPendingTimeEntryTaskIds((ids) => (ids.includes(taskId) ? ids : [...ids, taskId]));
+    setTaskTimeEntryErrorMessage(null);
+
+    try {
+      const result = await saveTaskTimeEntry(taskId, { date: selectedDate, fraction }, authToken);
+      setTaskTimeEntryByTaskId((current) => {
+        const next = new Map(current);
+        if (result.fraction === 0) {
+          next.delete(taskId);
+        } else {
+          next.set(taskId, result.fraction);
+        }
+        return next;
+      });
+    } catch (error: unknown) {
+      setTaskTimeEntryErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible d'enregistrer le temps imputé."
+          : "Unable to save imputed time."
+      );
+    } finally {
+      setPendingTimeEntryTaskIds((ids) => ids.filter((id) => id !== taskId));
     }
   }
 
@@ -7366,6 +7561,45 @@ export function AppShell() {
     return () => controller.abort();
   }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
 
+  // Load imputed time entries for the selected date
+  useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
+    if (!authToken || !authUser) {
+      setTaskTimeEntryByTaskId(new Map());
+      return;
+    }
+
+    const controller = new AbortController();
+    setTaskTimeEntryErrorMessage(null);
+
+    loadTaskTimeEntries(selectedDate, authToken, controller.signal)
+      .then((payload) => {
+        const next = new Map<string, number>();
+        for (const entry of payload.entries) {
+          next.set(entry.taskId, entry.fraction);
+        }
+        setTaskTimeEntryByTaskId(next);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setTaskTimeEntryByTaskId(new Map());
+        setTaskTimeEntryErrorMessage(
+          error instanceof Error
+            ? error.message
+            : isFrench
+            ? "Impossible de charger le temps imputé."
+            : "Unable to load imputed time."
+        );
+      });
+
+    return () => controller.abort();
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+
   // Fetch calendar events for the selected date
   useEffect(() => {
     if (!isAuthReady || !authToken || !authUser) {
@@ -8069,6 +8303,13 @@ export function AppShell() {
           ? "Enregistrer les modifications"
           : "Save changes";
   const totalPlannedMinutes = tasks.reduce((total, task) => total + (task.plannedTime ?? 0), 0);
+  const imputedTimeTotal = Math.round(
+    tasks.reduce(
+      (total, task) =>
+        task.status === "cancelled" ? total : total + (taskTimeEntryByTaskId.get(task.id) ?? 0),
+      0
+    ) * 100
+  ) / 100;
   const actionableTaskCount = tasksByStatus.todo.length + tasksByStatus.in_progress.length;
   const isAffirmationCompleted = dayAffirmation?.isCompleted ?? false;
   const dayAffirmationCharacterCount = getRichTextCharacterCount(dayAffirmationDraft);
@@ -8787,9 +9028,15 @@ export function AppShell() {
         onCreateTask={openCreateTaskDialog}
         onEditTask={openEditTaskDialog}
         onDeleteTask={openDeleteDialog}
+        taskTimeEntries={taskTimeEntryByTaskId}
+        pendingTimeEntryTaskIds={pendingTimeEntryTaskIds}
+        imputedTimeTotal={imputedTimeTotal}
+        timeEntryErrorMessage={taskTimeEntryErrorMessage}
+        onTaskTimeFractionChange={(taskId, fraction) => { void handleTaskTimeFractionChange(taskId, fraction); }}
         formatPriority={formatPriority}
         formatDateOnlyForLocale={formatDateOnlyForLocale}
         formatPlannedTime={formatPlannedTime}
+        formatDayFraction={formatDayFraction}
       />
 
       <section id="dailyControls"
@@ -9969,7 +10216,7 @@ export function AppShell() {
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <div className="rounded-lg border border-line p-3">
                 <p className="text-[11px] font-medium text-muted">
                   {isFrench ? "Taches terminees" : "Done Tasks"}
@@ -10000,6 +10247,22 @@ export function AppShell() {
                     : isFrench
                     ? "En attente"
                     : "Pending"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-line p-3">
+                <p className="text-[11px] font-medium text-muted">
+                  {isFrench ? "Temps imputé" : "Imputed time"}
+                </p>
+                <p
+                  className={`mt-1 text-xl font-semibold ${
+                    imputedTimeTotal === 1
+                      ? "text-emerald-600"
+                      : imputedTimeTotal > 1
+                        ? "text-rose-600"
+                        : "text-foreground"
+                  }`}
+                >
+                  {formatDayFraction(imputedTimeTotal, activeLocale)} / 1
                 </p>
               </div>
             </div>
@@ -10839,7 +11102,7 @@ export function AppShell() {
               </div>
             </div>
 
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl border border-line bg-surface-soft px-3 py-3 text-sm">
                 <p className="font-semibold text-foreground">
                   {isFrench ? "Taches terminees" : "Tasks completed"}{" "}
@@ -10868,6 +11131,15 @@ export function AppShell() {
                 </p>
                 <p className="mt-1 text-xs text-muted">
                   {isFrench ? "Taux de completion" : "Completion rate"} {gamingTrackSummary.bilans.completionRate}%
+                </p>
+              </div>
+              <div className="rounded-xl border border-line bg-surface-soft px-3 py-3 text-sm">
+                <p className="font-semibold text-foreground">
+                  {isFrench ? "Journées imputées" : "Imputed days"}{" "}
+                  {gamingTrackSummary.imputations.completedDays}/{gamingTrackSummary.imputations.totalDays}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {isFrench ? "Jours à 1,00" : "Days at 1.00"} {gamingTrackSummary.imputations.completionRate}%
                 </p>
               </div>
             </div>
@@ -11408,6 +11680,33 @@ export function AppShell() {
                     disabled={isSubmittingTask}
                   />
                 </label>
+
+                {taskDialogMode === "edit" && editingTask && editingTask.targetDate === selectedDate ? (
+                  <label className="block text-sm font-semibold text-foreground">
+                    {isFrench ? "Temps imputé (jour)" : "Imputed time (day)"}
+                    <select
+                      value={(() => {
+                        const current = taskTimeEntryByTaskId.get(editingTask.id);
+                        return current === undefined ? "" : String(current);
+                      })()}
+                      onChange={(event) => {
+                        void handleTaskTimeFractionChange(
+                          editingTask.id,
+                          event.target.value === "" ? 0 : Number(event.target.value)
+                        );
+                      }}
+                      className={textFieldClass}
+                      disabled={isSubmittingTask || pendingTimeEntryTaskIds.includes(editingTask.id)}
+                    >
+                      <option value="">—</option>
+                      {DAY_FRACTION_OPTIONS.map((fraction) => (
+                        <option key={fraction} value={String(fraction)}>
+                          {formatDayFraction(fraction, activeLocale)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
 
               <div>
@@ -12150,11 +12449,13 @@ export function AppShell() {
         errorMessage={taskAlertsErrorMessage}
         anchorDate={taskAlertsAnchorDate}
         triageCount={taskTriageSummary?.count ?? 0}
+        pendingTransferTaskId={pendingTransferTaskId}
         onClose={() => setIsTaskAlertsPanelOpen(false)}
         onOpenTriage={() => {
           setIsTaskAlertsPanelOpen(false);
           setIsTaskTriagePanelOpen(true);
         }}
+        onTransferTaskToToday={(task) => { void handleTransferTaskToToday(task); }}
         onTaskClick={(task) => {
           setIsTaskAlertsPanelOpen(false);
 
@@ -12184,12 +12485,14 @@ export function AppShell() {
       <TaskTriagePanel
         isOpen={isTaskTriagePanelOpen}
         locale={activeLocale}
+        anchorDate={taskAlertsAnchorDate}
         tasks={taskTriageSummary?.tasks ?? []}
         isLoading={isTaskTriageLoading}
         errorMessage={taskTriageErrorMessage}
-        pendingTaskId={pendingTriageTaskId}
+        pendingTaskId={pendingTriageTaskId ?? pendingTransferTaskId}
         onClose={() => setIsTaskTriagePanelOpen(false)}
         onReschedule={(task, nextDate) => { void handleTriageReschedule(task, nextDate); }}
+        onTransferToday={(task) => { void handleTransferTaskToToday(task); }}
         onComplete={(task) => { void handleTriageStatusChange(task, "done"); }}
         onCancelTask={(task) => { void handleTriageStatusChange(task, "cancelled"); }}
         formatPriority={formatPriority}

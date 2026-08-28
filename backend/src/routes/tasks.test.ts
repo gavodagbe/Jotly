@@ -8,6 +8,11 @@ import {
   CalendarEventUpsertInput,
 } from "../google-calendar/calendar-event-store";
 import { formatDateOnly, TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
+import {
+  TaskTimeEntryRecord,
+  TaskTimeEntryStore,
+  UpsertTaskTimeEntryInput,
+} from "../tasks/task-time-entry-store";
 
 class InMemoryTaskStore implements TaskStore {
   private readonly tasks = new Map<string, Task>();
@@ -229,14 +234,49 @@ class InMemoryCalendarEventStore implements CalendarEventStore {
   async deleteByConnectionId(): Promise<void> {}
 }
 
+class InMemoryTaskTimeEntryStore implements TaskTimeEntryStore {
+  private readonly entries = new Map<string, TaskTimeEntryRecord & { userId: string }>();
+
+  private key(taskId: string, entryDate: Date): string {
+    return `${taskId}::${formatDateOnly(entryDate)}`;
+  }
+
+  async listByDate(userId: string, entryDate: Date): Promise<TaskTimeEntryRecord[]> {
+    const dateKey = formatDateOnly(entryDate);
+    return [...this.entries.values()]
+      .filter((entry) => entry.userId === userId && formatDateOnly(entry.entryDate) === dateKey)
+      .map(({ taskId, entryDate: date, fraction }) => ({ taskId, entryDate: date, fraction }));
+  }
+
+  async upsert(input: UpsertTaskTimeEntryInput): Promise<TaskTimeEntryRecord> {
+    const record = {
+      taskId: input.taskId,
+      userId: input.userId,
+      entryDate: input.entryDate,
+      fraction: input.fraction,
+    };
+    this.entries.set(this.key(input.taskId, input.entryDate), record);
+    return { taskId: record.taskId, entryDate: record.entryDate, fraction: record.fraction };
+  }
+
+  async remove(taskId: string, entryDate: Date): Promise<void> {
+    this.entries.delete(this.key(taskId, entryDate));
+  }
+}
+
 function parsePayload(payload: string) {
   return JSON.parse(payload) as Record<string, unknown>;
 }
 
-function createAppForTest(options?: { calendarEventStore?: CalendarEventStore; taskStore?: TaskStore }) {
+function createAppForTest(options?: {
+  calendarEventStore?: CalendarEventStore;
+  taskStore?: TaskStore;
+  taskTimeEntryStore?: TaskTimeEntryStore;
+}) {
   return buildApp({
     logLevel: "silent",
     taskStore: options?.taskStore ?? new InMemoryTaskStore(),
+    taskTimeEntryStore: options?.taskTimeEntryStore ?? new InMemoryTaskTimeEntryStore(),
     authStore: new InMemoryAuthStore(),
     calendarEventStore: options?.calendarEventStore,
   });
@@ -1050,4 +1090,179 @@ test("task endpoints require authentication", async (t) => {
     code: "UNAUTHORIZED",
     message: "Authentication is required"
   });
+});
+
+async function createTaskForTest(
+  app: ReturnType<typeof createAppForTest>,
+  token: string,
+  payload: Record<string, unknown>
+): Promise<string> {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: { title: "Task", targetDate: "2026-08-28", ...payload },
+  });
+  assert.equal(response.statusCode, 201);
+  const body = parsePayload(response.payload);
+  return (body.data as { id: string }).id;
+}
+
+test("PUT /api/tasks/:id/time-entry upserts a fraction and returns the day total", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+  const firstTaskId = await createTaskForTest(app, token, { title: "First" });
+  const secondTaskId = await createTaskForTest(app, token, { title: "Second" });
+
+  const firstResponse = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${firstTaskId}/time-entry`,
+    headers: authHeaders(token),
+    payload: { date: "2026-08-28", fraction: 0.6 },
+  });
+  assert.equal(firstResponse.statusCode, 200);
+  assert.deepEqual((parsePayload(firstResponse.payload).data as Record<string, unknown>), {
+    taskId: firstTaskId,
+    date: "2026-08-28",
+    fraction: 0.6,
+    dayTotal: 0.6,
+  });
+
+  const secondResponse = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${secondTaskId}/time-entry`,
+    headers: authHeaders(token),
+    payload: { date: "2026-08-28", fraction: 0.4 },
+  });
+  assert.equal(secondResponse.statusCode, 200);
+  assert.equal((parsePayload(secondResponse.payload).data as { dayTotal: number }).dayTotal, 1);
+
+  const listResponse = await app.inject({
+    method: "GET",
+    url: "/api/tasks/time-entries?date=2026-08-28",
+    headers: authHeaders(token),
+  });
+  assert.equal(listResponse.statusCode, 200);
+  const listData = parsePayload(listResponse.payload).data as {
+    date: string;
+    total: number;
+    entries: Array<{ taskId: string; fraction: number }>;
+  };
+  assert.equal(listData.total, 1);
+  assert.equal(listData.entries.length, 2);
+});
+
+test("PUT /api/tasks/:id/time-entry rounds the fraction to the nearest 0.05 step", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+  const taskId = await createTaskForTest(app, token, {});
+
+  const response = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${taskId}/time-entry`,
+    headers: authHeaders(token),
+    payload: { date: "2026-08-28", fraction: 0.33 },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal((parsePayload(response.payload).data as { fraction: number }).fraction, 0.35);
+});
+
+test("PUT /api/tasks/:id/time-entry with fraction 0 removes the entry", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+  const taskId = await createTaskForTest(app, token, {});
+
+  await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${taskId}/time-entry`,
+    headers: authHeaders(token),
+    payload: { date: "2026-08-28", fraction: 0.5 },
+  });
+  const clearResponse = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${taskId}/time-entry`,
+    headers: authHeaders(token),
+    payload: { date: "2026-08-28", fraction: 0 },
+  });
+  assert.equal(clearResponse.statusCode, 200);
+  assert.equal((parsePayload(clearResponse.payload).data as { dayTotal: number }).dayTotal, 0);
+
+  const listResponse = await app.inject({
+    method: "GET",
+    url: "/api/tasks/time-entries?date=2026-08-28",
+    headers: authHeaders(token),
+  });
+  assert.equal((parsePayload(listResponse.payload).data as { entries: unknown[] }).entries.length, 0);
+});
+
+test("PUT /api/tasks/:id/time-entry rejects fractions outside 0..1", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+  const taskId = await createTaskForTest(app, token, {});
+
+  const response = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${taskId}/time-entry`,
+    headers: authHeaders(token),
+    payload: { date: "2026-08-28", fraction: 1.5 },
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal((parsePayload(response.payload).error as { code: string }).code, "VALIDATION_ERROR");
+});
+
+test("PUT /api/tasks/:id/time-entry returns 404 for a task owned by another user", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const ownerToken = await registerAndGetToken(app);
+  const otherToken = await registerAndGetToken(app);
+  const taskId = await createTaskForTest(app, ownerToken, {});
+
+  const response = await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${taskId}/time-entry`,
+    headers: authHeaders(otherToken),
+    payload: { date: "2026-08-28", fraction: 0.5 },
+  });
+  assert.equal(response.statusCode, 404);
+});
+
+test("GET /api/tasks/time-entries isolates entries per user", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const ownerToken = await registerAndGetToken(app);
+  const otherToken = await registerAndGetToken(app);
+  const ownerTaskId = await createTaskForTest(app, ownerToken, {});
+
+  await app.inject({
+    method: "PUT",
+    url: `/api/tasks/${ownerTaskId}/time-entry`,
+    headers: authHeaders(ownerToken),
+    payload: { date: "2026-08-28", fraction: 0.5 },
+  });
+
+  const otherListResponse = await app.inject({
+    method: "GET",
+    url: "/api/tasks/time-entries?date=2026-08-28",
+    headers: authHeaders(otherToken),
+  });
+  assert.equal(otherListResponse.statusCode, 200);
+  const otherData = parsePayload(otherListResponse.payload).data as { total: number; entries: unknown[] };
+  assert.equal(otherData.total, 0);
+  assert.equal(otherData.entries.length, 0);
 });

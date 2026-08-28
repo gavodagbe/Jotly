@@ -151,6 +151,7 @@ class InMemoryProfileStore implements ProfileStore {
       preferredTimeZone: user.preferredTimeZone ?? null,
       requireDailyAffirmation: user.requireDailyAffirmation ?? false,
       requireDailyBilan: user.requireDailyBilan ?? false,
+      requireDailyTimeImputation: user.requireDailyTimeImputation ?? false,
       requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
       requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
       createdAt: user.createdAt,
@@ -165,6 +166,7 @@ class InMemoryProfileStore implements ProfileStore {
       ...(input.preferredTimeZone !== undefined ? { preferredTimeZone: input.preferredTimeZone ?? null } : {}),
       ...(input.requireDailyAffirmation !== undefined ? { requireDailyAffirmation: input.requireDailyAffirmation } : {}),
       ...(input.requireDailyBilan !== undefined ? { requireDailyBilan: input.requireDailyBilan } : {}),
+      ...(input.requireDailyTimeImputation !== undefined ? { requireDailyTimeImputation: input.requireDailyTimeImputation } : {}),
       ...(input.requireWeeklySynthesis !== undefined ? { requireWeeklySynthesis: input.requireWeeklySynthesis } : {}),
       ...(input.requireMonthlySynthesis !== undefined ? { requireMonthlySynthesis: input.requireMonthlySynthesis } : {}),
     });
@@ -181,6 +183,7 @@ class InMemoryProfileStore implements ProfileStore {
       preferredTimeZone: user.preferredTimeZone ?? null,
       requireDailyAffirmation: user.requireDailyAffirmation ?? false,
       requireDailyBilan: user.requireDailyBilan ?? false,
+      requireDailyTimeImputation: user.requireDailyTimeImputation ?? false,
       requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
       requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
       createdAt: user.createdAt,

@@ -45,9 +45,14 @@ class InMemoryGamingTrackStore implements GamingTrackStore {
   private readonly taskRecords: Array<GamingTrackTaskRecord & { userId: string }> = [];
   private readonly affirmationRecords: Array<GamingTrackAffirmationRecord & { userId: string }> = [];
   private readonly bilanRecords: Array<GamingTrackBilanRecord & { userId: string }> = [];
+  private readonly timeEntryRecords: Array<{ userId: string; entryDate: Date; fraction: number }> = [];
 
   seedTask(userId: string, record: GamingTrackTaskRecord) {
     this.taskRecords.push({ userId, ...record });
+  }
+
+  seedTimeEntry(userId: string, record: { entryDate: Date; fraction: number }) {
+    this.timeEntryRecords.push({ userId, ...record });
   }
 
   seedAffirmation(userId: string, record: GamingTrackAffirmationRecord) {
@@ -78,6 +83,9 @@ class InMemoryGamingTrackStore implements GamingTrackStore {
           lessonsLearned,
           tomorrowTop3,
         })),
+      timeEntries: this.timeEntryRecords
+        .filter((record) => record.userId === userId && isInRange(record.entryDate))
+        .map(({ entryDate, fraction }) => ({ entryDate, fraction })),
     };
   }
 
@@ -99,6 +107,9 @@ class InMemoryGamingTrackStore implements GamingTrackStore {
           lessonsLearned,
           tomorrowTop3,
         })),
+      timeEntries: this.timeEntryRecords
+        .filter((record) => record.userId === userId)
+        .map(({ entryDate, fraction }) => ({ entryDate, fraction })),
     };
   }
 }
@@ -207,6 +218,14 @@ function createAppForTest() {
       logLevel: "silent",
       taskStore: new NoopTaskStore(),
       authStore: new InMemoryAuthStore(),
+      profileStore: {
+        async getByUserId() {
+          return null;
+        },
+        async updateByUserId() {
+          return null;
+        },
+      },
       gamingTrackService: createGamingTrackService(gamingTrackStore),
     }),
   };
@@ -451,7 +470,7 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
   assert.equal(data.weeklyMissionWindow.rangeStart, "2026-03-02");
   assert.equal(data.weeklyMissionWindow.rangeEnd, "2026-03-08");
   assert.equal(data.weeklyMissionWindow.trackedDays, 7);
-  assert.equal(data.missions.length, 4);
+  assert.equal(data.missions.length, 5);
   assert.equal(data.missions[0]?.id, "done_tasks");
   assert.equal(data.missions[0]?.target, 8);
   assert.equal(data.missions[0]?.progress, 3);
@@ -462,6 +481,9 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
   assert.equal(data.missions[2]?.progress, 3);
   assert.equal(data.missions[3]?.id, "execution_streak");
   assert.equal(data.missions[3]?.progress, 1);
+  assert.equal(data.missions[4]?.id, "imputation_days");
+  assert.equal(data.missions[4]?.target, 4);
+  assert.equal(data.missions[4]?.progress, 0);
 
   assert.equal(data.personalBests.dailyDoneTasks, 1);
   assert.equal(data.personalBests.dailyDoneTasksDate, "2026-03-08");
@@ -484,6 +506,37 @@ test("GET /api/gaming-track/summary returns week-to-date gaming metrics", async 
   assert.equal(data.historicalTrends.monthly[11]?.rangeStart, "2026-03-01");
   assert.equal(data.historicalTrends.monthly[11]?.rangeEnd, "2026-03-08");
   assert.equal(data.historicalTrends.monthly[11]?.overallScore, 44);
+});
+
+test("GET /api/gaming-track/summary counts only days imputed to exactly 1", async (t) => {
+  const { app, gamingTrackStore } = createAppForTest();
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const token = await registerAndGetToken(app);
+  const userId = await getCurrentUserId(app, token);
+
+  // 2026-03-02: 0.6 + 0.4 = 1.0 -> counts
+  gamingTrackStore.seedTimeEntry(userId, { entryDate: parseDate("2026-03-02"), fraction: 0.6 });
+  gamingTrackStore.seedTimeEntry(userId, { entryDate: parseDate("2026-03-02"), fraction: 0.4 });
+  // 2026-03-03: 0.5 only -> does not count
+  gamingTrackStore.seedTimeEntry(userId, { entryDate: parseDate("2026-03-03"), fraction: 0.5 });
+  // Another user's full day must be ignored.
+  gamingTrackStore.seedTimeEntry("user-foreign", { entryDate: parseDate("2026-03-04"), fraction: 1 });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/gaming-track/summary?date=2026-03-08&period=week",
+    headers: authHeaders(token),
+  });
+
+  assert.equal(response.statusCode, 200);
+  const data = (parsePayload(response.payload).data as GamingTrackSummary);
+  assert.equal(data.imputations.completedDays, 1);
+  assert.equal(data.imputations.totalDays, 7);
+  assert.equal(data.missions.find((mission) => mission.id === "imputation_days")?.progress, 1);
 });
 
 test("gaming-track endpoint requires authentication", async (t) => {

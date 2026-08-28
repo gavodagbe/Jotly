@@ -15,6 +15,7 @@ type ProfileFormValues = {
   preferredTimeZone: string;
   requireDailyAffirmation: boolean;
   requireDailyBilan: boolean;
+  requireDailyTimeImputation: boolean;
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
 };
@@ -280,6 +281,7 @@ export function ProfileDialog({
                 [
                   { key: "requireDailyAffirmation" as const, labelFr: "Affirmation du jour", labelEn: "Daily Affirmation" },
                   { key: "requireDailyBilan" as const, labelFr: "Bilan du jour", labelEn: "Daily Review (Bilan)" },
+                  { key: "requireDailyTimeImputation" as const, labelFr: "Imputation du temps (total = 1)", labelEn: "Time imputation (total = 1)" },
                   { key: "requireWeeklySynthesis" as const, labelFr: "Synthese hebdomadaire (dimanche)", labelEn: "Weekly Synthesis (Sunday)" },
                   { key: "requireMonthlySynthesis" as const, labelFr: "Synthese mensuelle", labelEn: "Monthly Synthesis" },
                 ] as const

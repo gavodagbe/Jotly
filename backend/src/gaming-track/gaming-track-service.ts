@@ -10,7 +10,12 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 export type GamingTrackPeriod = "day" | "week" | "month" | "year";
 
-export type GamingTrackMissionId = "done_tasks" | "affirmation_days" | "bilan_days" | "execution_streak";
+export type GamingTrackMissionId =
+  | "done_tasks"
+  | "affirmation_days"
+  | "bilan_days"
+  | "execution_streak"
+  | "imputation_days";
 
 export type GamingTrackMission = {
   id: GamingTrackMissionId;
@@ -28,6 +33,7 @@ export type GamingTrackHistoricalPoint = {
   taskCompletionRate: number;
   affirmationCompletionRate: number;
   bilanCompletionRate: number;
+  imputationCompletionRate: number;
   overallScore: number;
 };
 
@@ -63,6 +69,11 @@ export type GamingTrackSummary = {
     completionRate: number;
   };
   bilans: {
+    completedDays: number;
+    totalDays: number;
+    completionRate: number;
+  };
+  imputations: {
     completedDays: number;
     totalDays: number;
     completionRate: number;
@@ -119,9 +130,31 @@ type ComputedWindow = {
   tasks: GamingTrackSummary["tasks"];
   affirmations: GamingTrackSummary["affirmations"];
   bilans: GamingTrackSummary["bilans"];
+  imputations: GamingTrackSummary["imputations"];
   streaks: GamingTrackSummary["streaks"];
   scores: Omit<GamingTrackSummary["scores"], "momentum">;
 };
+
+/** A day counts as fully imputed once its time fractions sum to exactly 1. */
+const FULL_DAY_IMPUTATION = 1;
+
+function getFullyImputedDays(entries: { entryDate: Date; fraction: number }[]): Set<string> {
+  const fractionByDate = new Map<string, number>();
+
+  for (const entry of entries) {
+    const dateKey = formatDateOnly(entry.entryDate);
+    fractionByDate.set(dateKey, (fractionByDate.get(dateKey) ?? 0) + entry.fraction);
+  }
+
+  const fullyImputedDays = new Set<string>();
+  for (const [dateKey, total] of fractionByDate.entries()) {
+    if (Math.abs(total - FULL_DAY_IMPUTATION) < 0.001) {
+      fullyImputedDays.add(dateKey);
+    }
+  }
+
+  return fullyImputedDays;
+}
 
 function startOfUtcDay(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
@@ -222,6 +255,7 @@ function getWindowSlice(window: GamingTrackWindowData, start: Date, endExclusive
     tasks: window.tasks.filter((record) => isDateInRange(record.targetDate, start, endExclusive)),
     affirmations: window.affirmations.filter((record) => isDateInRange(record.targetDate, start, endExclusive)),
     bilans: window.bilans.filter((record) => isDateInRange(record.targetDate, start, endExclusive)),
+    timeEntries: window.timeEntries.filter((record) => isDateInRange(record.entryDate, start, endExclusive)),
   };
 }
 
@@ -317,6 +351,10 @@ function computeWindowMetrics(window: GamingTrackWindowData, start: Date, endExc
   const completedBilanDays = getCompletedBilanDays(window.bilans);
   const bilanCompletionRate = trackedDays === 0 ? 0 : clampScore((completedBilanDays.size / trackedDays) * 100);
 
+  const fullyImputedDays = getFullyImputedDays(window.timeEntries);
+  const imputationCompletionRate =
+    trackedDays === 0 ? 0 : clampScore((fullyImputedDays.size / trackedDays) * 100);
+
   const dateKeys = getDateKeysInRange(start, endExclusive);
   const executionFlags = dateKeys.map((dateKey) => (doneTasksByDate.get(dateKey) ?? 0) > 0);
 
@@ -353,6 +391,11 @@ function computeWindowMetrics(window: GamingTrackWindowData, start: Date, endExc
       completedDays: completedAffirmationDays.size,
       totalDays: trackedDays,
       completionRate: affirmationCompletionRate,
+    },
+    imputations: {
+      completedDays: fullyImputedDays.size,
+      totalDays: trackedDays,
+      completionRate: imputationCompletionRate,
     },
     bilans: {
       completedDays: completedBilanDays.size,
@@ -487,6 +530,12 @@ function buildWeeklyMissions(weeklyMetrics: ComputedWindow): GamingTrackMission[
       progress: weeklyMetrics.streaks.executionActive,
       completed: weeklyMetrics.streaks.executionActive >= 4,
     },
+    {
+      id: "imputation_days",
+      target: 4,
+      progress: weeklyMetrics.imputations.completedDays,
+      completed: weeklyMetrics.imputations.completedDays >= 4,
+    },
   ];
 }
 
@@ -505,6 +554,7 @@ function buildHistoricalPoint(
     taskCompletionRate: metrics.tasks.completionRate,
     affirmationCompletionRate: metrics.affirmations.completionRate,
     bilanCompletionRate: metrics.bilans.completionRate,
+    imputationCompletionRate: metrics.imputations.completionRate,
     overallScore: metrics.scores.overall,
   };
 }
@@ -611,6 +661,7 @@ export function createGamingTrackService(store: GamingTrackStore): GamingTrackSe
         tasks: current.tasks,
         affirmations: current.affirmations,
         bilans: current.bilans,
+        imputations: current.imputations,
         streaks: current.streaks,
         scores: {
           ...current.scores,

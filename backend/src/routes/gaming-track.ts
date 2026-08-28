@@ -49,6 +49,7 @@ function serializeSummary(summary: GamingTrackSummary) {
     taskCompletionRate: point.taskCompletionRate,
     affirmationCompletionRate: point.affirmationCompletionRate,
     bilanCompletionRate: point.bilanCompletionRate,
+    imputationCompletionRate: point.imputationCompletionRate,
     overallScore: point.overallScore,
   });
 
@@ -61,6 +62,7 @@ function serializeSummary(summary: GamingTrackSummary) {
     tasks: summary.tasks,
     affirmations: summary.affirmations,
     bilans: summary.bilans,
+    imputations: summary.imputations,
     streaks: summary.streaks,
     scores: summary.scores,
     trend: summary.trend,

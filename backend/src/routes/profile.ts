@@ -23,6 +23,7 @@ const profileUpdateSchema = z
     preferredTimeZone: z.string().trim().max(120, "preferredTimeZone is too long").nullable().optional(),
     requireDailyAffirmation: z.boolean().optional(),
     requireDailyBilan: z.boolean().optional(),
+    requireDailyTimeImputation: z.boolean().optional(),
     requireWeeklySynthesis: z.boolean().optional(),
     requireMonthlySynthesis: z.boolean().optional(),
   })
@@ -33,6 +34,7 @@ const profileUpdateSchema = z
       value.preferredTimeZone !== undefined ||
       value.requireDailyAffirmation !== undefined ||
       value.requireDailyBilan !== undefined ||
+      value.requireDailyTimeImputation !== undefined ||
       value.requireWeeklySynthesis !== undefined ||
       value.requireMonthlySynthesis !== undefined,
     {
@@ -88,6 +90,7 @@ function serializeProfile(profile: {
   preferredTimeZone: string | null;
   requireDailyAffirmation: boolean;
   requireDailyBilan: boolean;
+  requireDailyTimeImputation: boolean;
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
   createdAt: Date;
@@ -101,6 +104,7 @@ function serializeProfile(profile: {
     preferredTimeZone: profile.preferredTimeZone,
     requireDailyAffirmation: profile.requireDailyAffirmation,
     requireDailyBilan: profile.requireDailyBilan,
+    requireDailyTimeImputation: profile.requireDailyTimeImputation,
     requireWeeklySynthesis: profile.requireWeeklySynthesis,
     requireMonthlySynthesis: profile.requireMonthlySynthesis,
     createdAt: profile.createdAt.toISOString(),
@@ -180,6 +184,7 @@ const profileRoutes: FastifyPluginAsync<ProfileRouteOptions> = async (app, optio
         preferredTimeZone,
         requireDailyAffirmation: bodyResult.data.requireDailyAffirmation,
         requireDailyBilan: bodyResult.data.requireDailyBilan,
+        requireDailyTimeImputation: bodyResult.data.requireDailyTimeImputation,
         requireWeeklySynthesis: bodyResult.data.requireWeeklySynthesis,
         requireMonthlySynthesis: bodyResult.data.requireMonthlySynthesis,
       });

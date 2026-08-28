@@ -20,10 +20,16 @@ export type GamingTrackBilanRecord = {
   tomorrowTop3: string | null;
 };
 
+export type GamingTrackTimeEntryRecord = {
+  entryDate: Date;
+  fraction: number;
+};
+
 export type GamingTrackWindowData = {
   tasks: GamingTrackTaskRecord[];
   affirmations: GamingTrackAffirmationRecord[];
   bilans: GamingTrackBilanRecord[];
+  timeEntries: GamingTrackTimeEntryRecord[];
 };
 
 export type GamingTrackStore = {
@@ -53,9 +59,22 @@ export function createPrismaGamingTrackStore(prisma = new PrismaClient()): Gamin
     tomorrowTop3: true,
   } as const;
 
+  const timeEntrySelect = {
+    entryDate: true,
+    fraction: true,
+  } as const;
+
+  const mapTimeEntries = (
+    entries: { entryDate: Date; fraction: unknown }[]
+  ): GamingTrackTimeEntryRecord[] =>
+    entries.map((entry) => ({
+      entryDate: entry.entryDate,
+      fraction: Number(entry.fraction),
+    }));
+
   return {
     async getWindowData(userId, start, endExclusive) {
-      const [tasks, affirmations, bilans] = await Promise.all([
+      const [tasks, affirmations, bilans, timeEntries] = await Promise.all([
         prisma.task.findMany({
           where: {
             userId,
@@ -86,17 +105,28 @@ export function createPrismaGamingTrackStore(prisma = new PrismaClient()): Gamin
           },
           select: bilanSelect,
         }),
+        prisma.taskTimeEntry.findMany({
+          where: {
+            userId,
+            entryDate: {
+              gte: start,
+              lt: endExclusive,
+            },
+          },
+          select: timeEntrySelect,
+        }),
       ]);
 
       return {
         tasks,
         affirmations,
         bilans,
+        timeEntries: mapTimeEntries(timeEntries),
       };
     },
 
     async getLifetimeData(userId) {
-      const [tasks, affirmations, bilans] = await Promise.all([
+      const [tasks, affirmations, bilans, timeEntries] = await Promise.all([
         prisma.task.findMany({
           where: { userId },
           select: taskSelect,
@@ -109,12 +139,17 @@ export function createPrismaGamingTrackStore(prisma = new PrismaClient()): Gamin
           where: { userId },
           select: bilanSelect,
         }),
+        prisma.taskTimeEntry.findMany({
+          where: { userId },
+          select: timeEntrySelect,
+        }),
       ]);
 
       return {
         tasks,
         affirmations,
         bilans,
+        timeEntries: mapTimeEntries(timeEntries),
       };
     },
 
