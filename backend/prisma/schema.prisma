@@ -42,6 +42,7 @@ model User {
   preferredTimeZone String?
   requireDailyAffirmation  Boolean @default(false)
   requireDailyBilan        Boolean @default(false)
+  requireDailyTimeImputation Boolean @default(false)
   requireWeeklySynthesis   Boolean @default(false)
   requireMonthlySynthesis  Boolean @default(false)
   sessions     Session[]
@@ -62,6 +63,7 @@ model User {
   projects     Project[]
   routineTemplates RoutineTemplate[]
   routineCompletions RoutineCompletion[]
+  taskTimeEntries TaskTimeEntry[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -117,6 +119,7 @@ model Task {
   cancelledAt              DateTime?
   comments                 TaskComment[]
   attachments              TaskAttachment[]
+  timeEntries              TaskTimeEntry[]
   recurrenceRule           TaskRecurrenceRule?
   user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   projectRef               Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -225,6 +228,21 @@ model TaskAttachment {
   task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt])
+}
+
+model TaskTimeEntry {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  entryDate DateTime @db.Date
+  fraction  Decimal  @db.Decimal(3, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, entryDate])
+  @@index([userId, entryDate])
 }
 
 model TaskRecurrenceRule {

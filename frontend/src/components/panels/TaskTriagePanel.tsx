@@ -25,12 +25,14 @@ const priorityChipClassByPriority: Record<TaskPriority, string> = {
 export type TaskTriagePanelProps = {
   isOpen: boolean;
   locale: UserLocale;
+  anchorDate: string;
   tasks: TriageTask[];
   isLoading: boolean;
   errorMessage: string | null;
   pendingTaskId: string | null;
   onClose: () => void;
   onReschedule: (task: TriageTask, nextDate: string) => void;
+  onTransferToday: (task: TriageTask) => void;
   onComplete: (task: TriageTask) => void;
   onCancelTask: (task: TriageTask) => void;
   formatPriority: (priority: TaskPriority, locale: UserLocale) => string;
@@ -39,12 +41,14 @@ export type TaskTriagePanelProps = {
 export function TaskTriagePanel({
   isOpen,
   locale,
+  anchorDate,
   tasks,
   isLoading,
   errorMessage,
   pendingTaskId,
   onClose,
   onReschedule,
+  onTransferToday,
   onComplete,
   onCancelTask,
   formatPriority,
@@ -128,6 +132,14 @@ export function TaskTriagePanel({
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="rounded-md bg-accent-soft px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft/70 disabled:opacity-50"
+                      disabled={isPending || task.targetDate === anchorDate}
+                      onClick={() => onTransferToday(task)}
+                    >
+                      {isFrench ? "Transférer aujourd'hui" : "Move to today"}
+                    </button>
                     <input
                       type="date"
                       value={draftDate}

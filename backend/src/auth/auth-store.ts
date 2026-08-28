@@ -9,6 +9,7 @@ export type AuthUser = {
   preferredTimeZone?: string | null;
   requireDailyAffirmation?: boolean;
   requireDailyBilan?: boolean;
+  requireDailyTimeImputation?: boolean;
   requireWeeklySynthesis?: boolean;
   requireMonthlySynthesis?: boolean;
   createdAt: Date;

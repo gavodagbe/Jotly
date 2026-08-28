@@ -17,6 +17,7 @@ export type AuthenticatedUser = {
   preferredTimeZone: string | null;
   requireDailyAffirmation: boolean;
   requireDailyBilan: boolean;
+  requireDailyTimeImputation: boolean;
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
   createdAt: string;
@@ -147,6 +148,7 @@ function toAuthenticatedUser(user: AuthUser): AuthenticatedUser {
     preferredTimeZone: user.preferredTimeZone ?? null,
     requireDailyAffirmation: user.requireDailyAffirmation ?? false,
     requireDailyBilan: user.requireDailyBilan ?? false,
+    requireDailyTimeImputation: user.requireDailyTimeImputation ?? false,
     requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
     requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
     createdAt: user.createdAt.toISOString(),

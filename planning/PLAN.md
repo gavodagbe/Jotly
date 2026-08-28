@@ -44,6 +44,9 @@ Completed:
 - AI assistant module (backend route + frontend panel — structured retrieval with optional workspace text search augmentation)
 - day affirmation module (API + frontend panel)
 - yesterday carry-over action for non-completed tasks (API + frontend action)
+- stale task triage screen (tasks overdue by more than 14 days) with reschedule/complete/cancel
+- "Move to today" quick transfer for overdue tasks (Alerts + Triage panels) with an auto history comment
+- daily time imputation module (`TaskTimeEntry` table + API + per-task dropdown + day gauge + gaming-track/bilan integration)
 - day bilan module (API + frontend panel)
 - completion percentage now includes day affirmation completion
 - user profile/preferences module (display name + preferred locale + preferred timezone)
@@ -92,6 +95,21 @@ Latest alerts conventions:
 - unresolved items stay visible until the task becomes `done`/`cancelled` or the reminder becomes `completed`/`cancelled`
 - alert summary and ordering prioritize `overdue`, then `today`, then `tomorrow`
 - reminder entries in the alert panel expose direct `complete` / `cancel` actions
+- Alerts only lists overdue tasks within a 14-day window; `GET /api/tasks/triage?date=YYYY-MM-DD` returns older stale tasks (`todo`/`in_progress`, `dueDate` older than 14 days) with a `daysOverdue` field
+- overdue task entries in Alerts and every entry in Triage expose a "Move to today" action:
+  - `PATCH /api/tasks/:id` sets `targetDate` to today, and `dueDate` to today only when it was already in the past
+  - the frontend then posts a plain history comment via `POST /api/tasks/:id/comments` (e.g. "Tâche transférée du 14/08/2026 au 28/08/2026."); the comment is best-effort and never blocks the transfer
+
+Latest time imputation conventions:
+- `TaskTimeEntry` table: one row per `(taskId, entryDate)` holding a `fraction` decimal in day units (0.05 steps, 0..1)
+- endpoints:
+  - `GET /api/tasks/time-entries?date=YYYY-MM-DD` — returns `{ date, total, entries: [{ taskId, fraction }] }` for the authenticated user
+  - `PUT /api/tasks/:id/time-entry` — body `{ date, fraction }`; upserts, `fraction` is rounded to the nearest 0.05 step and clamped to `[0,1]`; `fraction` 0 deletes the entry; response includes the recomputed `dayTotal`
+- a `total > 1` is allowed (surfaced, not blocked)
+- frontend: per-task dropdown on the board card and in the task detail modal; board header gauge shows `Σ / 1` (green at 1, red above 1), excluding `cancelled` tasks
+- the Day Bilan panel shows the same daily total read-only
+- gaming track exposes an `imputations` block (`completedDays` / `totalDays` / `completionRate`) plus an `imputation_days` weekly mission; a day counts only when its fractions sum to exactly 1; scoring formulas are unchanged
+- profile preference `requireDailyTimeImputation` (default off): when on, navigating away from a past day is blocked until that day's imputed total equals 1 (same guard mechanism as `requireDailyBilan`)
 
 Latest reminders conventions:
 - endpoints:
@@ -196,6 +214,7 @@ Gaming Track status:
   - `POST /api/gaming-track/streak-protection/use`
   - `POST /api/gaming-track/nudges/dismiss`
   - tasks + affirmation + bilan completion analytics
+  - daily time imputation analytics (`imputations` block + `imputation_days` weekly mission; scoring formulas unchanged)
   - streak and scoring outputs (execution, reflection, consistency, momentum, overall)
   - top-of-dashboard score card with period switch
   - weekly missions

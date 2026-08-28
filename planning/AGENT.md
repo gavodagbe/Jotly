@@ -442,9 +442,11 @@ The modules below define intended boundaries without pre-building abstractions.
 - Storage fields (on `User`):
   - `preferredLocale` (currently `en` or `fr`)
   - `preferredTimeZone` (IANA timezone)
+  - mandatory-section flags: `requireDailyAffirmation`, `requireDailyBilan`, `requireDailyTimeImputation`, `requireWeeklySynthesis`, `requireMonthlySynthesis`
 - Current behavior:
   - stores and serves profile-level identity/localization preferences
   - powers frontend localization and timezone rendering
+  - mandatory-section flags gate day/period navigation until the enabled sections are complete (`requireDailyTimeImputation` requires a past day's imputed time total to equal 1)
 - Current status: implemented.
 
 ### Reporting

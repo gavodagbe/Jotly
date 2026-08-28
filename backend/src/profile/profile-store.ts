@@ -8,6 +8,7 @@ export type UserProfile = {
   preferredTimeZone: string | null;
   requireDailyAffirmation: boolean;
   requireDailyBilan: boolean;
+  requireDailyTimeImputation: boolean;
   requireWeeklySynthesis: boolean;
   requireMonthlySynthesis: boolean;
   createdAt: Date;
@@ -20,6 +21,7 @@ export type UserProfileUpdateInput = {
   preferredTimeZone?: string | null;
   requireDailyAffirmation?: boolean;
   requireDailyBilan?: boolean;
+  requireDailyTimeImputation?: boolean;
   requireWeeklySynthesis?: boolean;
   requireMonthlySynthesis?: boolean;
 };
@@ -38,6 +40,7 @@ const profileSelect = {
   preferredTimeZone: true,
   requireDailyAffirmation: true,
   requireDailyBilan: true,
+  requireDailyTimeImputation: true,
   requireWeeklySynthesis: true,
   requireMonthlySynthesis: true,
   createdAt: true,
@@ -59,6 +62,7 @@ export function createPrismaProfileStore(prisma = new PrismaClient()): ProfileSt
           ...(input.preferredTimeZone !== undefined ? { preferredTimeZone: input.preferredTimeZone ?? null } : {}),
           ...(input.requireDailyAffirmation !== undefined ? { requireDailyAffirmation: input.requireDailyAffirmation } : {}),
           ...(input.requireDailyBilan !== undefined ? { requireDailyBilan: input.requireDailyBilan } : {}),
+          ...(input.requireDailyTimeImputation !== undefined ? { requireDailyTimeImputation: input.requireDailyTimeImputation } : {}),
           ...(input.requireWeeklySynthesis !== undefined ? { requireWeeklySynthesis: input.requireWeeklySynthesis } : {}),
           ...(input.requireMonthlySynthesis !== undefined ? { requireMonthlySynthesis: input.requireMonthlySynthesis } : {}),
         },

@@ -100,9 +100,11 @@ export type TaskAlertsPanelProps = {
   errorMessage: string | null;
   anchorDate: string;
   triageCount: number;
+  pendingTransferTaskId: string | null;
   onClose: () => void;
   onOpenTriage: () => void;
   onTaskClick: (task: Task) => void;
+  onTransferTaskToToday: (task: Task) => void;
   onReminderClick: (reminder: Reminder) => void;
   onCompleteReminder: (reminderId: string) => void;
   onCancelReminder: (reminderId: string) => void;
@@ -126,9 +128,11 @@ export function TaskAlertsPanel({
   errorMessage,
   anchorDate,
   triageCount,
+  pendingTransferTaskId,
   onClose,
   onOpenTriage,
   onTaskClick,
+  onTransferTaskToToday,
   onReminderClick,
   onCompleteReminder,
   onCancelReminder,
@@ -193,42 +197,58 @@ export function TaskAlertsPanel({
         {!isLoading && !errorMessage && items.length
           ? items.map((item) =>
               item.sourceType === "task" ? (
-                <button
+                <article
                   key={item.task.id}
-                  type="button"
-                  className="w-full rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3 text-left transition-colors hover:border-accent/30 hover:bg-surface-soft"
-                  onClick={() => onTaskClick(item.task)}
+                  className="rounded-2xl border border-line bg-surface-soft/60 px-3.5 py-3"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertSourceChipClassByType.task}`}>
-                          {formatAlertSourceLabel("task", locale)}
-                        </span>
-                        <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertUrgencyChipClassByUrgency[item.urgency]}`}>
-                          {formatAlertUrgencyLabel(item.urgency, locale)}
-                        </span>
+                  <button
+                    type="button"
+                    className="w-full text-left transition-colors"
+                    onClick={() => onTaskClick(item.task)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertSourceChipClassByType.task}`}>
+                            {formatAlertSourceLabel("task", locale)}
+                          </span>
+                          <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${alertUrgencyChipClassByUrgency[item.urgency]}`}>
+                            {formatAlertUrgencyLabel(item.urgency, locale)}
+                          </span>
+                        </div>
+                        <p className="mt-2 truncate text-sm font-semibold text-foreground">{item.task.title}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {item.task.dueDate
+                            ? `${formatDateOnlyForLocale(item.task.dueDate, locale)}`
+                            : isFrench
+                              ? "Aucune date d'echeance"
+                              : "No due date"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted">
+                          {isFrench ? "Planifiee" : "Scheduled"} {formatDateOnlyForLocale(item.task.targetDate, locale)}
+                          {item.task.project
+                            ? ` · ${item.task.project}${item.task.subProject ? ` › ${item.task.subProject}` : ""}`
+                            : ""}
+                        </p>
                       </div>
-                      <p className="mt-2 truncate text-sm font-semibold text-foreground">{item.task.title}</p>
-                      <p className="mt-1 text-xs text-muted">
-                        {item.task.dueDate
-                          ? `${formatDateOnlyForLocale(item.task.dueDate, locale)}`
-                          : isFrench
-                            ? "Aucune date d'echeance"
-                            : "No due date"}
-                      </p>
-                      <p className="mt-1 text-[11px] text-muted">
-                        {isFrench ? "Planifiee" : "Scheduled"} {formatDateOnlyForLocale(item.task.targetDate, locale)}
-                        {item.task.project
-                          ? ` · ${item.task.project}${item.task.subProject ? ` › ${item.task.subProject}` : ""}`
-                          : ""}
-                      </p>
+                      <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[item.task.priority]}`}>
+                        {formatPriority(item.task.priority, locale)}
+                      </span>
                     </div>
-                    <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${priorityChipClassByPriority[item.task.priority]}`}>
-                      {formatPriority(item.task.priority, locale)}
-                    </span>
-                  </div>
-                </button>
+                  </button>
+                  {item.urgency === "overdue" && item.task.targetDate !== anchorDate ? (
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
+                        disabled={pendingTransferTaskId === item.task.id}
+                        onClick={() => onTransferTaskToToday(item.task)}
+                      >
+                        {isFrench ? "Transférer aujourd'hui" : "Move to today"}
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
               ) : (
                 <article
                   key={item.reminder.id}

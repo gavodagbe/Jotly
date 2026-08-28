@@ -42,16 +42,24 @@ const priorityChipClassByPriority: Record<TaskPriority, string> = {
   high: "border border-rose-200 bg-rose-50 text-rose-700",
 };
 
+export const DAY_FRACTION_OPTIONS: number[] = Array.from({ length: 20 }, (_, index) =>
+  Math.round((index + 1) * 5) / 100
+);
+
 type TaskCardProps = {
   locale: UserLocale;
   task: Task;
   isDragging: boolean;
   isSaving: boolean;
+  timeFraction: number | null;
+  isTimeSaving: boolean;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onTimeFractionChange: (taskId: string, fraction: number) => void;
   formatPriority: (priority: TaskPriority, locale: UserLocale) => string;
   formatDateOnlyForLocale: (value: string, locale: UserLocale) => string;
   formatPlannedTime: (totalMinutes: number) => string;
+  formatDayFraction: (value: number, locale: UserLocale) => string;
 };
 
 export function TaskCard({
@@ -59,11 +67,15 @@ export function TaskCard({
   task,
   isDragging,
   isSaving,
+  timeFraction,
+  isTimeSaving,
   onEdit,
   onDelete,
+  onTimeFractionChange,
   formatPriority,
   formatDateOnlyForLocale,
   formatPlannedTime,
+  formatDayFraction,
 }: TaskCardProps) {
   const isFrench = locale === "fr";
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
@@ -147,6 +159,33 @@ export function TaskCard({
           <span className="rounded-md bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
             {formatPlannedTime(task.plannedTime)}
           </span>
+        ) : null}
+        {task.status !== "cancelled" ? (
+          <label
+            className="inline-flex items-center gap-1 rounded-md bg-surface-soft px-1.5 py-0.5 text-[11px] text-muted"
+            onPointerDown={(event) => event.stopPropagation()}
+            title={isFrench ? "Temps imputé sur la journée" : "Time imputed on the day"}
+          >
+            <span aria-hidden>⏱</span>
+            <select
+              value={timeFraction === null ? "" : String(timeFraction)}
+              disabled={isSaving || isTimeSaving}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) =>
+                onTimeFractionChange(task.id, event.target.value === "" ? 0 : Number(event.target.value))
+              }
+              className="bg-transparent text-[11px] text-foreground focus:outline-none"
+              aria-label={isFrench ? "Temps imputé" : "Imputed time"}
+            >
+              <option value="">—</option>
+              {DAY_FRACTION_OPTIONS.map((fraction) => (
+                <option key={fraction} value={String(fraction)}>
+                  {formatDayFraction(fraction, locale)}
+                </option>
+              ))}
+            </select>
+          </label>
         ) : null}
         {task.recurrenceSourceTaskId ? (
           <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">

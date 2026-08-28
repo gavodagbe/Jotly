@@ -13,12 +13,14 @@ import {
   zodIssuesToStrings,
 } from "./route-helpers";
 import { formatDateOnly, parseDateOnly, TaskStore, TaskUpdateInput } from "../tasks/task-store";
+import { TaskTimeEntryStore } from "../tasks/task-time-entry-store";
 import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { ProjectStore } from "../projects/project-store";
 import { resolveProjectSelection } from "../projects/project-selection";
 
 type TasksRouteOptions = {
   taskStore: TaskStore;
+  taskTimeEntryStore?: TaskTimeEntryStore;
   authService: AuthService;
   recurrenceStore?: RecurrenceStore;
   calendarEventStore?: CalendarEventStore;
@@ -90,6 +92,34 @@ const listTaskAlertsQuerySchema = z.object({
 const listTaskTriageQuerySchema = z.object({
   date: targetDateSchema
 });
+
+const dateOnlySchema = z
+  .string()
+  .refine((value) => parseDateOnly(value) !== null, {
+    message: "date must be a valid date in YYYY-MM-DD format"
+  });
+
+const listTimeEntriesQuerySchema = z.object({
+  date: dateOnlySchema
+});
+
+const upsertTimeEntryBodySchema = z.object({
+  date: dateOnlySchema,
+  fraction: z.number().min(0, "fraction must be between 0 and 1").max(1, "fraction must be between 0 and 1")
+});
+
+const TIME_IMPUTATION_STEP = 0.05;
+
+/** Rounds a day fraction to the nearest allowed 0.05 step and normalizes float noise. */
+function normalizeTimeFraction(value: number): number {
+  const stepped = Math.round(value / TIME_IMPUTATION_STEP) * TIME_IMPUTATION_STEP;
+  const clamped = Math.min(1, Math.max(0, stepped));
+  return Number(clamped.toFixed(2));
+}
+
+function sumTimeFractions(fractions: number[]): number {
+  return Number(fractions.reduce((total, fraction) => total + fraction, 0).toFixed(2));
+}
 
 const STALE_THRESHOLD_DAYS = 14;
 
@@ -291,7 +321,7 @@ async function resolveCalendarEventId(
 }
 
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore } = options;
+  const { taskStore, taskTimeEntryStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -570,6 +600,126 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       request.log.error(error, "Failed to list task triage");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list task triage");
+    }
+  });
+
+  app.get("/api/tasks/time-entries", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    if (!taskTimeEntryStore) {
+      return sendTaskStorageNotInitializedError(reply);
+    }
+
+    const queryResult = listTimeEntriesQuerySchema.safeParse(request.query);
+
+    if (!queryResult.success) {
+      const details = zodIssuesToStrings(queryResult.error);
+      return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid request query", details);
+    }
+
+    const entryDate = parseDateOnly(queryResult.data.date);
+
+    if (!entryDate) {
+      return sendError(reply, 400, "VALIDATION_ERROR", "date must be a valid date in YYYY-MM-DD format");
+    }
+
+    try {
+      const entries = await taskTimeEntryStore.listByDate(authUserId, entryDate);
+
+      return reply.send({
+        data: {
+          date: formatDateOnly(entryDate),
+          total: sumTimeFractions(entries.map((entry) => entry.fraction)),
+          entries: entries.map((entry) => ({
+            taskId: entry.taskId,
+            fraction: entry.fraction,
+          })),
+        },
+      });
+    } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task time entry table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
+      request.log.error(error, "Failed to list task time entries");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to list task time entries");
+    }
+  });
+
+  app.put("/api/tasks/:id/time-entry", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    if (!taskTimeEntryStore) {
+      return sendTaskStorageNotInitializedError(reply);
+    }
+
+    const paramsResult = taskIdParamsSchema.safeParse(request.params);
+
+    if (!paramsResult.success) {
+      const details = zodIssuesToStrings(paramsResult.error);
+      return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid task id", details);
+    }
+
+    const bodyResult = upsertTimeEntryBodySchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      const details = zodIssuesToStrings(bodyResult.error);
+      return sendError(reply, 400, "VALIDATION_ERROR", details[0] ?? "Invalid request body", details);
+    }
+
+    const entryDate = parseDateOnly(bodyResult.data.date);
+
+    if (!entryDate) {
+      return sendError(reply, 400, "VALIDATION_ERROR", "date must be a valid date in YYYY-MM-DD format");
+    }
+
+    const fraction = normalizeTimeFraction(bodyResult.data.fraction);
+
+    try {
+      const task = await taskStore.getById(paramsResult.data.id, authUserId);
+
+      if (!task) {
+        return sendError(reply, 404, "NOT_FOUND", "Task not found");
+      }
+
+      if (fraction === 0) {
+        await taskTimeEntryStore.remove(task.id, entryDate);
+      } else {
+        await taskTimeEntryStore.upsert({
+          taskId: task.id,
+          userId: authUserId,
+          entryDate,
+          fraction,
+        });
+      }
+
+      const dayEntries = await taskTimeEntryStore.listByDate(authUserId, entryDate);
+
+      return reply.send({
+        data: {
+          taskId: task.id,
+          date: formatDateOnly(entryDate),
+          fraction,
+          dayTotal: sumTimeFractions(dayEntries.map((entry) => entry.fraction)),
+        },
+      });
+    } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task time entry table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
+      request.log.error(error, "Failed to save task time entry");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to save task time entry");
     }
   });
 
