@@ -130,6 +130,11 @@ Latest project administration conventions:
   (`frontend/src/features/admin/resources.ts`), reached from the navbar account area.
   Resources: `projects` (tree CRUD + move) and `workflow-rules` (the profile
   mandatory-section flags, saved via `PATCH /api/profile`)
+- the server tree (`GET /api/projects`) is authoritative for the task/reminder/board
+  project dropdowns; the legacy `localStorage["jotly_project_options"]` cache is only a
+  load-time fallback and is reconciled to the tree on every `refreshProjectTree`. The
+  one-time localStorage->catalog migration is now gated by
+  `localStorage["jotly_project_catalog_migrated"]` so it can't recreate a demoted project.
 
 Latest reminders conventions:
 - endpoints:
