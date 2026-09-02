@@ -127,7 +127,9 @@ Latest project administration conventions:
   - `DELETE /api/projects/:id` — blocked (409) while sub-projects or linked tasks/reminders exist
 - move/rename recompute the denormalized `project` / `subProject` cache on affected rows
 - frontend surface: standalone `/admin` route with a resource registry
-  (`frontend/src/features/admin/resources.ts`); Projects is the first resource
+  (`frontend/src/features/admin/resources.ts`), reached from the navbar account area.
+  Resources: `projects` (tree CRUD + move) and `workflow-rules` (the profile
+  mandatory-section flags, saved via `PATCH /api/profile`)
 
 Latest reminders conventions:
 - endpoints:

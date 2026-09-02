@@ -237,17 +237,6 @@ export function AppNavbar({
               </svg>
               {!isSidebarCollapsed && <span className="flex-1 text-left">{isFrench ? "Planification projet" : "Project Planning"}</span>}
             </button>
-            <a
-              href="/admin"
-              title={isSidebarCollapsed ? (isFrench ? "Administration" : "Administration") : undefined}
-              className={navItem("", isSidebarCollapsed)}
-            >
-              <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7">
-                <circle cx="10" cy="10" r="2.75" />
-                <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15 5l-1.4 1.4M6.4 13.6 5 15M15 15l-1.4-1.4M6.4 6.4 5 5" strokeLinecap="round" />
-              </svg>
-              {!isSidebarCollapsed && (isFrench ? "Administration" : "Administration")}
-            </a>
 
             {groupHeader("Mon suivi", "My Track")}
             <a href="#notes" title={isSidebarCollapsed ? "Notes" : undefined} className={navItem("notes", isSidebarCollapsed)}>
@@ -292,21 +281,34 @@ export function AppNavbar({
                   <p className="truncate text-sm font-medium text-foreground">{profileLabel}</p>
                 </div>
               </div>
-              <div className="mt-1 flex items-center gap-1 px-1">
-                <button type="button" className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenProfile} disabled={isBusy || !onOpenProfile}>
+              <div className="mt-1 flex flex-col gap-0.5 px-1">
+                <button type="button" className="rounded-md px-2 py-1.5 text-left text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenProfile} disabled={isBusy || !onOpenProfile}>
                   {isFrench ? "Profil" : "Settings"}
                 </button>
-                <button type="button" className="flex-1 rounded-md px-2 py-1.5 text-xs text-muted transition-colors hover:bg-red-50 hover:text-red-500" onClick={onLogout} disabled={isBusy || !onLogout}>
+                <a href="/admin" className="rounded-md px-2 py-1.5 text-left text-xs text-muted transition-colors hover:bg-surface-soft hover:text-foreground">
+                  {isFrench ? "Administration" : "Administration"}
+                </a>
+                <button type="button" className="rounded-md px-2 py-1.5 text-left text-xs text-muted transition-colors hover:bg-red-50 hover:text-red-500" onClick={onLogout} disabled={isBusy || !onLogout}>
                   {isFrench ? "Deconnexion" : "Logout"}
                 </button>
               </div>
             </>
           )}
           {isLoggedIn && isSidebarCollapsed && (
-            <div className="mb-2 flex justify-center">
+            <div className="mb-2 flex flex-col items-center gap-1">
               <button type="button" title={profileLabel} className="grid h-8 w-8 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent" onClick={onOpenProfile} disabled={isBusy || !onOpenProfile}>
                 {initials}
               </button>
+              <a
+                href="/admin"
+                title={isFrench ? "Administration" : "Administration"}
+                className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <circle cx="10" cy="10" r="2.75" />
+                  <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15 5l-1.4 1.4M6.4 13.6 5 15M15 15l-1.4-1.4M6.4 6.4 5 5" strokeLinecap="round" />
+                </svg>
+              </a>
             </div>
           )}
           <button
