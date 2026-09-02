@@ -47,6 +47,8 @@ Completed:
 - stale task triage screen (tasks overdue by more than 14 days) with reschedule/complete/cancel
 - "Move to today" quick transfer for overdue tasks (Alerts + Triage panels) with an auto history comment
 - daily time imputation module (`TaskTimeEntry` table + API + per-task dropdown + day gauge + gaming-track/bilan integration)
+- hierarchical `Project` entity (top-level + optional sub-project) linked to tasks/reminders
+- project administration screen at `/admin` (rename / move / promote / downgrade / delete project nodes) on a reusable admin-resource base
 - day bilan module (API + frontend panel)
 - completion percentage now includes day affirmation completion
 - user profile/preferences module (display name + preferred locale + preferred timezone)
@@ -110,6 +112,22 @@ Latest time imputation conventions:
 - the Day Bilan panel shows the same daily total read-only
 - gaming track exposes an `imputations` block (`completedDays` / `totalDays` / `completionRate`) plus an `imputation_days` weekly mission; a day counts only when its fractions sum to exactly 1; scoring formulas are unchanged
 - profile preference `requireDailyTimeImputation` (default off): when on, navigating away from a past day is blocked until that day's imputed total equals 1 (same guard mechanism as `requireDailyBilan`)
+
+Latest project administration conventions:
+- `Project` is a self-referential entity (max 2 levels); tasks/reminders carry `projectId`
+  plus a backend-maintained `project` (top name) / `subProject` (leaf name) cache
+- endpoints:
+  - `GET /api/projects` — full tree (unchanged contract)
+  - `GET /api/projects/overview` — tree annotated with `taskCount` / `reminderCount` per exact node
+  - `POST /api/projects` — create (optional `parentId`)
+  - `PATCH /api/projects/:id` — rename
+  - `PATCH /api/projects/:id/move` — body `{ parentId: string | null }`; `null` promotes a
+    sub-project to top level, a non-null parent downgrades a top-level project to a
+    sub-project (blocked when it still has sub-projects) or re-parents a sub-project
+  - `DELETE /api/projects/:id` — blocked (409) while sub-projects or linked tasks/reminders exist
+- move/rename recompute the denormalized `project` / `subProject` cache on affected rows
+- frontend surface: standalone `/admin` route with a resource registry
+  (`frontend/src/features/admin/resources.ts`); Projects is the first resource
 
 Latest reminders conventions:
 - endpoints:

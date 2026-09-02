@@ -9,15 +9,7 @@ import {
   CreateAuthSessionInput,
   CreateAuthUserInput,
 } from "../auth/auth-store";
-import {
-  PROJECT_NAME_TAKEN,
-  PROJECT_NESTING_TOO_DEEP,
-  PROJECT_PARENT_NOT_FOUND,
-  ProjectCreateInput,
-  ProjectRecord,
-  ProjectStore,
-  normalizeProjectName,
-} from "../projects/project-store";
+import { InMemoryProjectStore } from "../projects/project-store.in-memory";
 import { formatDateOnly, TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
 import { ReminderCreateInput, ReminderStore, ReminderUpdateInput } from "../reminders/reminder-store";
 
@@ -62,65 +54,6 @@ class InMemoryAuthStore implements AuthStore {
   }
   async revokeSession(): Promise<void> {}
   async deleteExpiredSessions(): Promise<void> {}
-}
-
-class InMemoryProjectStore implements ProjectStore {
-  private readonly projects = new Map<string, ProjectRecord>();
-  private counter = 1;
-
-  async listByUser(userId: string): Promise<ProjectRecord[]> {
-    return [...this.projects.values()].filter((project) => project.userId === userId);
-  }
-  async getById(id: string, userId: string): Promise<ProjectRecord | null> {
-    const project = this.projects.get(id);
-    return project && project.userId === userId ? project : null;
-  }
-  async listChildren(parentId: string, userId: string): Promise<ProjectRecord[]> {
-    return [...this.projects.values()].filter(
-      (project) => project.userId === userId && project.parentId === parentId
-    );
-  }
-  async create(input: ProjectCreateInput): Promise<ProjectRecord> {
-    const name = normalizeProjectName(input.name);
-    const parentId = input.parentId ?? null;
-    if (parentId) {
-      const parent = this.projects.get(parentId);
-      if (!parent || parent.userId !== input.userId) throw new Error(PROJECT_PARENT_NOT_FOUND);
-      if (parent.parentId) throw new Error(PROJECT_NESTING_TOO_DEEP);
-    }
-    const key = name.toLocaleLowerCase();
-    if (
-      [...this.projects.values()].some(
-        (p) => p.userId === input.userId && p.parentId === parentId && p.name.toLocaleLowerCase() === key
-      )
-    ) {
-      throw new Error(PROJECT_NAME_TAKEN);
-    }
-    const now = new Date();
-    const project: ProjectRecord = {
-      id: `project-${this.counter++}`,
-      userId: input.userId,
-      name,
-      parentId,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.projects.set(project.id, project);
-    return project;
-  }
-  async rename(id: string, userId: string, name: string): Promise<ProjectRecord | null> {
-    const existing = await this.getById(id, userId);
-    if (!existing) return null;
-    const updated: ProjectRecord = { ...existing, name: normalizeProjectName(name), updatedAt: new Date() };
-    this.projects.set(id, updated);
-    return updated;
-  }
-  async remove(id: string, userId: string): Promise<ProjectRecord | null> {
-    const existing = await this.getById(id, userId);
-    if (!existing) return null;
-    this.projects.delete(id);
-    return existing;
-  }
 }
 
 class InMemoryTaskStore implements TaskStore {

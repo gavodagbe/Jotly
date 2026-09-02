@@ -35,7 +35,18 @@ Use Atlassian MCP for Jira and Confluence context when needed.
 - Respect out-of-scope boundaries.
 - Keep changes minimal, clean, and testable.
 - Do not refactor unrelated code.
+- Keep every source file (frontend or backend) under 500 lines; split a module into
+  focused files before it grows past that. Pre-existing oversized files are exempt
+  until a ticket touches them directly.
 - Update documentation only if the ticket changes architecture, scope, or technical conventions.
+
+## Administration surface
+- Cross-cutting CRUD admin screens live under the standalone `/admin` Next route
+  (`frontend/src/app/admin/`), isolated from `app-shell.tsx`.
+- Add a new admin screen by registering an `AdminResourceDescriptor` in
+  `frontend/src/features/admin/resources.ts` and adding its view under
+  `frontend/src/components/admin/resources/`. Reuse `crud-client`,
+  `use-admin-resource`, and the `admin-ui` primitives.
 
 ## End-of-task output
 Always end with:

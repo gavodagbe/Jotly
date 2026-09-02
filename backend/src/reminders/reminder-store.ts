@@ -40,6 +40,8 @@ export type ReminderStore = {
   cancel(id: string, userId: string): Promise<Reminder | null>;
   /** Number of reminders linked to any of the given project ids (used before project deletion). */
   countByProjectIds?(userId: string, projectIds: string[]): Promise<number>;
+  /** Map of `projectId` -> number of reminders pointing at that exact node (admin overview). */
+  groupCountByProject?(userId: string): Promise<Record<string, number>>;
   /** Refreshes the denormalized project/subProject name cache for the given project ids. */
   updateDenormalizedProjectFields?(
     projectIds: string[],
@@ -151,6 +153,21 @@ export function createPrismaReminderStore(prisma = new PrismaClient()): Reminder
         data: fields,
       });
       return result.count;
+    },
+
+    async groupCountByProject(userId) {
+      const rows = await prisma.reminder.groupBy({
+        by: ["projectId"],
+        where: { userId, projectId: { not: null } },
+        _count: { _all: true },
+      });
+      const counts: Record<string, number> = {};
+      for (const row of rows) {
+        if (row.projectId) {
+          counts[row.projectId] = row._count._all;
+        }
+      }
+      return counts;
     },
 
     async markFired(id, userId) {
