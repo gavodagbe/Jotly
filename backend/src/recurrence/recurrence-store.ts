@@ -1,6 +1,6 @@
 import { PrismaClient, TaskRecurrenceRule } from "@prisma/client";
 
-type RecurrenceFrequency = "daily" | "weekly" | "monthly";
+type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 
 export type TaskRecurrenceRuleUpsertInput = {
   frequency: RecurrenceFrequency;

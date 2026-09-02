@@ -3,10 +3,24 @@ import { RecurrenceStore } from "./recurrence-store";
 import { TaskCreateInput, TaskStore } from "../tasks/task-store";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-type RecurrenceFrequency = "daily" | "weekly" | "monthly";
+type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 
 function toUtcDateOnly(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+/** Clamps a day-of-month to the last valid day of the target month (e.g. 31 -> 28 in Feb). */
+function clampDayToMonth(day: number, year: number, month: number): number {
+  return Math.min(day, getDaysInMonth(year, month));
+}
+
+/** Calendar-quarter index: Q1 2026 -> 8104, Q2 2026 -> 8105, … (year * 4 + quarter). */
+function getQuarterIndex(date: Date): number {
+  return date.getUTCFullYear() * 4 + Math.floor(date.getUTCMonth() / 3);
 }
 
 function getDayDiff(startDate: Date, endDate: Date): number {
@@ -27,7 +41,7 @@ function getMonthDiff(startDate: Date, endDate: Date): number {
   return (endDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12 + (endDate.getUTCMonth() - startDate.getUTCMonth());
 }
 
-function hasRuleEnded(rule: TaskRecurrenceRule, targetDate: Date): boolean {
+function hasRuleEnded(rule: Pick<TaskRecurrenceRule, "endsOn">, targetDate: Date): boolean {
   if (!rule.endsOn) {
     return false;
   }
@@ -35,10 +49,14 @@ function hasRuleEnded(rule: TaskRecurrenceRule, targetDate: Date): boolean {
   return toUtcDateOnly(targetDate).getTime() > toUtcDateOnly(rule.endsOn).getTime();
 }
 
-function shouldCreateOccurrence(
+/**
+ * Whether a recurring task whose source lands on `startDate` should have an
+ * instance materialized on `targetDate`. Exported for unit testing.
+ */
+export function shouldCreateOccurrence(
   startDate: Date,
   targetDate: Date,
-  rule: TaskRecurrenceRule
+  rule: Pick<TaskRecurrenceRule, "frequency" | "interval" | "weekdays" | "endsOn">
 ): boolean {
   const start = toUtcDateOnly(startDate);
   const target = toUtcDateOnly(targetDate);
@@ -75,13 +93,49 @@ function shouldCreateOccurrence(
     return diffWeeks >= 0 && diffWeeks % rule.interval === 0;
   }
 
+  if (frequency === "yearly") {
+    if (target.getUTCMonth() !== start.getUTCMonth()) {
+      return false;
+    }
+
+    const diffYears = target.getUTCFullYear() - start.getUTCFullYear();
+    if (diffYears <= 0 || diffYears % rule.interval !== 0) {
+      return false;
+    }
+
+    return (
+      target.getUTCDate() ===
+      clampDayToMonth(start.getUTCDate(), target.getUTCFullYear(), target.getUTCMonth())
+    );
+  }
+
+  if (frequency === "quarterly") {
+    // Only quarter-start months (Jan / Apr / Jul / Oct).
+    if (target.getUTCMonth() % 3 !== 0) {
+      return false;
+    }
+
+    const diffQuarters = getQuarterIndex(target) - getQuarterIndex(start);
+    if (diffQuarters <= 0 || diffQuarters % rule.interval !== 0) {
+      return false;
+    }
+
+    return (
+      target.getUTCDate() ===
+      clampDayToMonth(start.getUTCDate(), target.getUTCFullYear(), target.getUTCMonth())
+    );
+  }
+
   const diffMonths = getMonthDiff(start, target);
 
-  if (diffMonths < 0 || diffMonths % rule.interval !== 0) {
+  if (diffMonths <= 0 || diffMonths % rule.interval !== 0) {
     return false;
   }
 
-  return start.getUTCDate() === target.getUTCDate();
+  return (
+    target.getUTCDate() ===
+    clampDayToMonth(start.getUTCDate(), target.getUTCFullYear(), target.getUTCMonth())
+  );
 }
 
 function getStatusForGeneratedInstance(): TaskStatus {

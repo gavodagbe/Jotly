@@ -276,9 +276,14 @@ The modules below define intended boundaries without pre-building abstractions.
 
 ### Recurrence
 - Relation to tasks: recurrence defines future task instances; each generated task still owns an explicit `targetDate`.
-- Likely model shape: recurrence rule + task template reference, generated instances remain regular tasks.
-- Likely backend ownership: `backend/src/recurrence/`.
-- Likely frontend entry points: recurrence controls in task create/edit flow under `frontend/src/features/recurrence/`.
+- Model: `TaskRecurrenceRule` (one per source task) — `frequency`, `interval`, `weekdays` (weekly only), `endsOn`.
+- Frequencies: `daily`, `weekly`, `monthly`, `quarterly`, `yearly`. `interval` = "every N units".
+  - `monthly` / `quarterly` / `yearly` keep the source day-of-month, clamped to the month's last day (Jan 31 -> Feb 28 / Apr 30).
+  - `quarterly` fires only in calendar-quarter months (Jan / Apr / Jul / Oct), aligned on the quarter containing the source date.
+  - `yearly` fires on the source month+day (Feb 29 -> Feb 28 in common years).
+- Materialization: on-demand only — `materializeRecurringTasksForDate` runs when `GET /api/tasks?date=` is requested. There is no background scheduler, so a future occurrence is created only when its date is opened.
+- Backend ownership: `backend/src/recurrence/` (`recurrence-service.ts` date math, `recurrence-store.ts`).
+- Frontend entry point: recurrence controls in the task create/edit dialog (`app-shell.tsx`).
 - Current status: implemented.
 
 ### Day affirmation

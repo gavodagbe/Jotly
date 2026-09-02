@@ -39,7 +39,7 @@ Completed:
 - authenticated ownership boundaries on task domain routes
 - comments module (API + tests)
 - attachments module (API + tests)
-- recurrence module (API + tests)
+- recurrence module (API + tests) — frequencies `daily` / `weekly` / `monthly` / `quarterly` / `yearly` with `interval`; month-end day clamping; occurrences materialized on-demand when a date is opened (no background scheduler)
 - frontend task details integrations for comments/attachments/recurrence
 - AI assistant module (backend route + frontend panel — structured retrieval with optional workspace text search augmentation)
 - day affirmation module (API + frontend panel)

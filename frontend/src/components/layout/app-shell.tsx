@@ -32,7 +32,7 @@ import { DAY_FRACTION_OPTIONS } from "@/components/tasks/TaskBoardParts";
 
 type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
 type TaskPriority = "low" | "medium" | "high";
-type RecurrenceFrequency = "daily" | "weekly" | "monthly";
+type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 type ReminderStatus = "pending" | "fired" | "completed" | "cancelled";
 type AlertUrgency = "overdue" | "today" | "tomorrow";
 
@@ -883,12 +883,24 @@ const RECURRENCE_FREQUENCY_OPTIONS_BY_LOCALE: Record<
     { value: "daily", label: "Daily" },
     { value: "weekly", label: "Weekly" },
     { value: "monthly", label: "Monthly" },
+    { value: "quarterly", label: "Quarterly" },
+    { value: "yearly", label: "Yearly" },
   ],
   fr: [
     { value: "daily", label: "Quotidienne" },
     { value: "weekly", label: "Hebdomadaire" },
     { value: "monthly", label: "Mensuelle" },
+    { value: "quarterly", label: "Trimestrielle" },
+    { value: "yearly", label: "Annuelle" },
   ],
+};
+
+const RECURRENCE_INTERVAL_UNIT_BY_LOCALE: Record<
+  UserLocale,
+  Record<RecurrenceFrequency, string>
+> = {
+  en: { daily: "days", weekly: "weeks", monthly: "months", quarterly: "quarters", yearly: "years" },
+  fr: { daily: "jours", weekly: "semaines", monthly: "mois", quarterly: "trimestres", yearly: "ans" },
 };
 
 const WEEKDAY_OPTIONS_BY_LOCALE: Record<UserLocale, ReadonlyArray<{ value: number; label: string }>> = {
@@ -932,7 +944,13 @@ const GAMING_TRACK_PERIOD_OPTIONS_BY_LOCALE: Record<
 
 const BOARD_COLUMN_STATUSES = new Set<TaskStatus>(["todo", "in_progress", "done", "cancelled"]);
 const PRIORITY_VALUES = new Set<TaskPriority>(["low", "medium", "high"]);
-const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>(["daily", "weekly", "monthly"]);
+const RECURRENCE_FREQUENCY_VALUES = new Set<RecurrenceFrequency>([
+  "daily",
+  "weekly",
+  "monthly",
+  "quarterly",
+  "yearly",
+]);
 
 const statusChipClassByStatus: Record<TaskStatus, string> = {
   todo: "border-sky-200 bg-sky-50 text-sky-700",
@@ -1170,6 +1188,13 @@ function getRecurrenceFrequencyOptions(
   locale: UserLocale
 ): ReadonlyArray<{ value: RecurrenceFrequency; label: string }> {
   return RECURRENCE_FREQUENCY_OPTIONS_BY_LOCALE[locale];
+}
+
+function getRecurrenceIntervalUnitLabel(
+  frequency: RecurrenceFrequency,
+  locale: UserLocale
+): string {
+  return RECURRENCE_INTERVAL_UNIT_BY_LOCALE[locale][frequency];
 }
 
 function getWeekdayOptions(locale: UserLocale): ReadonlyArray<{ value: number; label: string }> {
@@ -12027,7 +12052,7 @@ export function AppShell() {
                       </label>
 
                       <label className="block text-sm font-semibold text-foreground">
-                        {isFrench ? "Chaque" : "Every"}
+                        {isFrench ? "Tous les" : "Every"}
                         <input
                           type="number"
                           min={1}
@@ -12039,6 +12064,9 @@ export function AppShell() {
                           className={textFieldClass}
                           disabled={isSubmittingTask}
                         />
+                        <span className="mt-1 block text-xs font-normal text-muted">
+                          {getRecurrenceIntervalUnitLabel(recurrenceFormValues.frequency, activeLocale)}
+                        </span>
                       </label>
                     </div>
 
