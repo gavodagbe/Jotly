@@ -573,22 +573,12 @@ type ProfileFormValues = {
   displayName: string;
   preferredLocale: UserLocale;
   preferredTimeZone: string;
-  requireDailyAffirmation: boolean;
-  requireDailyBilan: boolean;
-  requireDailyTimeImputation: boolean;
-  requireWeeklySynthesis: boolean;
-  requireMonthlySynthesis: boolean;
 };
 
 type ProfileMutationInput = {
   displayName: string | null;
   preferredLocale: UserLocale;
   preferredTimeZone: string | null;
-  requireDailyAffirmation: boolean;
-  requireDailyBilan: boolean;
-  requireDailyTimeImputation: boolean;
-  requireWeeklySynthesis: boolean;
-  requireMonthlySynthesis: boolean;
 };
 
 type TaskFormValues = {
@@ -2076,11 +2066,6 @@ function getDefaultProfileFormValues(): ProfileFormValues {
     displayName: "",
     preferredLocale: "en",
     preferredTimeZone: getBrowserTimeZone(),
-    requireDailyAffirmation: false,
-    requireDailyBilan: false,
-    requireDailyTimeImputation: false,
-    requireWeeklySynthesis: false,
-    requireMonthlySynthesis: false,
   };
 }
 
@@ -2093,11 +2078,6 @@ function getProfileFormValues(user: AuthUser | null): ProfileFormValues {
     displayName: user.displayName ?? "",
     preferredLocale: getPreferredLocale(user.preferredLocale),
     preferredTimeZone: user.preferredTimeZone ?? getBrowserTimeZone(),
-    requireDailyAffirmation: user.requireDailyAffirmation ?? false,
-    requireDailyBilan: user.requireDailyBilan ?? false,
-    requireDailyTimeImputation: user.requireDailyTimeImputation ?? false,
-    requireWeeklySynthesis: user.requireWeeklySynthesis ?? false,
-    requireMonthlySynthesis: user.requireMonthlySynthesis ?? false,
   };
 }
 
@@ -5228,11 +5208,6 @@ export function AppShell() {
           displayName: profileFormValues.displayName.trim() || null,
           preferredLocale: getPreferredLocale(profileFormValues.preferredLocale),
           preferredTimeZone: preferredTimeZone || null,
-          requireDailyAffirmation: profileFormValues.requireDailyAffirmation,
-          requireDailyBilan: profileFormValues.requireDailyBilan,
-          requireDailyTimeImputation: profileFormValues.requireDailyTimeImputation,
-          requireWeeklySynthesis: profileFormValues.requireWeeklySynthesis,
-          requireMonthlySynthesis: profileFormValues.requireMonthlySynthesis,
         },
         authToken
       );

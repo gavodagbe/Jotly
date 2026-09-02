@@ -458,6 +458,9 @@ The modules below define intended boundaries without pre-building abstractions.
   - stores and serves profile-level identity/localization preferences
   - powers frontend localization and timezone rendering
   - mandatory-section flags gate day/period navigation until the enabled sections are complete (`requireDailyTimeImputation` requires a past day's imputed time total to equal 1)
+- Frontend split:
+  - the Profile dialog (navbar account area) edits identity: display name, language, timezone, Google Calendar accounts
+  - the mandatory-section flags are edited in `/admin` -> Administration -> "Workflow rules" (`workflow-rules` admin resource), still persisted through `PATCH /api/profile`
 - Current status: implemented.
 
 ### Reporting

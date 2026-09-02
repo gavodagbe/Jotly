@@ -13,11 +13,6 @@ type ProfileFormValues = {
   displayName: string;
   preferredLocale: UserLocale;
   preferredTimeZone: string;
-  requireDailyAffirmation: boolean;
-  requireDailyBilan: boolean;
-  requireDailyTimeImputation: boolean;
-  requireWeeklySynthesis: boolean;
-  requireMonthlySynthesis: boolean;
 };
 
 type GoogleCalendarConnection = {
@@ -267,40 +262,11 @@ export function ProfileDialog({
             ) : null}
           </div>
 
-          <div className="border-t border-line pt-3">
-            <h4 className="text-sm font-semibold text-foreground">
-              {isFrench ? "Sections obligatoires" : "Required Sections"}
-            </h4>
-            <p className="mt-1 text-xs text-muted">
-              {isFrench
-                ? "Les sections activees doivent etre completes chaque jour pour valider votre journee."
-                : "Enabled sections must be completed each day to validate your day."}
-            </p>
-            <div className="mt-3 space-y-2">
-              {(
-                [
-                  { key: "requireDailyAffirmation" as const, labelFr: "Affirmation du jour", labelEn: "Daily Affirmation" },
-                  { key: "requireDailyBilan" as const, labelFr: "Bilan du jour", labelEn: "Daily Review (Bilan)" },
-                  { key: "requireDailyTimeImputation" as const, labelFr: "Imputation du temps (total = 1)", labelEn: "Time imputation (total = 1)" },
-                  { key: "requireWeeklySynthesis" as const, labelFr: "Synthese hebdomadaire (dimanche)", labelEn: "Weekly Synthesis (Sunday)" },
-                  { key: "requireMonthlySynthesis" as const, labelFr: "Synthese mensuelle", labelEn: "Monthly Synthesis" },
-                ] as const
-              ).map(({ key, labelFr, labelEn }) => (
-                <label key={key} className="flex cursor-pointer items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={profileFormValues[key]}
-                    onChange={(e) => handleProfileFieldChange(key, e.target.checked)}
-                    disabled={isProfileSaving}
-                    className="h-4 w-4 rounded border-line accent-accent"
-                  />
-                  <span className="text-sm text-foreground">
-                    {isFrench ? labelFr : labelEn}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <p className="rounded-lg border border-line bg-surface-soft/50 px-3 py-2 text-xs text-muted">
+            {isFrench
+              ? "Les sections obligatoires quotidiennes et les synthèses se règlent dans Administration → Règles de workflow."
+              : "Required daily sections and syntheses are configured in Administration → Workflow rules."}
+          </p>
 
           {profileErrorMessage ? (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
