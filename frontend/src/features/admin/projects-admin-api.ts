@@ -20,7 +20,7 @@ type RenameProjectInput = { name: string };
 
 export function createProjectsAdminClient(token: string) {
   const crud = createCrudClient<ProjectRecord, CreateProjectInput, RenameProjectInput>(
-    "/api/projects",
+    "/projects",
     token
   );
 
