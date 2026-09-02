@@ -681,6 +681,7 @@ function getGoogleCalendarUnavailableMessage(isFrench: boolean): string {
 
 const AUTH_TOKEN_STORAGE_KEY = "jotly_auth_token";
 const PROJECT_OPTIONS_STORAGE_KEY = "jotly_project_options";
+const PROJECT_CATALOG_MIGRATED_STORAGE_KEY = "jotly_project_catalog_migrated";
 const ASSIGNEE_OPTIONS_STORAGE_KEY = "jotly_assignee_options";
 const MAX_ATTACHMENT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_QUESTION_MAX_LENGTH = 3000;
@@ -4404,9 +4405,24 @@ export function AppShell() {
   }, [normalizedSelectedProject, tasks]);
 
   const normalizedReminderProject = normalizeProjectName(reminderFormValues.project);
+
+  // Server catalog is the source of truth for top-level projects. `projectOptions`
+  // (localStorage-backed, append-only) is only a fallback while the tree loads —
+  // otherwise demoted / renamed projects would linger in the dropdowns forever.
+  const topLevelProjectNames = useMemo(
+    () => getUniqueSortedProjectNames(projectTree.map((node) => node.name)),
+    [projectTree]
+  );
+  const topLevelProjectBase = topLevelProjectNames.length > 0 ? topLevelProjectNames : projectOptions;
+
   const projectSelectOptions = useMemo(
-    () => getUniqueSortedProjectNames([...projectOptions, normalizedSelectedProject, normalizedReminderProject]),
-    [normalizedSelectedProject, normalizedReminderProject, projectOptions]
+    () =>
+      getUniqueSortedProjectNames([
+        ...topLevelProjectBase,
+        normalizedSelectedProject,
+        normalizedReminderProject,
+      ]),
+    [topLevelProjectBase, normalizedSelectedProject, normalizedReminderProject]
   );
 
   const taskSubProjectSelectOptions = useMemo(
@@ -4454,9 +4470,15 @@ export function AppShell() {
       setProjectTree(tree);
       const topLevelNames = tree.map((node) => node.name);
       if (topLevelNames.length > 0) {
-        setProjectOptions((current) =>
-          getUniqueSortedProjectNames([...current, ...topLevelNames])
-        );
+        // Reconcile the legacy localStorage catalog to the server truth so
+        // demoted / renamed top-level projects stop lingering in the dropdowns.
+        const reconciled = getUniqueSortedProjectNames(topLevelNames);
+        setProjectOptions(reconciled);
+        try {
+          window.localStorage.setItem(PROJECT_OPTIONS_STORAGE_KEY, JSON.stringify(reconciled));
+        } catch {
+          // localStorage unavailable — in-memory state still reconciled
+        }
       }
       return tree;
     } catch {
@@ -7358,16 +7380,40 @@ export function AppShell() {
       if (cancelled || projectCatalogMigratedRef.current) return;
       projectCatalogMigratedRef.current = true;
 
+      // Truly one-time (persisted): re-running this after a project has been
+      // demoted / renamed in the admin screen would recreate it as a top-level
+      // project on every page load.
+      let alreadyMigrated = false;
+      try {
+        alreadyMigrated =
+          window.localStorage.getItem(PROJECT_CATALOG_MIGRATED_STORAGE_KEY) === "1";
+      } catch {
+        // localStorage unavailable — fall back to per-session ref only
+      }
+      if (alreadyMigrated) return;
+
       // One-time migration: push project names that only ever lived in
       // localStorage (or were derived from legacy task data) into the server
       // catalog so the hierarchy has a home for them.
+      const markMigrated = () => {
+        try {
+          window.localStorage.setItem(PROJECT_CATALOG_MIGRATED_STORAGE_KEY, "1");
+        } catch {
+          // ignore
+        }
+      };
+      // `refreshProjectTree` above already reconciled the stored options to the
+      // server tree when a catalog exists, so read localStorage directly rather
+      // than the (possibly stale, possibly polluted) in-memory state.
       const knownNames = new Set(tree.map((node) => normalizeProjectName(node.name).toLocaleLowerCase()));
-      const legacyNames = getUniqueSortedProjectNames([
-        ...parseStoredProjectOptions(window.localStorage.getItem(PROJECT_OPTIONS_STORAGE_KEY)),
-        ...projectOptions,
-      ]).filter((name) => !knownNames.has(normalizeProjectName(name).toLocaleLowerCase()));
+      const legacyNames = getUniqueSortedProjectNames(
+        parseStoredProjectOptions(window.localStorage.getItem(PROJECT_OPTIONS_STORAGE_KEY))
+      ).filter((name) => !knownNames.has(normalizeProjectName(name).toLocaleLowerCase()));
 
-      if (legacyNames.length === 0) return;
+      if (legacyNames.length === 0) {
+        markMigrated();
+        return;
+      }
       for (const name of legacyNames) {
         try {
           await createProjectApi({ name }, authToken);
@@ -7375,6 +7421,7 @@ export function AppShell() {
           // Ignore duplicates / races — the refresh below reconciles state.
         }
       }
+      markMigrated();
       if (!cancelled) await refreshProjectTree();
     })();
 
@@ -8108,6 +8155,12 @@ export function AppShell() {
       return;
     }
 
+    // Once the server project catalog exists it is authoritative; don't let
+    // free-text task.project strings re-seed stale names into the dropdowns.
+    if (projectTree.length > 0) {
+      return;
+    }
+
     const projectsFromTasks = getUniqueSortedProjectNames(
       tasks.map((task) => task.project ?? "")
     );
@@ -8132,10 +8185,15 @@ export function AppShell() {
       );
       return mergedOptions;
     });
-  }, [isAuthReady, tasks]);
+  }, [isAuthReady, tasks, projectTree]);
 
   useEffect(() => {
     if (!isAuthReady || !authToken || !authUser) {
+      return;
+    }
+
+    // Server project catalog is authoritative once present (see effect above).
+    if (projectTree.length > 0) {
       return;
     }
 
@@ -8171,7 +8229,7 @@ export function AppShell() {
       .catch(() => {});
 
     return () => controller.abort();
-  }, [isAuthReady, authToken, authUser]);
+  }, [isAuthReady, authToken, authUser, projectTree]);
 
   useEffect(() => {
     if (!isAssistantPanelOpen) {
@@ -8185,12 +8243,12 @@ export function AppShell() {
   }, [assistantMessages, isAssistantPanelOpen]);
 
   const taskFilterProjectOptions = useMemo(() => {
-    return getUniqueSortedProjectNames([
-      ...projectOptions,
-      ...tasks.map((task) => task.project ?? ""),
-      taskFilterValues.project,
-    ]);
-  }, [projectOptions, taskFilterValues.project, tasks]);
+    const base =
+      topLevelProjectNames.length > 0
+        ? topLevelProjectNames
+        : [...projectOptions, ...tasks.map((task) => task.project ?? "")];
+    return getUniqueSortedProjectNames([...base, taskFilterValues.project]);
+  }, [topLevelProjectNames, projectOptions, taskFilterValues.project, tasks]);
 
   const taskFilterSubProjectOptions = useMemo(() => {
     if (!taskFilterValues.project) return [];
@@ -8873,7 +8931,7 @@ export function AppShell() {
         filters={projectPlanningFilters}
         sort={projectPlanningSort}
         viewMode={projectPlanningViewMode}
-        projectOptions={projectOptions}
+        projectOptions={getUniqueSortedProjectNames([...topLevelProjectBase, projectPlanningFilters.project])}
         subProjectOptions={projectPlanningSubProjectOptions}
         onFilterChange={handleProjectPlanningFilterChange}
         onSortChange={handleProjectPlanningSort}
