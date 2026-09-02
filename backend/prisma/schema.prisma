@@ -24,6 +24,8 @@ enum RecurrenceFrequency {
   daily
   weekly
   monthly
+  quarterly
+  yearly
 }
 
 enum ReminderStatus {

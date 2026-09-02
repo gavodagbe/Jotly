@@ -18,13 +18,13 @@ type RecurrenceRouteOptions = {
   authService: AuthService;
 };
 
-type RecurrenceFrequency = "daily" | "weekly" | "monthly";
+type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 
 const taskParamsSchema = z.object({
   id: z.string().trim().min(1, "Task id is required"),
 });
 
-const recurrenceFrequencySchema = z.enum(["daily", "weekly", "monthly"]);
+const recurrenceFrequencySchema = z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]);
 
 const recurrenceBodySchema = z
   .object({
