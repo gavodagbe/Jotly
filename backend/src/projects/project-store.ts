@@ -22,6 +22,7 @@ export const PROJECT_PARENT_NOT_FOUND = "PROJECT_PARENT_NOT_FOUND";
 export const PROJECT_NESTING_TOO_DEEP = "PROJECT_NESTING_TOO_DEEP";
 export const PROJECT_NAME_TAKEN = "PROJECT_NAME_TAKEN";
 export const PROJECT_HAS_CHILDREN = "PROJECT_HAS_CHILDREN";
+export const PROJECT_CANNOT_PARENT_TO_SELF = "PROJECT_CANNOT_PARENT_TO_SELF";
 
 export type ProjectStore = {
   listByUser(userId: string): Promise<ProjectRecord[]>;
@@ -29,6 +30,13 @@ export type ProjectStore = {
   listChildren(parentId: string, userId: string): Promise<ProjectRecord[]>;
   create(input: ProjectCreateInput): Promise<ProjectRecord>;
   rename(id: string, userId: string, name: string): Promise<ProjectRecord | null>;
+  /**
+   * Re-parents a project node. `newParentId === null` promotes a sub-project to
+   * top level; a non-null parent downgrades a top-level project to a sub-project
+   * (blocked when it already has sub-projects) or moves a sub-project to another
+   * parent. Returns `null` when the node is not found, the moved node otherwise.
+   */
+  move(id: string, userId: string, newParentId: string | null): Promise<ProjectRecord | null>;
   remove(id: string, userId: string): Promise<ProjectRecord | null>;
   close?: () => Promise<void>;
 };
@@ -147,6 +155,44 @@ export function createPrismaProjectStore(prisma = new PrismaClient()): ProjectSt
       return prisma.project.update({
         where: { id },
         data: { name: normalized },
+      });
+    },
+
+    async move(id, userId, newParentId) {
+      const existing = await prisma.project.findFirst({ where: { id, userId } });
+      if (!existing) {
+        return null;
+      }
+
+      const targetParentId = newParentId ?? null;
+      if (targetParentId === existing.parentId) {
+        return existing;
+      }
+      if (targetParentId === id) {
+        throw new Error(PROJECT_CANNOT_PARENT_TO_SELF);
+      }
+
+      if (targetParentId) {
+        const parent = await prisma.project.findFirst({
+          where: { id: targetParentId, userId },
+        });
+        if (!parent) {
+          throw new Error(PROJECT_PARENT_NOT_FOUND);
+        }
+        if (parent.parentId) {
+          throw new Error(PROJECT_NESTING_TOO_DEEP);
+        }
+        const childCount = await prisma.project.count({ where: { parentId: id } });
+        if (childCount > 0) {
+          throw new Error(PROJECT_HAS_CHILDREN);
+        }
+      }
+
+      await assertNameAvailable(userId, targetParentId, existing.name, id);
+
+      return prisma.project.update({
+        where: { id },
+        data: { parentId: targetParentId },
       });
     },
 

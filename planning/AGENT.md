@@ -185,6 +185,12 @@ Implemented endpoints:
 - `POST /api/gaming-track/streak-protection/use`
 - `POST /api/gaming-track/nudges/dismiss`
 - `GET /api/search?q=...`
+- `GET /api/projects`
+- `GET /api/projects/overview`
+- `POST /api/projects`
+- `PATCH /api/projects/:id`
+- `PATCH /api/projects/:id/move`
+- `DELETE /api/projects/:id`
 
 Rules:
 - JSON-only API
@@ -518,6 +524,7 @@ Existing entities:
 - `GamingTrackNudgeDismissal`
 - `AssistantSearchDocument` (unified full-text search table with `tsvector`; optional future semantic-search support can use an `embedding` column when added)
 - `PasswordResetToken`
+- `Project` (self-referential, max 2 levels; `Task`/`Reminder` carry `projectId` + denormalized `project`/`subProject` name cache). Administered from the `/admin` route; `PATCH /api/projects/:id/move` re-parents a node and rebuilds the affected name cache.
 
 Planned extensions (Phase 2 — assistant pipeline):
 - Enable pgvector extension and populate `AssistantSearchDocument.embedding` column for semantic search

@@ -32,6 +32,8 @@ export type TaskStore = {
   remove(id: string, userId: string): Promise<Task | null>;
   /** Number of tasks linked to any of the given project ids (used before project deletion). */
   countByProjectIds?(userId: string, projectIds: string[]): Promise<number>;
+  /** Map of `projectId` -> number of tasks pointing at that exact node (admin overview). */
+  groupCountByProject?(userId: string): Promise<Record<string, number>>;
   /** Refreshes the denormalized project/subProject name cache for the given project ids. */
   updateDenormalizedProjectFields?(
     projectIds: string[],
@@ -164,6 +166,21 @@ export function createPrismaTaskStore(prisma = new PrismaClient()): TaskStore {
         data: fields,
       });
       return result.count;
+    },
+
+    async groupCountByProject(userId) {
+      const rows = await prisma.task.groupBy({
+        by: ["projectId"],
+        where: { userId, projectId: { not: null } },
+        _count: { _all: true },
+      });
+      const counts: Record<string, number> = {};
+      for (const row of rows) {
+        if (row.projectId) {
+          counts[row.projectId] = row._count._all;
+        }
+      }
+      return counts;
     },
 
     async close() {
