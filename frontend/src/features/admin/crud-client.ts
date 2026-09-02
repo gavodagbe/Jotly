@@ -43,7 +43,8 @@ async function request<T>(
 
 /**
  * Minimal typed REST helper shared by every admin resource. `basePath` is the
- * `/api/...` collection path; individual resources layer their own custom
+ * collection path served under the `/backend-api` proxy WITHOUT the `/api`
+ * prefix (e.g. `/projects`); individual resources layer their own custom
  * actions on top when they need more than plain CRUD.
  */
 export function createCrudClient<TRecord, TCreateInput = Partial<TRecord>, TUpdateInput = Partial<TRecord>>(
