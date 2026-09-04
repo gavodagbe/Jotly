@@ -24,7 +24,7 @@ Implemented in the current codebase:
 - backend Google Calendar sync service with incremental sync-token support (`backend/src/google-calendar/google-calendar-sync-service.ts`)
 - Fastify request body limit configured to 8 MB (`backend/src/app.ts`)
 - attachment validation limit of 5 MB per attachment plus URL payload size guard (`backend/src/routes/attachments.ts`)
-- Prisma task model with status, priority, due date, lifecycle timestamps, carry-over linkage, recurrence-instance linkage, and calendar-event linkage (`backend/prisma/schema.prisma`)
+- Prisma task model with status, priority, due date, lifecycle timestamps, carry-over linkage, recurrence-instance linkage, calendar-event linkage, and the `autoCancelIfUntouched` opt-in flag (`backend/prisma/schema.prisma`)
 - Prisma `DayAffirmation` and `DayBilan` models (`backend/prisma/schema.prisma`)
 - Prisma `Reminder` and `ReminderAttachment` models with persistent status lifecycle, compatibility fire/dismiss flags, and reminder files (`backend/prisma/schema.prisma`)
 - Prisma `Note` and `NoteAttachment` models for standalone notes (`backend/prisma/schema.prisma`)
@@ -228,6 +228,21 @@ The boundaries below reflect current ownership and future evolution points.
 - Copy rules:
   - copy only `todo` and `in_progress`
   - skip recurrence-generated tasks
+
+### Auto-cancel untouched tasks
+- Relation to tasks: closes tasks that were never acted on so repeat tasks do not pile up.
+- Current API surface:
+  - `POST /api/tasks/auto-cancel-untouched` (body `{ today, locale? }`)
+- Current posture: implemented.
+- Opt-in: per-task `Task.autoCancelIfUntouched` boolean (default `false`), set in the task form.
+- Cancel rules:
+  - only tasks still `status = "todo"` whose `targetDate` is before `today`
+  - recurrence instances resolve the flag from their **source task** (so toggling the
+    flag retroactively closes already-materialized instances)
+  - each cancellation writes a best-effort history comment
+- Execution: lazy — the dashboard calls it on load, mirroring on-demand recurrence
+  materialization (no background scheduler).
+- Logic lives in `backend/src/tasks/auto-cancel-untouched-service.ts`.
 
 ### Day bilan
 - Relation to date workflow: one end-of-day review row per user per selected date.

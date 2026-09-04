@@ -8,6 +8,8 @@ import {
   CalendarEventUpsertInput,
 } from "../google-calendar/calendar-event-store";
 import { formatDateOnly, TaskCreateInput, TaskStore, TaskUpdateInput } from "../tasks/task-store";
+import { CommentStore } from "../comments/comment-store";
+import { InMemoryCommentStore } from "../comments/comment-store.in-memory";
 import {
   TaskTimeEntryRecord,
   TaskTimeEntryStore,
@@ -72,6 +74,7 @@ class InMemoryTaskStore implements TaskStore {
       completedAt: input.completedAt,
       cancelledAt: input.cancelledAt,
       calendarEventId: input.calendarEventId ?? null,
+      autoCancelIfUntouched: input.autoCancelIfUntouched ?? false,
     };
 
     this.tasks.set(task.id, task);
@@ -272,6 +275,7 @@ function createAppForTest(options?: {
   calendarEventStore?: CalendarEventStore;
   taskStore?: TaskStore;
   taskTimeEntryStore?: TaskTimeEntryStore;
+  commentStore?: CommentStore;
 }) {
   return buildApp({
     logLevel: "silent",
@@ -279,6 +283,7 @@ function createAppForTest(options?: {
     taskTimeEntryStore: options?.taskTimeEntryStore ?? new InMemoryTaskTimeEntryStore(),
     authStore: new InMemoryAuthStore(),
     calendarEventStore: options?.calendarEventStore,
+    commentStore: options?.commentStore,
   });
 }
 
@@ -1021,6 +1026,126 @@ test("POST /api/tasks/carry-over-yesterday is idempotent for the same target dat
   const secondCopyData = secondCopyPayload.data as { copiedCount: number; skippedCount: number };
   assert.equal(secondCopyData.copiedCount, 0);
   assert.equal(secondCopyData.skippedCount, 1);
+});
+
+test("autoCancelIfUntouched round-trips through create, patch, and GET", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  const createResponse = await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Flagged task",
+      targetDate: "2026-03-08",
+      autoCancelIfUntouched: true,
+    },
+  });
+
+  assert.equal(createResponse.statusCode, 201);
+  const created = parsePayload(createResponse.payload).data as {
+    id: string;
+    autoCancelIfUntouched: boolean;
+  };
+  assert.equal(created.autoCancelIfUntouched, true);
+
+  const patchResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/tasks/${created.id}`,
+    headers: authHeaders(token),
+    payload: { autoCancelIfUntouched: false },
+  });
+
+  assert.equal(patchResponse.statusCode, 200);
+  assert.equal(
+    (parsePayload(patchResponse.payload).data as { autoCancelIfUntouched: boolean }).autoCancelIfUntouched,
+    false
+  );
+});
+
+test("POST /api/tasks/auto-cancel-untouched cancels only past untouched flagged tasks", async (t) => {
+  const commentStore = new InMemoryCommentStore();
+  const app = createAppForTest({ commentStore });
+  t.after(async () => {
+    await app.close();
+  });
+  const token = await registerAndGetToken(app);
+
+  const flaggedPast = await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: { title: "Flagged past", targetDate: "2026-03-01", autoCancelIfUntouched: true },
+  });
+  const flaggedPastId = (parsePayload(flaggedPast.payload).data as { id: string }).id;
+
+  // unflagged past task — must survive
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: { title: "Unflagged past", targetDate: "2026-03-01" },
+  });
+
+  // flagged but in progress — must survive
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: {
+      title: "Flagged in progress",
+      targetDate: "2026-03-01",
+      status: "in_progress",
+      autoCancelIfUntouched: true,
+    },
+  });
+
+  // flagged but dated today — must survive
+  await app.inject({
+    method: "POST",
+    url: "/api/tasks",
+    headers: authHeaders(token),
+    payload: { title: "Flagged today", targetDate: "2026-03-10", autoCancelIfUntouched: true },
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/tasks/auto-cancel-untouched",
+    headers: authHeaders(token),
+    payload: { today: "2026-03-10", locale: "en" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const data = parsePayload(response.payload).data as {
+    cancelledCount: number;
+    tasks: Array<{ id: string; status: string }>;
+  };
+  assert.equal(data.cancelledCount, 1);
+  assert.equal(data.tasks[0].id, flaggedPastId);
+  assert.equal(data.tasks[0].status, "cancelled");
+
+  const comments = await commentStore.listByTaskId(flaggedPastId);
+  assert.equal(comments.length, 1);
+  assert.match(comments[0].body, /automatically/);
+});
+
+test("POST /api/tasks/auto-cancel-untouched requires authentication", async (t) => {
+  const app = createAppForTest();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/tasks/auto-cancel-untouched",
+    payload: { today: "2026-03-10" },
+  });
+
+  assert.equal(response.statusCode, 401);
 });
 
 test("validation errors return structured JSON shape", async (t) => {

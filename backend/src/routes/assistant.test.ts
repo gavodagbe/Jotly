@@ -57,6 +57,7 @@ class InMemoryTaskStore implements TaskStore {
       completedAt: input.completedAt,
       cancelledAt: input.cancelledAt,
       calendarEventId: input.calendarEventId ?? null,
+      autoCancelIfUntouched: input.autoCancelIfUntouched ?? false,
     };
 
     this.tasks.set(task.id, task);

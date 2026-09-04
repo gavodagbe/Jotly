@@ -135,6 +135,7 @@ function makeTask(input: { id: string; userId: string; title: string; descriptio
     recurrenceSourceTaskId: null,
     recurrenceOccurrenceDate: null,
     calendarEventId: null,
+    autoCancelIfUntouched: false,
     createdAt: now,
     updatedAt: now,
     completedAt: null,

@@ -54,7 +54,7 @@ This section reflects the current repository implementation.
 
 ### Database
 - PostgreSQL
-- Prisma `Task` model with status, priority, `dueDate`, lifecycle timestamps, carry-over linkage, recurrence-instance linkage, and optional calendar-event linkage
+- Prisma `Task` model with status, priority, `dueDate`, lifecycle timestamps, carry-over linkage, recurrence-instance linkage, optional calendar-event linkage, and the `autoCancelIfUntouched` opt-in flag
 - Prisma `DayAffirmation` and `DayBilan` models (one row per user per date)
 - Prisma gaming-track action models for challenge claims, streak protection usage, and nudge dismissals
 - Prisma `GoogleCalendarConnection` for encrypted OAuth token storage and per-account sync metadata
@@ -72,6 +72,7 @@ This section reflects the current repository implementation.
 - Node test runner tests include gaming-track route coverage
 - Node test runner tests include reminders route coverage
 - Node test runner tests include search route coverage
+- Node test runner tests include `src/tasks/*.test.ts` (auto-cancel-untouched service)
 
 ### Infrastructure
 - Docker

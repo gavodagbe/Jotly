@@ -406,6 +406,7 @@ test("GET /api/google-calendar/events includes linked tasks and notes", async (t
     recurrenceSourceTaskId: null,
     recurrenceOccurrenceDate: null,
     calendarEventId: "calendar-event-1",
+    autoCancelIfUntouched: false,
     createdAt: new Date("2026-03-11T09:00:00.000Z"),
     updatedAt: new Date("2026-03-11T09:00:00.000Z"),
     completedAt: null,

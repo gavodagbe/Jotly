@@ -53,6 +53,7 @@ type Task = {
   recurrenceSourceTaskId: string | null;
   recurrenceOccurrenceDate: string | null;
   calendarEventId: string | null;
+  autoCancelIfUntouched?: boolean;
 };
 
 type TaskMutationInput = {
@@ -67,6 +68,7 @@ type TaskMutationInput = {
   assignees: string | null;
   plannedTime: number | null;
   calendarEventId?: string | null;
+  autoCancelIfUntouched: boolean;
 };
 
 type ProjectNode = {
@@ -544,6 +546,11 @@ type CarryOverYesterdayPayload = {
   tasks: Task[];
 };
 
+type AutoCancelUntouchedPayload = {
+  cancelledCount: number;
+  tasks: Task[];
+};
+
 type UserLocale = "en" | "fr";
 
 type AuthUser = {
@@ -593,6 +600,7 @@ type TaskFormValues = {
   assignees: string;
   plannedTime: string;
   calendarEventId: string | null;
+  autoCancelIfUntouched: boolean;
 };
 
 type RecurrenceFormValues = {
@@ -1805,6 +1813,7 @@ function getDefaultTaskFormValues(targetDate: string): TaskFormValues {
     assignees: "",
     plannedTime: "",
     calendarEventId: null,
+    autoCancelIfUntouched: false,
   };
 }
 
@@ -1916,6 +1925,7 @@ function getTaskFormValues(task: Task): TaskFormValues {
     assignees: task.assignees ?? "",
     plannedTime: typeof task.plannedTime === "number" ? String(task.plannedTime) : "",
     calendarEventId: task.calendarEventId,
+    autoCancelIfUntouched: task.autoCancelIfUntouched ?? false,
   };
 }
 
@@ -1981,6 +1991,7 @@ function buildTaskMutationInput(
       assignees: normalizeOptionalTextInput(values.assignees),
       plannedTime,
       calendarEventId: values.calendarEventId,
+      autoCancelIfUntouched: values.autoCancelIfUntouched,
     },
   };
 }
@@ -3557,6 +3568,32 @@ async function carryOverYesterdayTasks(targetDate: string, token: string): Promi
   return payload.data;
 }
 
+async function autoCancelUntouchedTasks(
+  today: string,
+  locale: UserLocale,
+  token: string
+): Promise<AutoCancelUntouchedPayload> {
+  const response = await fetch("/backend-api/tasks/auto-cancel-untouched", {
+    method: "POST",
+    headers: createAuthHeaders(token, true),
+    body: JSON.stringify({ today, locale }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: AutoCancelUntouchedPayload; error?: { message?: string } }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response.status, payload, "Unable to auto-cancel untouched tasks"));
+  }
+
+  if (!payload?.data) {
+    throw new Error("Unable to auto-cancel untouched tasks.");
+  }
+
+  return payload.data;
+}
+
 async function loadDayBilan(
   date: string,
   token: string,
@@ -3899,6 +3936,7 @@ export function AppShell() {
   const [isTaskTriageLoading, setIsTaskTriageLoading] = useState(false);
   const [isTaskTriagePanelOpen, setIsTaskTriagePanelOpen] = useState(false);
   const [taskTriageReloadKey, setTaskTriageReloadKey] = useState(0);
+  const [tasksReloadKey, setTasksReloadKey] = useState(0);
   const [pendingTriageTaskId, setPendingTriageTaskId] = useState<string | null>(null);
   const [pendingTransferTaskId, setPendingTransferTaskId] = useState<string | null>(null);
   const [taskTimeEntryByTaskId, setTaskTimeEntryByTaskId] = useState<Map<string, number>>(new Map());
@@ -7606,7 +7644,31 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate, tasksReloadKey]);
+
+  // Auto-cancel repeat/flagged tasks that were never moved out of "To do" before their day ended.
+  useEffect(() => {
+    if (!isAuthReady || !authToken || !authUser) {
+      return;
+    }
+
+    let cancelled = false;
+
+    autoCancelUntouchedTasks(taskAlertsAnchorDate, activeLocale, authToken)
+      .then((result) => {
+        if (!cancelled && result.cancelledCount > 0) {
+          setTasksReloadKey((currentValue) => currentValue + 1);
+          setTaskTriageReloadKey((currentValue) => currentValue + 1);
+        }
+      })
+      .catch(() => {
+        // Best-effort housekeeping; a failure here must not block the dashboard.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, authUser, isAuthReady, activeLocale, taskAlertsAnchorDate]);
 
   // Load imputed time entries for the selected date
   useEffect(() => {
@@ -12142,6 +12204,39 @@ export function AppShell() {
                       />
                     </label>
                   </div>
+                ) : null}
+              </section>
+
+              <section className="rounded-2xl border border-line bg-surface-soft/50 p-4">
+                <label className="flex items-start gap-2.5 text-sm font-semibold text-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={taskFormValues.autoCancelIfUntouched}
+                    onChange={(event) =>
+                      setTaskFormValues((current) => ({
+                        ...current,
+                        autoCancelIfUntouched: event.target.checked,
+                      }))
+                    }
+                    disabled={isSubmittingTask || isEditingGeneratedTask}
+                  />
+                  <span>
+                    {isFrench ? "Annuler automatiquement si non traitee" : "Auto-cancel if untouched"}
+                    <span className="mt-0.5 block text-xs font-normal text-muted">
+                      {isFrench
+                        ? "Annule la tache automatiquement si elle est toujours « A faire » a la fin de sa journee. Sur une tache repetee, applique la regle a chaque occurrence."
+                        : "Cancels the task automatically if it is still “To do” at the end of its day. On a repeating task, applies to every occurrence."}
+                    </span>
+                  </span>
+                </label>
+
+                {isEditingGeneratedTask ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    {isFrench
+                      ? "Ceci est une occurrence generee. Modifiez la tache source pour changer ce reglage."
+                      : "This is a generated recurrence instance. Edit the source task to change this setting."}
+                  </p>
                 ) : null}
               </section>
 
