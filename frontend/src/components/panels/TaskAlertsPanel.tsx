@@ -90,6 +90,13 @@ const alertSourceChipClassByType: Record<AlertPanelItem["sourceType"], string> =
   reminder: "border border-teal-200 bg-teal-50 text-teal-700",
 };
 
+const TASK_STATUS_ORDER: TaskStatus[] = ["todo", "in_progress", "done", "cancelled"];
+const TASK_STATUS_VALUES = new Set<string>(TASK_STATUS_ORDER);
+
+function isTaskStatus(value: string): value is TaskStatus {
+  return TASK_STATUS_VALUES.has(value);
+}
+
 export type TaskAlertsPanelProps = {
   isOpen: boolean;
   locale: UserLocale;
@@ -101,10 +108,12 @@ export type TaskAlertsPanelProps = {
   anchorDate: string;
   triageCount: number;
   pendingTransferTaskId: string | null;
+  pendingTaskStatusId: string | null;
   onClose: () => void;
   onOpenTriage: () => void;
   onTaskClick: (task: Task) => void;
   onTransferTaskToToday: (task: Task) => void;
+  onTaskStatusChange: (task: Task, status: TaskStatus) => void;
   onReminderClick: (reminder: Reminder) => void;
   onCompleteReminder: (reminderId: string) => void;
   onCancelReminder: (reminderId: string) => void;
@@ -115,6 +124,7 @@ export type TaskAlertsPanelProps = {
   formatAlertUrgencyLabel: (urgency: AlertUrgency, locale: UserLocale) => string;
   formatAlertSourceLabel: (sourceType: AlertPanelItem["sourceType"], locale: UserLocale) => string;
   formatPriority: (priority: TaskPriority, locale: UserLocale) => string;
+  formatTaskStatus: (status: TaskStatus, locale: UserLocale) => string;
   formatReminderStatus: (status: ReminderStatus, locale: UserLocale) => string;
 };
 
@@ -129,10 +139,12 @@ export function TaskAlertsPanel({
   anchorDate,
   triageCount,
   pendingTransferTaskId,
+  pendingTaskStatusId,
   onClose,
   onOpenTriage,
   onTaskClick,
   onTransferTaskToToday,
+  onTaskStatusChange,
   onReminderClick,
   onCompleteReminder,
   onCancelReminder,
@@ -143,6 +155,7 @@ export function TaskAlertsPanel({
   formatAlertUrgencyLabel,
   formatAlertSourceLabel,
   formatPriority,
+  formatTaskStatus,
   formatReminderStatus,
 }: TaskAlertsPanelProps) {
   if (!isOpen) return null;
@@ -236,8 +249,27 @@ export function TaskAlertsPanel({
                       </span>
                     </div>
                   </button>
-                  {item.urgency === "overdue" && item.task.targetDate !== anchorDate ? (
-                    <div className="mt-3 flex justify-end">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <select
+                      value={item.task.status}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value;
+                        if (isTaskStatus(nextStatus) && nextStatus !== item.task.status) {
+                          onTaskStatusChange(item.task, nextStatus);
+                        }
+                      }}
+                      disabled={pendingTaskStatusId === item.task.id}
+                      className="h-8 rounded-md border border-line bg-surface px-2 text-xs text-foreground disabled:opacity-50"
+                      aria-label={isFrench ? "Changer le statut de la tâche" : "Change task status"}
+                    >
+                      {TASK_STATUS_ORDER.map((status) => (
+                        <option key={status} value={status}>
+                          {formatTaskStatus(status, locale)}
+                        </option>
+                      ))}
+                    </select>
+
+                    {item.urgency === "overdue" && item.task.targetDate !== anchorDate ? (
                       <button
                         type="button"
                         className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
@@ -246,8 +278,8 @@ export function TaskAlertsPanel({
                       >
                         {isFrench ? "Transférer aujourd'hui" : "Move to today"}
                       </button>
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </article>
               ) : (
                 <article
