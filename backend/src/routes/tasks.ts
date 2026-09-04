@@ -5,6 +5,8 @@ import { AuthService } from "../auth/auth-service";
 import { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { RecurrenceStore } from "../recurrence/recurrence-store";
 import { materializeRecurringTasksForDate } from "../recurrence/recurrence-service";
+import { CommentStore } from "../comments/comment-store";
+import { autoCancelUntouchedTasks } from "../tasks/auto-cancel-untouched-service";
 import {
   getBearerToken,
   isStorageNotInitializedPrismaError,
@@ -26,6 +28,7 @@ type TasksRouteOptions = {
   calendarEventStore?: CalendarEventStore;
   assistantSearchSyncService?: AssistantSearchSyncService;
   projectStore?: ProjectStore;
+  commentStore?: CommentStore;
 };
 
 const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -49,6 +52,7 @@ const createTaskBodySchema = z.object({
   assignees: z.string().trim().optional().nullable(),
   plannedTime: z.number().int().nonnegative().optional().nullable(),
   calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
+  autoCancelIfUntouched: z.boolean().optional(),
 });
 
 const updateTaskBodySchema = z
@@ -64,6 +68,7 @@ const updateTaskBodySchema = z
     assignees: z.string().trim().optional().nullable(),
     plannedTime: z.number().int().nonnegative().optional().nullable(),
     calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
+    autoCancelIfUntouched: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field must be provided"
@@ -127,6 +132,11 @@ const carryOverYesterdayBodySchema = z.object({
   targetDate: targetDateSchema,
 });
 
+const autoCancelUntouchedBodySchema = z.object({
+  today: targetDateSchema,
+  locale: z.enum(["en", "fr"]).optional(),
+});
+
 function isTaskTableMissingError(error: unknown): boolean {
   return isStorageNotInitializedPrismaError(error);
 }
@@ -170,6 +180,7 @@ function serializeTask(task: Task) {
       ? formatDateOnly(task.recurrenceOccurrenceDate)
       : null,
     calendarEventId: task.calendarEventId ?? null,
+    autoCancelIfUntouched: task.autoCancelIfUntouched,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
     completedAt: task.completedAt?.toISOString() ?? null,
@@ -321,7 +332,7 @@ async function resolveCalendarEventId(
 }
 
 const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) => {
-  const { taskStore, taskTimeEntryStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore } = options;
+  const { taskStore, taskTimeEntryStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore, commentStore } = options;
 
   app.addHook("preHandler", async (request, reply) => {
     const token = getBearerToken(request.headers.authorization);
@@ -814,6 +825,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
         assignees: normalizeNullableText(bodyResult.data.assignees) ?? null,
         plannedTime: bodyResult.data.plannedTime ?? null,
         calendarEventId: linkedCalendarEvent.hasValue ? linkedCalendarEvent.value : null,
+        autoCancelIfUntouched: bodyResult.data.autoCancelIfUntouched ?? false,
         ...getTimestampsForNewStatus(status, now)
       });
 
@@ -919,6 +931,67 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       request.log.error(error, "Failed to carry over tasks from yesterday");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to carry over yesterday tasks");
+    }
+  });
+
+  app.post("/api/tasks/auto-cancel-untouched", async (request, reply) => {
+    const authUserId = getAuthenticatedUserId(request as { authUserId?: string });
+
+    if (!authUserId) {
+      return sendError(reply, 401, "UNAUTHORIZED", "Authentication is required");
+    }
+
+    const bodyResult = autoCancelUntouchedBodySchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      const details = zodIssuesToStrings(bodyResult.error);
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        details[0] ?? "Invalid request body",
+        details
+      );
+    }
+
+    const today = parseDateOnly(bodyResult.data.today);
+
+    if (!today) {
+      return sendError(
+        reply,
+        400,
+        "VALIDATION_ERROR",
+        "today must be a valid date in YYYY-MM-DD format"
+      );
+    }
+
+    try {
+      const result = await autoCancelUntouchedTasks({
+        taskStore,
+        commentStore,
+        userId: authUserId,
+        today,
+        locale: bodyResult.data.locale,
+      });
+
+      if (result.cancelledCount > 0) {
+        assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["task"] }).catch(() => {});
+      }
+
+      return reply.send({
+        data: {
+          cancelledCount: result.cancelledCount,
+          tasks: result.tasks.map(serializeTask),
+        },
+      });
+    } catch (error) {
+      if (isTaskTableMissingError(error)) {
+        request.log.warn(error, "Task table is missing");
+        return sendTaskStorageNotInitializedError(reply);
+      }
+
+      request.log.error(error, "Failed to auto-cancel untouched tasks");
+      return sendError(reply, 500, "INTERNAL_ERROR", "Unable to auto-cancel untouched tasks");
     }
   });
 
@@ -1075,6 +1148,10 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       if (updateBody.plannedTime !== undefined) {
         updateInput.plannedTime = updateBody.plannedTime;
+      }
+
+      if (updateBody.autoCancelIfUntouched !== undefined) {
+        updateInput.autoCancelIfUntouched = updateBody.autoCancelIfUntouched;
       }
 
       if (

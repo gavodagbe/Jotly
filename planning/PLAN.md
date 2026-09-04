@@ -44,6 +44,7 @@ Completed:
 - AI assistant module (backend route + frontend panel — structured retrieval with optional workspace text search augmentation)
 - day affirmation module (API + frontend panel)
 - yesterday carry-over action for non-completed tasks (API + frontend action)
+- per-task `autoCancelIfUntouched` flag + `POST /api/tasks/auto-cancel-untouched` lazy sweep that cancels past `todo` tasks that were never acted on (recurrence instances inherit the flag from their source task)
 - stale task triage screen (tasks overdue by more than 14 days) with reschedule/complete/cancel
 - "Move to today" quick transfer for overdue tasks (Alerts + Triage panels) with an auto history comment
 - daily time imputation module (`TaskTimeEntry` table + API + per-task dropdown + day gauge + gaming-track/bilan integration)
@@ -87,6 +88,14 @@ Latest daily workflow conventions:
   - `POST /api/tasks/carry-over-yesterday`
   - copies only yesterday `todo` and `in_progress` tasks
   - skips recurrence instances and duplicate carry-over rows
+- auto-cancel-untouched endpoint:
+  - `POST /api/tasks/auto-cancel-untouched` (body `{ today: YYYY-MM-DD, locale? }`)
+  - opt-in per task via the `autoCancelIfUntouched` boolean (task create/edit form)
+  - cancels tasks still `status = "todo"` whose `targetDate` is before `today`
+  - for a recurrence instance the flag is read from its **source task**, so ticking
+    the box on a repeating task also closes the instances it already generated
+  - records a best-effort history comment on each cancelled task
+  - called by the dashboard on load (same lazy pattern as recurrence — no scheduler)
 - day bilan endpoints:
   - `GET /api/day-bilan?date=YYYY-MM-DD`
   - `PUT /api/day-bilan`

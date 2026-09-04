@@ -19,6 +19,7 @@ export type TaskCreateInput = {
   completedAt: Date | null;
   cancelledAt: Date | null;
   calendarEventId?: string | null;
+  autoCancelIfUntouched?: boolean;
 };
 
 export type TaskUpdateInput = Partial<Omit<TaskCreateInput, "userId">>;

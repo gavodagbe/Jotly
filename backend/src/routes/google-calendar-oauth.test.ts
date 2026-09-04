@@ -803,6 +803,7 @@ test("PATCH /api/google-calendar/connection/:connectionId/calendar rejects switc
       recurrenceSourceTaskId: null,
       recurrenceOccurrenceDate: null,
       calendarEventId: "calendar-event-1",
+      autoCancelIfUntouched: false,
       createdAt: now,
       updatedAt: now,
       completedAt: null,

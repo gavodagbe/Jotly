@@ -374,7 +374,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (profileStore) {
     app.register(profileRoutes, { authService, profileStore });
   }
-  app.register(tasksRoutes, { taskStore, taskTimeEntryStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore });
+  app.register(tasksRoutes, { taskStore, taskTimeEntryStore, authService, recurrenceStore, calendarEventStore, assistantSearchSyncService, projectStore, commentStore });
   if (commentStore) {
     app.register(commentsRoutes, { taskStore, commentStore, authService });
   }

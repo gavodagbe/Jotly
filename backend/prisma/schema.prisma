@@ -115,6 +115,7 @@ model Task {
   recurrenceSourceTaskId   String?
   recurrenceOccurrenceDate DateTime?           @db.Date
   calendarEventId          String?
+  autoCancelIfUntouched    Boolean             @default(false)
   createdAt                DateTime            @default(now())
   updatedAt                DateTime            @updatedAt
   completedAt              DateTime?

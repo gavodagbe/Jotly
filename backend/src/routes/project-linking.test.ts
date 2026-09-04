@@ -93,6 +93,7 @@ class InMemoryTaskStore implements TaskStore {
       recurrenceSourceTaskId: input.recurrenceSourceTaskId ?? null,
       recurrenceOccurrenceDate: input.recurrenceOccurrenceDate ?? null,
       calendarEventId: input.calendarEventId ?? null,
+      autoCancelIfUntouched: input.autoCancelIfUntouched ?? false,
       createdAt: now,
       updatedAt: now,
       completedAt: input.completedAt,
