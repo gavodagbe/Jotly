@@ -106,6 +106,7 @@ Latest alerts conventions:
 - unresolved items stay visible until the task becomes `done`/`cancelled` or the reminder becomes `completed`/`cancelled`
 - alert summary and ordering prioritize `overdue`, then `today`, then `tomorrow`
 - reminder entries in the alert panel expose direct `complete` / `cancel` actions
+- every task entry in the alert panel exposes a status picker (`todo` / `in_progress` / `done` / `cancelled`) that calls `PATCH /api/tasks/:id`, so a task can be closed without opening it
 - Alerts only lists overdue tasks within a 14-day window; `GET /api/tasks/triage?date=YYYY-MM-DD` returns older stale tasks (`todo`/`in_progress`, `dueDate` older than 14 days) with a `daysOverdue` field
 - overdue task entries in Alerts and every entry in Triage expose a "Move to today" action:
   - `PATCH /api/tasks/:id` sets `targetDate` to today, and `dueDate` to today only when it was already in the past

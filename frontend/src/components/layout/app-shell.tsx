@@ -3931,6 +3931,7 @@ export function AppShell() {
   const [isTaskAlertsLoading, setIsTaskAlertsLoading] = useState(false);
   const [isTaskAlertsPanelOpen, setIsTaskAlertsPanelOpen] = useState(false);
   const [taskAlertsReloadKey, setTaskAlertsReloadKey] = useState(0);
+  const [pendingAlertTaskStatusId, setPendingAlertTaskStatusId] = useState<string | null>(null);
   const [taskTriageSummary, setTaskTriageSummary] = useState<TaskTriageSummary | null>(null);
   const [taskTriageErrorMessage, setTaskTriageErrorMessage] = useState<string | null>(null);
   const [isTaskTriageLoading, setIsTaskTriageLoading] = useState(false);
@@ -5670,6 +5671,44 @@ export function AppShell() {
       );
     } finally {
       setPendingTriageTaskId(null);
+    }
+  }
+
+  async function handleAlertTaskStatusChange(task: { id: string; status: TaskStatus }, nextStatus: TaskStatus) {
+    if (!authToken || task.status === nextStatus) return;
+
+    setPendingAlertTaskStatusId(task.id);
+    setTaskAlertsErrorMessage(null);
+
+    try {
+      const updatedTask = await updateTaskStatus(task.id, nextStatus, authToken);
+      const isStillDueSoon = updatedTask.status === "todo" || updatedTask.status === "in_progress";
+
+      setTaskAlertsSummary((current) =>
+        current
+          ? {
+              ...current,
+              tasks: isStillDueSoon
+                ? current.tasks.map((entry) => (entry.id === updatedTask.id ? updatedTask : entry))
+                : current.tasks.filter((entry) => entry.id !== updatedTask.id),
+            }
+          : current
+      );
+      setTasks((current) =>
+        current.map((entry) => (entry.id === updatedTask.id ? { ...entry, ...updatedTask } : entry))
+      );
+      refreshTaskAlerts();
+      refreshTaskTriage();
+    } catch (error: unknown) {
+      setTaskAlertsErrorMessage(
+        error instanceof Error
+          ? error.message
+          : isFrench
+          ? "Impossible de mettre à jour la tâche."
+          : "Unable to update the task."
+      );
+    } finally {
+      setPendingAlertTaskStatusId(null);
     }
   }
 
@@ -12606,12 +12645,14 @@ export function AppShell() {
         anchorDate={taskAlertsAnchorDate}
         triageCount={taskTriageSummary?.count ?? 0}
         pendingTransferTaskId={pendingTransferTaskId}
+        pendingTaskStatusId={pendingAlertTaskStatusId}
         onClose={() => setIsTaskAlertsPanelOpen(false)}
         onOpenTriage={() => {
           setIsTaskAlertsPanelOpen(false);
           setIsTaskTriagePanelOpen(true);
         }}
         onTransferTaskToToday={(task) => { void handleTransferTaskToToday(task); }}
+        onTaskStatusChange={(task, status) => { void handleAlertTaskStatusChange(task, status); }}
         onTaskClick={(task) => {
           setIsTaskAlertsPanelOpen(false);
 
@@ -12635,6 +12676,7 @@ export function AppShell() {
         formatAlertUrgencyLabel={formatAlertUrgencyLabel}
         formatAlertSourceLabel={formatAlertSourceLabel}
         formatPriority={formatPriority}
+        formatTaskStatus={formatTaskStatus}
         formatReminderStatus={formatReminderStatus}
       />
 
