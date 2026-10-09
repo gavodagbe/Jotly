@@ -2,7 +2,7 @@ import { Task } from "@prisma/client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "../app";
-import { createInMemoryAssistantSearchDocumentStore } from "../assistant/assistant-search-document-store";
+import { createInMemoryAssistantSearchDocumentStore } from "../assistant/assistant-search-document-store.in-memory";
 import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import {
   AuthSession,

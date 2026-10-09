@@ -2,7 +2,7 @@ import { CalendarEvent, CalendarEventNote, DayAffirmation, DayBilan, Reminder, T
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AssistantContextStore, AssistantContextSnapshot, AssistantOverviewCounts } from "../assistant/assistant-context-store";
-import { createInMemoryAssistantSearchDocumentStore } from "../assistant/assistant-search-document-store";
+import { createInMemoryAssistantSearchDocumentStore } from "../assistant/assistant-search-document-store.in-memory";
 import { AssistantPipelineInput, AssistantReply, AssistantService } from "../assistant/assistant-service";
 import { AttachmentStore, TaskAttachmentCreateInput } from "../attachments/attachment-store";
 import { AuthSession, AuthStore, AuthUser, CreateAuthSessionInput, CreateAuthUserInput } from "../auth/auth-store";
