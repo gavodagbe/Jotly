@@ -179,7 +179,7 @@ const attachmentsRoutes: FastifyPluginAsync<AttachmentsRouteOptions> = async (ap
         sizeBytes: bodyResult.data.sizeBytes ?? null,
       });
 
-      void assistantSearchSyncService?.syncUserWorkspace(authUserId).catch((error) => {
+      void assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["attachment"] }).catch((error) => {
         request.log.error(error, "Failed to sync assistant search index after attachment upload");
       });
 
@@ -230,7 +230,7 @@ const attachmentsRoutes: FastifyPluginAsync<AttachmentsRouteOptions> = async (ap
         return sendError(reply, 404, "NOT_FOUND", "Attachment not found");
       }
 
-      void assistantSearchSyncService?.syncUserWorkspace(authUserId).catch((error) => {
+      void assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["attachment"] }).catch((error) => {
         request.log.error(error, "Failed to sync assistant search index after attachment delete");
       });
 

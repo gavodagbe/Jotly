@@ -8,8 +8,13 @@ export type TaskAttachmentCreateInput = {
   sizeBytes: number | null;
 };
 
+/** Attachment row without its (potentially large) `url` payload. */
+export type TaskAttachmentSummary = Omit<TaskAttachment, "url">;
+
 export type AttachmentStore = {
   listByTaskId(taskId: string): Promise<TaskAttachment[]>;
+  /** Lists attachments without loading their payload; used by search indexing. */
+  listSummariesByTaskId?(taskId: string): Promise<TaskAttachmentSummary[]>;
   getById(id: string): Promise<TaskAttachment | null>;
   create(input: TaskAttachmentCreateInput): Promise<TaskAttachment>;
   remove(id: string): Promise<TaskAttachment | null>;
@@ -25,6 +30,14 @@ export function createPrismaAttachmentStore(prisma = new PrismaClient()): Attach
     async listByTaskId(taskId) {
       return prisma.taskAttachment.findMany({
         where: { taskId },
+        orderBy: { createdAt: "asc" },
+      });
+    },
+
+    async listSummariesByTaskId(taskId) {
+      return prisma.taskAttachment.findMany({
+        where: { taskId },
+        omit: { url: true },
         orderBy: { createdAt: "asc" },
       });
     },

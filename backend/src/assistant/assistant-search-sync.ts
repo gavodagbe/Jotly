@@ -35,8 +35,15 @@ export type SearchIndexEntry = {
   /** If set, OCR/extraction is run on this file. Omit for plain-text entries. */
   attachment?: {
     name: string;
-    url: string;
     contentType: string | null;
+    sizeBytes?: number | null;
+    /**
+     * Loads the file payload (often a large base64 data URL) on demand. It is
+     * only called when the attachment is new or changed, so unchanged files
+     * are never pulled into memory during a sync. Resolve `null` if the file
+     * no longer exists.
+     */
+    loadUrl: () => Promise<string | null>;
   };
 };
 
@@ -270,12 +277,14 @@ export function createAssistantSearchSyncService(
         const existing = existingByKey.get(entryKey) ?? existingChunks[0] ?? null;
 
         if (entry.attachment) {
-          // File attachment entry: use content signature for extraction caching
+          // File attachment entry: a lightweight signature (no payload) drives
+          // extraction caching, so the file itself is only loaded when needed.
           const contentSig = hashContent(
             JSON.stringify({
               name: entry.attachment.name,
-              url: entry.attachment.url,
               contentType: entry.attachment.contentType,
+              sizeBytes: entry.attachment.sizeBytes ?? null,
+              updatedAt: entry.updatedAt.toISOString(),
             })
           );
 
@@ -283,8 +292,14 @@ export function createAssistantSearchSyncService(
             existing && existing.metadataJson && typeof existing.metadataJson === "object" && !Array.isArray(existing.metadataJson)
               ? (existing.metadataJson as Record<string, unknown>)._contentSig as string | undefined
               : undefined;
+          // Attachments are immutable: a document indexed with the legacy
+          // payload-based signature is still current if its timestamp matches.
+          const isLegacyMatch =
+            existingSig !== undefined &&
+            existing !== null &&
+            existing.sourceUpdatedAt.getTime() === entry.updatedAt.getTime();
 
-          if (existing && existingSig === contentSig) {
+          if (existing && (existingSig === contentSig || isLegacyMatch)) {
             // Reuse existing extraction result — no re-OCR needed.
             // Re-emit all existing chunks for this attachment.
             if (existingChunks.length > 0) {
@@ -315,7 +330,7 @@ export function createAssistantSearchSyncService(
                   bodyText: existing.bodyText,
                   metadataJson: buildBaseMetadata(entry.sourceType, {
                     ...entry.metadata,
-                    _contentSig: contentSig,
+                    _contentSig: existingSig ?? contentSig,
                   }),
                   sourceUpdatedAt: entry.updatedAt,
                   extractionStatus: existing.extractionStatus,
@@ -325,10 +340,14 @@ export function createAssistantSearchSyncService(
               );
             }
           } else {
-            // Extract fresh (new attachment or content changed)
+            // Extract fresh (new attachment or content changed). The payload
+            // is loaded here only, one attachment at a time.
+            const url = await entry.attachment.loadUrl();
+            if (url === null) continue;
+
             const extraction = await documentExtractor.extractFromAttachment({
               name: entry.attachment.name,
-              url: entry.attachment.url,
+              url,
               contentType: entry.attachment.contentType,
             });
 

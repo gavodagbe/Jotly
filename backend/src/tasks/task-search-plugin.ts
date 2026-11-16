@@ -52,8 +52,11 @@ export function createTaskSearchPlugin(options: {
           }
         }
 
-        if (options.attachmentStore) {
-          const attachments = await options.attachmentStore.listByTaskId(task.id);
+        const attachmentStore = options.attachmentStore;
+        if (attachmentStore) {
+          const attachments = attachmentStore.listSummariesByTaskId
+            ? await attachmentStore.listSummariesByTaskId(task.id)
+            : await attachmentStore.listByTaskId(task.id);
           for (const attachment of attachments) {
             entries.push({
               sourceType: "attachment",
@@ -70,8 +73,9 @@ export function createTaskSearchPlugin(options: {
               updatedAt: attachment.createdAt,
               attachment: {
                 name: attachment.name,
-                url: attachment.url,
                 contentType: attachment.contentType,
+                sizeBytes: attachment.sizeBytes,
+                loadUrl: async () => (await attachmentStore.getById(attachment.id))?.url ?? null,
               },
             });
           }

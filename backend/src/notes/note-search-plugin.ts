@@ -28,11 +28,11 @@ export function createNoteSearchPlugin(options: {
           updatedAt: note.updatedAt,
         });
 
-        if (options.noteAttachmentStore) {
-          const attachments = await options.noteAttachmentStore.listByNoteId(
-            note.id,
-            userId
-          );
+        const noteAttachmentStore = options.noteAttachmentStore;
+        if (noteAttachmentStore) {
+          const attachments = noteAttachmentStore.listSummariesByNoteId
+            ? await noteAttachmentStore.listSummariesByNoteId(note.id, userId)
+            : await noteAttachmentStore.listByNoteId(note.id, userId);
           for (const attachment of attachments) {
             entries.push({
               sourceType: "noteAttachment",
@@ -51,8 +51,10 @@ export function createNoteSearchPlugin(options: {
               updatedAt: attachment.createdAt,
               attachment: {
                 name: attachment.name,
-                url: attachment.url,
                 contentType: attachment.contentType,
+                sizeBytes: attachment.sizeBytes,
+                loadUrl: async () =>
+                  (await noteAttachmentStore.getById(attachment.id, userId))?.url ?? null,
               },
             });
           }
