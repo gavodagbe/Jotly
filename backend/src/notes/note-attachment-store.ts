@@ -9,8 +9,13 @@ export type NoteAttachmentCreateInput = {
   sizeBytes: number | null;
 };
 
+/** Note attachment row without its (potentially large) `url` payload. */
+export type NoteAttachmentSummary = Omit<NoteAttachment, "url">;
+
 export type NoteAttachmentStore = {
   listByNoteId(noteId: string, userId: string): Promise<NoteAttachment[]>;
+  /** Lists attachments without loading their payload; used by search indexing. */
+  listSummariesByNoteId?(noteId: string, userId: string): Promise<NoteAttachmentSummary[]>;
   getById(id: string, userId: string): Promise<NoteAttachment | null>;
   create(input: NoteAttachmentCreateInput): Promise<NoteAttachment>;
   remove(id: string, userId: string): Promise<NoteAttachment | null>;
@@ -28,6 +33,14 @@ export function createPrismaNoteAttachmentStore(
     async listByNoteId(noteId, userId) {
       return prisma.noteAttachment.findMany({
         where: { noteId, userId },
+        orderBy: { createdAt: "asc" },
+      });
+    },
+
+    async listSummariesByNoteId(noteId, userId) {
+      return prisma.noteAttachment.findMany({
+        where: { noteId, userId },
+        omit: { url: true },
         orderBy: { createdAt: "asc" },
       });
     },

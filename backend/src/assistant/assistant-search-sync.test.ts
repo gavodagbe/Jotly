@@ -58,8 +58,35 @@ const attachmentEntry: SearchIndexEntry = {
   bodyText: "",
   metadata: { noteId: "note-1" },
   updatedAt: UPDATED_AT,
-  attachment: { name: "report.pdf", url: "data:application/pdf;base64,AAAA", contentType: "application/pdf" },
+  attachment: {
+    name: "report.pdf",
+    contentType: "application/pdf",
+    sizeBytes: 3,
+    loadUrl: async () => "data:application/pdf;base64,AAAA",
+  },
 };
+
+function createLazyAttachmentEntry(sourceId: string) {
+  let loads = 0;
+  const entry: SearchIndexEntry = {
+    sourceType: "attachment",
+    sourceId,
+    title: `${sourceId}.pdf`,
+    bodyText: "",
+    metadata: { taskId: "task-1" },
+    updatedAt: UPDATED_AT,
+    attachment: {
+      name: `${sourceId}.pdf`,
+      contentType: "application/pdf",
+      sizeBytes: 3,
+      loadUrl: async () => {
+        loads += 1;
+        return "data:application/pdf;base64,AAAA";
+      },
+    },
+  };
+  return { entry, getLoads: () => loads };
+}
 
 const taskEntry: SearchIndexEntry = {
   sourceType: "task",
@@ -160,4 +187,61 @@ test("concurrent syncs for a user run one at a time and coalesce", async () => {
 
   assert.equal(maxActive, 1);
   assert.equal(runs, 2);
+});
+
+test("sync loads attachment payloads only for new attachments", async () => {
+  const searchDocumentStore = createInMemoryAssistantSearchDocumentStore();
+  const { extractor, getCalls } = createCountingExtractor("Signed contract for the office lease renewal.");
+  const existing = createLazyAttachmentEntry("att-old");
+  const added = createLazyAttachmentEntry("att-new");
+  const entries: SearchIndexEntry[] = [taskEntry, existing.entry];
+  const service = createAssistantSearchSyncService({
+    plugins: [createStaticPlugin(["task", "comment", "attachment"], entries)],
+    searchDocumentStore,
+    documentExtractor: extractor,
+    embeddingClient: disabledEmbeddingClient,
+    embeddingModel: "test-model",
+  });
+
+  await service.syncUserWorkspace(USER_ID, { onlySourceTypes: ["attachment"] });
+  entries.push(added.entry);
+  await service.syncUserWorkspace(USER_ID, { onlySourceTypes: ["attachment"] });
+
+  assert.equal(existing.getLoads(), 1, "unchanged attachment payload is not reloaded");
+  assert.equal(added.getLoads(), 1);
+  assert.equal(getCalls(), 2);
+});
+
+test("sync reuses attachments indexed with the legacy payload signature", async () => {
+  const searchDocumentStore = createInMemoryAssistantSearchDocumentStore();
+  const { extractor, getCalls } = createCountingExtractor("unused");
+  const legacy = createLazyAttachmentEntry("att-legacy");
+  await searchDocumentStore.replaceUserDocuments(USER_ID, [
+    {
+      userId: USER_ID,
+      sourceType: "attachment",
+      sourceId: "att-legacy",
+      title: "att-legacy.pdf",
+      bodyText: "Previously extracted invoice text for the legacy attachment.",
+      metadataJson: { sourceType: "attachment", _contentSig: "legacy-url-based-signature" },
+      contentHash: "legacy-hash",
+      sourceUpdatedAt: UPDATED_AT,
+      extractionStatus: "ready",
+      extractionWarning: null,
+    },
+  ]);
+  const service = createAssistantSearchSyncService({
+    plugins: [createStaticPlugin(["task", "comment", "attachment"], [legacy.entry])],
+    searchDocumentStore,
+    documentExtractor: extractor,
+    embeddingClient: disabledEmbeddingClient,
+    embeddingModel: "test-model",
+  });
+
+  await service.syncUserWorkspace(USER_ID);
+
+  assert.equal(legacy.getLoads(), 0);
+  assert.equal(getCalls(), 0);
+  const [document] = await searchDocumentStore.listByUser(USER_ID);
+  assert.equal(document?.bodyText, "Previously extracted invoice text for the legacy attachment.");
 });
