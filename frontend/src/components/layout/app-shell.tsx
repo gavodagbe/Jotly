@@ -21,6 +21,7 @@ import { DeleteTaskDialog, NavigationBlockersDialog } from "@/components/dialogs
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { ActiveSectionIndicator, SectionIdentityPills, getMainContentSectionClass } from "@/components/layout/section-navigation";
 import { useMobileScreen } from "@/components/mobile/use-mobile-screen";
+import { useIsMobileLayout } from "@/components/mobile/use-is-mobile-layout";
 import { MobileCreateFab } from "@/components/mobile/MobileCreateFab";
 import { MobileMoreScreen } from "@/components/mobile/MobileMoreScreen";
 import { RoutineChecklistRow } from "@/components/routines/RoutineChecklistRow";
@@ -2919,6 +2920,16 @@ export function AppShell() {
   );
   const [dashboardBlockCollapsed, setDashboardBlockCollapsed] = useState<Record<DashboardBlockId, boolean>>(
     () => getInitialDashboardLayoutConfig().collapsed
+  );
+  // Below lg every block is shown unfolded (each mobile screen is short); the
+  // folding chosen on desktop is kept untouched.
+  const isMobileLayout = useIsMobileLayout();
+  const visibleBlockCollapsed = useMemo(
+    () =>
+      isMobileLayout
+        ? (Object.fromEntries(DASHBOARD_BLOCK_IDS.map((id) => [id, false])) as Record<DashboardBlockId, boolean>)
+        : dashboardBlockCollapsed,
+    [isMobileLayout, dashboardBlockCollapsed]
   );
   const [draggedDashboardBlockId, setDraggedDashboardBlockId] = useState<DashboardBlockId | null>(null);
   const [dashboardDropTargetId, setDashboardDropTargetId] = useState<DashboardBlockId | null>(null);
@@ -8239,16 +8250,17 @@ export function AppShell() {
               type="button"
               className={dashboardIconButtonClass}
               onClick={() => toggleDashboardBlock("overview")}
-              aria-expanded={!dashboardBlockCollapsed.overview}
-              aria-label={getCollapseToggleAriaLabel("overview", dashboardBlockCollapsed.overview)}
-              title={getCollapseToggleAriaLabel("overview", dashboardBlockCollapsed.overview)}
+              data-block-toggle
+              aria-expanded={!visibleBlockCollapsed.overview}
+              aria-label={getCollapseToggleAriaLabel("overview", visibleBlockCollapsed.overview)}
+              title={getCollapseToggleAriaLabel("overview", visibleBlockCollapsed.overview)}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.overview} />
+              <CollapseChevronIcon isCollapsed={visibleBlockCollapsed.overview} />
             </button>
           </div>
         </div>
 
-        {dashboardBlockCollapsed.overview ? (
+        {visibleBlockCollapsed.overview ? (
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <div className="mt-4 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-4">
@@ -8288,10 +8300,10 @@ export function AppShell() {
         activeSectionId={activeSectionId}
         visualOrder={getDashboardBlockVisualOrder("board")}
         dropClassName={getDashboardDropClassName("board")}
-        isCollapsed={dashboardBlockCollapsed.board}
+        isCollapsed={visibleBlockCollapsed.board}
         collapsedHintLabel={collapsedHintLabel}
         dragHandleLabel={getDashboardDragHandleLabel("board")}
-        collapseToggleLabel={getCollapseToggleAriaLabel("board", dashboardBlockCollapsed.board)}
+        collapseToggleLabel={getCollapseToggleAriaLabel("board", visibleBlockCollapsed.board)}
         taskFilterValues={taskFilterValues}
         defaultTaskFilterValues={DEFAULT_TASK_FILTER_VALUES}
         setTaskFilterValues={setTaskFilterValues}
@@ -8367,16 +8379,17 @@ export function AppShell() {
               type="button"
               className={dashboardIconButtonClass}
               onClick={() => toggleDashboardBlock("dailyControls")}
-              aria-expanded={!dashboardBlockCollapsed.dailyControls}
-              aria-label={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
-              title={getCollapseToggleAriaLabel("dailyControls", dashboardBlockCollapsed.dailyControls)}
+              data-block-toggle
+              aria-expanded={!visibleBlockCollapsed.dailyControls}
+              aria-label={getCollapseToggleAriaLabel("dailyControls", visibleBlockCollapsed.dailyControls)}
+              title={getCollapseToggleAriaLabel("dailyControls", visibleBlockCollapsed.dailyControls)}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.dailyControls} />
+              <CollapseChevronIcon isCollapsed={visibleBlockCollapsed.dailyControls} />
             </button>
           </div>
         </div>
 
-        {dashboardBlockCollapsed.dailyControls ? (
+        {visibleBlockCollapsed.dailyControls ? (
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
@@ -8727,16 +8740,17 @@ export function AppShell() {
               type="button"
               className={dashboardIconButtonClass}
               onClick={() => toggleDashboardBlock("routine")}
-              aria-expanded={!dashboardBlockCollapsed.routine}
-              aria-label={getCollapseToggleAriaLabel("routine", dashboardBlockCollapsed.routine)}
-              title={getCollapseToggleAriaLabel("routine", dashboardBlockCollapsed.routine)}
+              data-block-toggle
+              aria-expanded={!visibleBlockCollapsed.routine}
+              aria-label={getCollapseToggleAriaLabel("routine", visibleBlockCollapsed.routine)}
+              title={getCollapseToggleAriaLabel("routine", visibleBlockCollapsed.routine)}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.routine} />
+              <CollapseChevronIcon isCollapsed={visibleBlockCollapsed.routine} />
             </button>
           </div>
         </div>
 
-        {dashboardBlockCollapsed.routine ? (
+        {visibleBlockCollapsed.routine ? (
           <p className="mt-3 text-xs text-muted">
             {routineSummary
               ? `${selectedDateRoutineScorePercentage}% · ${selectedDateRoutineCompletions}/${selectedDateRoutineTotal}`
@@ -8957,7 +8971,7 @@ export function AppShell() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {!dashboardBlockCollapsed.affirmation ? (
+            {!visibleBlockCollapsed.affirmation ? (
               <button
                 type="button"
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${isAffirmationCompleted ? "bg-accent" : "bg-line"}`}
@@ -8972,7 +8986,7 @@ export function AppShell() {
                 <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isAffirmationCompleted ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             ) : null}
-            {!dashboardBlockCollapsed.affirmation ? (
+            {!visibleBlockCollapsed.affirmation ? (
               <button
                 type="button"
                 className={`${dashboardIconButtonClass} ${isAffirmationOcrPanelOpen ? "bg-indigo-100 text-indigo-600" : ""}`}
@@ -9010,16 +9024,17 @@ export function AppShell() {
               type="button"
               className={dashboardIconButtonClass}
               onClick={() => toggleDashboardBlock("affirmation")}
-              aria-expanded={!dashboardBlockCollapsed.affirmation}
-              aria-label={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
-              title={getCollapseToggleAriaLabel("affirmation", dashboardBlockCollapsed.affirmation)}
+              data-block-toggle
+              aria-expanded={!visibleBlockCollapsed.affirmation}
+              aria-label={getCollapseToggleAriaLabel("affirmation", visibleBlockCollapsed.affirmation)}
+              title={getCollapseToggleAriaLabel("affirmation", visibleBlockCollapsed.affirmation)}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.affirmation} />
+              <CollapseChevronIcon isCollapsed={visibleBlockCollapsed.affirmation} />
             </button>
           </div>
         </div>
 
-        {dashboardBlockCollapsed.affirmation ? (
+        {visibleBlockCollapsed.affirmation ? (
           <p className="mt-3 text-xs text-muted">
             {collapsedHintLabel}{" "}
             {isAffirmationCompleted
@@ -9408,14 +9423,14 @@ export function AppShell() {
         activeTimeZone={activeTimeZone}
         visualOrder={getDashboardBlockVisualOrder("reminders")}
         dropClassName={getDashboardDropClassName("reminders")}
-        isCollapsed={dashboardBlockCollapsed.reminders}
+        isCollapsed={visibleBlockCollapsed.reminders}
         collapsedHintLabel={collapsedHintLabel}
         reminders={reminders}
         isLoadingReminders={isLoadingReminders}
         reminderErrorMessage={reminderErrorMessage}
         hasReminderDialogMode={Boolean(reminderDialogMode)}
         dragHandleLabel={getDashboardDragHandleLabel("reminders")}
-        collapseToggleLabel={getCollapseToggleAriaLabel("reminders", dashboardBlockCollapsed.reminders)}
+        collapseToggleLabel={getCollapseToggleAriaLabel("reminders", visibleBlockCollapsed.reminders)}
         onCreateReminder={openCreateReminderDialog}
         onEditReminder={openEditReminderDialog}
         onCompleteReminder={(reminderId) => { void handleCompleteReminder(reminderId); }}
@@ -9450,7 +9465,7 @@ export function AppShell() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {!dashboardBlockCollapsed.bilan ? (
+            {!visibleBlockCollapsed.bilan ? (
               <button
                 type="button"
                 className={primaryButtonClass}
@@ -9482,20 +9497,21 @@ export function AppShell() {
               type="button"
               className={dashboardIconButtonClass}
               onClick={() => toggleDashboardBlock("bilan")}
-              aria-expanded={!dashboardBlockCollapsed.bilan}
-              aria-label={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
-              title={getCollapseToggleAriaLabel("bilan", dashboardBlockCollapsed.bilan)}
+              data-block-toggle
+              aria-expanded={!visibleBlockCollapsed.bilan}
+              aria-label={getCollapseToggleAriaLabel("bilan", visibleBlockCollapsed.bilan)}
+              title={getCollapseToggleAriaLabel("bilan", visibleBlockCollapsed.bilan)}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.bilan} />
+              <CollapseChevronIcon isCollapsed={visibleBlockCollapsed.bilan} />
             </button>
           </div>
         </div>
 
-        {dashboardBlockCollapsed.bilan ? (
+        {visibleBlockCollapsed.bilan ? (
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
           <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
               <div className="rounded-lg border border-line p-3">
                 <p className="text-[11px] font-medium text-muted">
                   {isFrench ? "Taches terminees" : "Done Tasks"}
@@ -9981,16 +9997,17 @@ export function AppShell() {
               type="button"
               className={dashboardIconButtonClass}
               onClick={() => toggleDashboardBlock("notes")}
-              aria-expanded={!dashboardBlockCollapsed.notes}
-              aria-label={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
-              title={getCollapseToggleAriaLabel("notes", dashboardBlockCollapsed.notes)}
+              data-block-toggle
+              aria-expanded={!visibleBlockCollapsed.notes}
+              aria-label={getCollapseToggleAriaLabel("notes", visibleBlockCollapsed.notes)}
+              title={getCollapseToggleAriaLabel("notes", visibleBlockCollapsed.notes)}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.notes} />
+              <CollapseChevronIcon isCollapsed={visibleBlockCollapsed.notes} />
             </button>
           </div>
         </div>
 
-        {dashboardBlockCollapsed.notes ? (
+        {visibleBlockCollapsed.notes ? (
           <p className="mt-3 text-xs text-muted">
             {collapsedHintLabel}{" "}
             {notes.length === 0
@@ -10040,7 +10057,7 @@ export function AppShell() {
                       <div className={`h-1.5 w-full bg-gradient-to-r ${noteAccentClass}`} />
 
                       <div className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               {note.linkedCalendarEvent ? (
@@ -10079,7 +10096,7 @@ export function AppShell() {
                             </div>
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-1">
+                          <div className="order-first flex shrink-0 items-center gap-1 self-end sm:order-none sm:self-auto">
                             <button
                               type="button"
                               className={`${iconButtonClass} h-9 w-9 rounded-xl border border-transparent bg-surface-soft/70 px-0 hover:border-line`}
@@ -10289,7 +10306,7 @@ export function AppShell() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {!dashboardBlockCollapsed.gamingTrack ? (
+            {!visibleBlockCollapsed.gamingTrack ? (
               <div className="inline-flex items-center gap-0.5 rounded-lg bg-surface-soft p-1">
                 {gamingTrackPeriodOptions.map((option) => (
                   <button
@@ -10325,24 +10342,25 @@ export function AppShell() {
               type="button"
               className={dashboardIconButtonClass}
               onClick={() => toggleDashboardBlock("gamingTrack")}
-              aria-expanded={!dashboardBlockCollapsed.gamingTrack}
-              aria-label={getCollapseToggleAriaLabel("gamingTrack", dashboardBlockCollapsed.gamingTrack)}
-              title={getCollapseToggleAriaLabel("gamingTrack", dashboardBlockCollapsed.gamingTrack)}
+              data-block-toggle
+              aria-expanded={!visibleBlockCollapsed.gamingTrack}
+              aria-label={getCollapseToggleAriaLabel("gamingTrack", visibleBlockCollapsed.gamingTrack)}
+              title={getCollapseToggleAriaLabel("gamingTrack", visibleBlockCollapsed.gamingTrack)}
             >
-              <CollapseChevronIcon isCollapsed={dashboardBlockCollapsed.gamingTrack} />
+              <CollapseChevronIcon isCollapsed={visibleBlockCollapsed.gamingTrack} />
             </button>
           </div>
         </div>
 
-        {dashboardBlockCollapsed.gamingTrack ? <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p> : null}
+        {visibleBlockCollapsed.gamingTrack ? <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p> : null}
 
-        {!dashboardBlockCollapsed.gamingTrack && isGamingTrackLoading ? (
+        {!visibleBlockCollapsed.gamingTrack && isGamingTrackLoading ? (
           <p className="mt-4 rounded-xl border border-line bg-surface-soft px-3 py-2 text-sm text-muted">
             {isFrench ? "Chargement du gaming track..." : "Loading gaming track..."}
           </p>
         ) : null}
 
-        {!dashboardBlockCollapsed.gamingTrack && gamingTrackSummary ? (
+        {!visibleBlockCollapsed.gamingTrack && gamingTrackSummary ? (
           <>
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               <div className="flex items-center gap-5 rounded-xl bg-accent-soft/40 px-5 py-5">
@@ -10363,7 +10381,7 @@ export function AppShell() {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div className="rounded-xl border border-line p-3">
                   <p className="text-[11px] font-medium text-muted">{isFrench ? "Execution" : "Execution"}</p>
                   <p className="mt-1 text-xl font-semibold text-foreground">{gamingTrackSummary.scores.execution}</p>
@@ -10534,7 +10552,7 @@ export function AppShell() {
           </>
         ) : null}
 
-        {!dashboardBlockCollapsed.gamingTrack && gamingTrackErrorMessage ? (
+        {!visibleBlockCollapsed.gamingTrack && gamingTrackErrorMessage ? (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             {gamingTrackErrorMessage}
           </p>
@@ -11652,8 +11670,10 @@ export function AppShell() {
                       }
                     }}
                     disabled={isSubmittingTask || !editingTask}
+                    aria-label={isFrench ? "Supprimer la tache" : "Delete Task"}
                   >
-                    {isFrench ? "Supprimer la tache" : "Delete Task"}
+                    <span className="sm:hidden"><TrashIcon /></span>
+                    <span className="hidden sm:inline">{isFrench ? "Supprimer la tache" : "Delete Task"}</span>
                   </button>
                 ) : (
                   <span />

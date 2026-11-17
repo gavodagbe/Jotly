@@ -325,3 +325,12 @@ section {
     padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
   }
 }
+
+/* Below lg: blocks are always unfolded and cannot be reordered, so their fold
+   toggles and drag handles are hidden (desktop keeps them). */
+@media (max-width: 1023.98px) {
+  .mobile-screens [data-block-toggle],
+  .mobile-screens button[draggable="true"] {
+    display: none;
+  }
+}

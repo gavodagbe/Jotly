@@ -60,7 +60,7 @@ export function AssistantPanel({
   const isFrench = locale === "fr";
 
   return (
-    <section className="animate-scale-in fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-24 left-4 right-4 z-40 flex max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[580px]">
+    <section className="animate-scale-in fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-24 left-4 right-4 z-40 flex h-[min(70dvh,560px)] max-h-[80vh] flex-col overflow-hidden rounded-2xl lg:h-auto border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[580px]">
       <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
         <div className="flex items-center gap-2.5">
           <div className="grid h-7 w-7 place-items-center rounded-lg bg-accent-soft text-accent">

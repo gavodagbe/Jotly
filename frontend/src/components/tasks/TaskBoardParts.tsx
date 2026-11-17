@@ -102,13 +102,23 @@ export function TaskCard({
       }`} />
       <div className="flex items-start justify-between gap-2 pl-2">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-medium text-foreground">{task.title}</h3>
+          <h3 className="text-sm font-medium text-foreground">
+            {/* Tapping the title opens the task (touch screens have no hover to reveal the edit icon). */}
+            <button
+              type="button"
+              className="w-full text-left"
+              onClick={() => onEdit(task)}
+              disabled={isSaving}
+            >
+              {task.title}
+            </button>
+          </h3>
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <div className="flex shrink-0 items-center gap-0.5 transition-opacity duration-150 lg:opacity-0 lg:group-hover:opacity-100">
           <button
             type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-soft hover:text-foreground lg:h-7 lg:w-7"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onEdit(task)}
             disabled={isSaving}
@@ -119,7 +129,7 @@ export function TaskCard({
           </button>
           <button
             type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-red-50 hover:text-red-500"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-red-50 hover:text-red-500 lg:h-7 lg:w-7"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onDelete(task)}
             disabled={isSaving}
