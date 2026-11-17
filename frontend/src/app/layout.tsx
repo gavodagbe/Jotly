@@ -1,10 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { OfflineStatus } from "@/components/offline/OfflineStatus";
 import { APP_NAME } from "@/lib/app-meta";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: APP_NAME,
   description: "Date-driven daily task dashboard.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: APP_NAME,
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#4f46e5",
 };
 
 export default function RootLayout({
@@ -22,7 +36,10 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <OfflineStatus />
+        {children}
+      </body>
     </html>
   );
 }

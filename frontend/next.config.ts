@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  async headers() {
+    const noCache = { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" };
+    return [
+      { source: "/sw.js", headers: [noCache, { key: "Service-Worker-Allowed", value: "/" }] },
+      { source: "/sw-routes.js", headers: [noCache] },
+      { source: "/manifest.webmanifest", headers: [{ key: "Cache-Control", value: "no-cache" }] },
+    ];
+  },
   async rewrites() {
     return [
       {
