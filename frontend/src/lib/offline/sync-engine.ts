@@ -4,7 +4,8 @@
  */
 import { ApiError, isOfflineError } from "../api/http";
 import { entityOf, type JotlyOfflineDb, type OutboxEntry } from "./db";
-import { pullAll, sendEntry, tableFor } from "./entity-sync";
+import { sendEntry, tableFor } from "./entity-sync";
+import { pullAll } from "./pull-window";
 import { countOutbox, peekOutbox, setInFlightSeq } from "./outbox";
 import { getOfflineSession, isBrowserOnline } from "./session";
 import { recordIssue } from "./sync-issues";
@@ -24,12 +25,12 @@ export function toLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export function getSyncWindow(now = new Date()): { from: string; to: string } {
+export function getSyncWindow(now = new Date()): { from: string; to: string; today: string } {
   const from = new Date(now);
   from.setDate(from.getDate() - WINDOW_DAYS_BEFORE);
   const to = new Date(now);
   to.setDate(to.getDate() + WINDOW_DAYS_AFTER);
-  return { from: toLocalDateString(from), to: toLocalDateString(to) };
+  return { from: toLocalDateString(from), to: toLocalDateString(to), today: toLocalDateString(now) };
 }
 
 function isRetryable(error: unknown): boolean {
@@ -50,8 +51,7 @@ async function processEntry(db: JotlyOfflineDb, entry: OutboxEntry, token: strin
       return "stop";
     }
     // Rejected by the server (validation, not found...): set it aside so the rest can sync.
-    const entity = entityOf(entry.kind);
-    const table = entity === "timeEntry" ? null : tableFor(db, entity);
+    const table = tableFor(db, entityOf(entry.kind));
     const local = table ? await table.get(entry.entityId) : undefined;
     const isGone = entry.kind.endsWith(".create") || (error instanceof ApiError && error.status === 404);
     if (table && isGone) {
@@ -76,24 +76,23 @@ export async function pullWindow(db: JotlyOfflineDb, token: string, now = new Da
   await pullAll(db, token, getSyncWindow(now));
 }
 
-let running: { promise: Promise<void>; session: ReturnType<typeof getOfflineSession> } | null = null;
+let running: Promise<void> | null = null;
 
 /**
- * Push pending changes then pull fresh data. Concurrent calls for the same account
- * share the same run; a run started for another account is awaited first.
+ * Push pending changes then pull fresh data. A call made while a run is in
+ * progress waits for it, then starts a fresh run (joined by any other waiter),
+ * so a sync requested right after reconnecting is never swallowed by a run that
+ * started while still offline.
  */
 export async function syncNow(options: { pull?: boolean } = {}): Promise<void> {
-  const session = getOfflineSession();
-  if (running && running.session !== session) {
-    await running.promise.catch(() => undefined);
+  if (running) {
+    await running.catch(() => undefined);
+    if (running) return running;
   }
-  if (!running) {
-    const promise = runSync(options.pull ?? true).finally(() => {
-      running = null;
-    });
-    running = { promise, session };
-  }
-  return running.promise;
+  running = runSync(options.pull ?? true).finally(() => {
+    running = null;
+  });
+  return running;
 }
 
 async function runSync(pull: boolean): Promise<void> {

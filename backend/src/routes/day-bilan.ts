@@ -10,6 +10,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { baseUpdatedAtSchema, conflictPayload, hasConcurrentChange } from "./offline-sync-helpers";
 
 type DayBilanRoutesOptions = {
   authService: AuthService;
@@ -33,6 +34,7 @@ const upsertDayBilanBodySchema = z.object({
   blockers: z.string().max(10000, "Blockers text is too long").nullable().optional(),
   lessonsLearned: z.string().max(10000, "Lessons text is too long").nullable().optional(),
   tomorrowTop3: z.string().max(10000, "Top 3 text is too long").nullable().optional(),
+  baseUpdatedAt: baseUpdatedAtSchema.optional(),
 });
 
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
@@ -162,6 +164,12 @@ const dayBilanRoutes: FastifyPluginAsync<DayBilanRoutesOptions> = async (app, op
 
     try {
       const existingBilan = await dayBilanStore.getByDate(targetDate, authUserId);
+      if (existingBilan && hasConcurrentChange(existingBilan, bodyResult.data.baseUpdatedAt)) {
+        return reply
+          .code(409)
+          .send(conflictPayload("Day bilan was modified since this change was made", serializeDayBilan(existingBilan)));
+      }
+
 
       const mood = bodyResult.data.mood !== undefined ? bodyResult.data.mood : existingBilan?.mood ?? null;
       const winsInput = normalizeOptionalText(bodyResult.data.wins);

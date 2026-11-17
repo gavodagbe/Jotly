@@ -10,7 +10,8 @@
  *                                    everything queued after it are dropped
  * - delete otherwise               → pending changes dropped, delete appended
  * - other actions (reminder complete / cancel) → appended as is
- * - time entry for the same (task, date) → replaces the previous pending one
+ * - journal save for the same entry → fields merged into the pending save
+ * - time entry / routine tick for the same (owner, date) → replaces the previous pending one
  */
 import { actionOf, entityOf, type OutboxEntry } from "./db";
 
@@ -26,12 +27,18 @@ function isEditable(entry: OutboxEntry, inFlightSeq: number | null): entry is Ou
   return entry.seq !== undefined && entry.seq !== inFlightSeq;
 }
 
+function datedKey(entry: OutboxEntry): string | null {
+  if (entry.kind === "timeEntry.put") return entry.payload.date;
+  if (entry.kind === "routineCompletion.put") return entry.payload.targetDate;
+  return null;
+}
+
 function mergeInto(target: OutboxEntry, next: OutboxEntry): OutboxEntry {
   // Only called for create/update entries of the same entity, which all carry a payload.
   const base = target as unknown as WithPayload;
   const incoming = next as unknown as WithPayload;
   const merged: WithPayload = { ...base, payload: { ...base.payload, ...incoming.payload }, editedAt: next.editedAt };
-  if (actionOf(target.kind) === "update") {
+  if (actionOf(target.kind) === "update" || target.kind === "journal.put") {
     merged.baseUpdatedAt = base.baseUpdatedAt ?? incoming.baseUpdatedAt;
   }
   return merged as unknown as OutboxEntry;
@@ -43,11 +50,17 @@ export function planEnqueue(existing: OutboxEntry[], next: OutboxEntry, inFlight
   const entity = entityOf(next.kind);
   const action = actionOf(next.kind);
 
-  if (next.kind === "timeEntry.put") {
-    const previous = editable.filter(
-      (entry) => entry.kind === "timeEntry.put" && entry.payload.date === next.payload.date
-    );
+  if (next.kind === "timeEntry.put" || next.kind === "routineCompletion.put") {
+    const previous = editable.filter((entry) => entry.kind === next.kind && datedKey(entry) === datedKey(next));
     return { remove: previous.map((entry) => entry.seq), replace: [], add: next };
+  }
+
+  if (next.kind === "journal.put") {
+    const last = sameEntity[sameEntity.length - 1];
+    if (last && last.kind === "journal.put" && isEditable(last, inFlightSeq)) {
+      return { remove: [], replace: [mergeInto(last, next)], add: null };
+    }
+    return { remove: [], replace: [], add: next };
   }
 
   const pendingCreate = editable.find((entry) => entry.kind === `${entity}.create`);

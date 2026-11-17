@@ -30,16 +30,17 @@ export async function storeServerRecord<T extends Versioned>(
  * Send an update with its base version. On a 409 conflict the most recent change wins:
  * the local edit time is compared with the server copy's updatedAt.
  */
-export async function sendUpdateResolvingConflict<T extends Versioned>(options: {
+export async function sendUpdateResolvingConflict<T extends { updatedAt?: string }>(options: {
   db: JotlyOfflineDb;
-  table: Table<T, string>;
   entry: OutboxEntry & { baseUpdatedAt?: string };
   send: (baseUpdatedAt?: string) => Promise<T>;
+  /** Save a server copy locally (default for id-based tables: storeServerRecord). */
+  store: (record: T) => Promise<void>;
   label: (record: T) => string;
 }): Promise<void> {
-  const { db, table, entry, send, label } = options;
+  const { db, entry, send, store, label } = options;
   try {
-    await storeServerRecord(db, table, entry, await send(entry.baseUpdatedAt));
+    await store(await send(entry.baseUpdatedAt));
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 409 || !error.data) {
       throw error;
@@ -48,7 +49,7 @@ export async function sendUpdateResolvingConflict<T extends Versioned>(options: 
     const serverEditedAt = serverRecord.updatedAt ? Date.parse(serverRecord.updatedAt) : 0;
     if (entry.editedAt > serverEditedAt) {
       const saved = await send(undefined);
-      await storeServerRecord(db, table, entry, saved);
+      await store(saved);
       await recordIssue(db, {
         kind: "conflict",
         entityId: entry.entityId,
@@ -56,7 +57,7 @@ export async function sendUpdateResolvingConflict<T extends Versioned>(options: 
         message: `"${label(saved)}": changed elsewhere too — your offline change was more recent and was kept.`,
       });
     } else {
-      await storeServerRecord(db, table, entry, serverRecord);
+      await store(serverRecord);
       await recordIssue(db, {
         kind: "conflict",
         entityId: entry.entityId,

@@ -6,7 +6,7 @@
 import { OfflineError } from "../api/http";
 import { deleteNote, fetchNotes, patchNote, postNote } from "../api/notes-api";
 import type { Note, NoteInput, NotePatch } from "../api/note-types";
-import { isNoteOnDate } from "./entity-sync";
+import { isNoteOnDate } from "./pull-window";
 import { replaceMatching } from "./local-store";
 import { queueLocally, refreshFromServer, writeThrough } from "./repository-helpers";
 import { createClientId, getOfflineSession } from "./session";

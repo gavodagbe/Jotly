@@ -10,6 +10,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { baseUpdatedAtSchema, clientIdSchema, conflictPayload, hasConcurrentChange, isUniqueConstraintError } from "./offline-sync-helpers";
 
 type CommentsRouteOptions = {
   taskStore: TaskStore;
@@ -26,11 +27,17 @@ const commentParamsSchema = z.object({
   commentId: z.string().trim().min(1, "Comment id is required"),
 });
 
+const commentBodyField = z.string().trim().min(1, "Comment body is required").max(5000, "Comment body is too long");
+
 const createCommentBodySchema = z.object({
-  body: z.string().trim().min(1, "Comment body is required").max(5000, "Comment body is too long"),
+  id: clientIdSchema.optional(),
+  body: commentBodyField,
 });
 
-const updateCommentBodySchema = createCommentBodySchema;
+const updateCommentBodySchema = z.object({
+  body: commentBodyField,
+  baseUpdatedAt: baseUpdatedAtSchema.optional(),
+});
 
 function serializeComment(comment: Awaited<ReturnType<CommentStore["create"]>>) {
   return {
@@ -143,7 +150,19 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
       }
 
+      const clientId = bodyResult.data.id;
+      if (clientId) {
+        // Offline replay of a create that already reached the server.
+        const alreadyCreated = await commentStore.getById(clientId);
+        if (alreadyCreated) {
+          return alreadyCreated.taskId === paramsResult.data.id
+            ? reply.code(200).send({ data: serializeComment(alreadyCreated) })
+            : sendError(reply, 409, "CONFLICT", "Comment id is already in use");
+        }
+      }
+
       const comment = await commentStore.create({
+        ...(clientId ? { id: clientId } : {}),
         taskId: paramsResult.data.id,
         body: bodyResult.data.body,
       });
@@ -155,6 +174,10 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
       if (isStorageMissingError(error)) {
         request.log.warn(error, "Comments table is missing");
         return sendStorageNotInitializedError(reply, "Comment");
+      }
+
+      if (bodyResult.data.id && isUniqueConstraintError(error)) {
+        return sendError(reply, 409, "CONFLICT", "Comment id is already in use");
       }
 
       request.log.error(error, "Failed to create comment");
@@ -194,6 +217,12 @@ const commentsRoutes: FastifyPluginAsync<CommentsRouteOptions> = async (app, opt
 
       if (!existingComment || existingComment.taskId !== paramsResult.data.id) {
         return sendError(reply, 404, "NOT_FOUND", "Comment not found");
+      }
+
+      if (hasConcurrentChange(existingComment, bodyResult.data.baseUpdatedAt)) {
+        return reply
+          .code(409)
+          .send(conflictPayload("Comment was modified since this change was made", serializeComment(existingComment)));
       }
 
       const updatedComment = await commentStore.update(existingComment.id, {

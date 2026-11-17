@@ -2,11 +2,17 @@ import Dexie, { type Table } from "dexie";
 import type { Note, NoteInput, NotePatch } from "../api/note-types";
 import type { Reminder, ReminderCreateInput, ReminderPatch } from "../api/reminder-types";
 import type { Task, TaskPatch, TaskMutationInput } from "../api/task-types";
+import type { TaskComment } from "../api/comment-types";
+import type { RoutineCompletion, RoutineInput, RoutineTemplate } from "../api/routine-types";
+
+/** One journal entry (affirmation, bilan, weekly, monthly); `data` is null when none exists yet. */
+export type JournalKind = "affirmation" | "bilan" | "weekly" | "monthly";
+export type JournalRecord = { key: string; kind: JournalKind; data: { updatedAt?: string } | null };
 
 export type TimeEntryRecord = { date: string; taskId: string; fraction: number };
 
 /** Entities that support create / update / delete through the outbox. */
-export type SyncEntity = "task" | "reminder" | "note";
+export type SyncEntity = "task" | "reminder" | "note" | "routine" | "comment";
 
 export type OutboxOp =
   | { kind: "task.create"; entityId: string; payload: TaskMutationInput }
@@ -19,7 +25,16 @@ export type OutboxOp =
   | { kind: "reminder.cancel"; entityId: string }
   | { kind: "note.create"; entityId: string; payload: NoteInput }
   | { kind: "note.update"; entityId: string; payload: NotePatch; baseUpdatedAt?: string }
-  | { kind: "note.delete"; entityId: string };
+  | { kind: "note.delete"; entityId: string }
+  /** entityId is the journal key, e.g. "affirmation:2026-11-17" or "weekly:2026-47". */
+  | { kind: "journal.put"; entityId: string; payload: Record<string, unknown>; baseUpdatedAt?: string }
+  | { kind: "routine.create"; entityId: string; payload: RoutineInput }
+  | { kind: "routine.update"; entityId: string; payload: Partial<RoutineInput>; baseUpdatedAt?: string }
+  | { kind: "routine.delete"; entityId: string }
+  /** entityId is the routine id, so deleting a routine created offline also drops its ticks. */
+  | { kind: "routineCompletion.put"; entityId: string; payload: { targetDate: string; isCompleted: boolean } }
+  | { kind: "comment.create"; entityId: string; payload: { taskId: string; body: string } }
+  | { kind: "comment.delete"; entityId: string; payload: { taskId: string } };
 
 export type OutboxKind = OutboxOp["kind"];
 
@@ -45,6 +60,10 @@ export class JotlyOfflineDb extends Dexie {
   timeEntries!: Table<TimeEntryRecord, [string, string]>;
   reminders!: Table<Reminder, string>;
   notes!: Table<Note, string>;
+  journal!: Table<JournalRecord, string>;
+  routines!: Table<RoutineTemplate, string>;
+  routineCompletions!: Table<RoutineCompletion, [string, string]>;
+  comments!: Table<TaskComment, string>;
   outbox!: Table<OutboxEntry, number>;
   meta!: Table<MetaRecord, string>;
 
@@ -61,6 +80,13 @@ export class JotlyOfflineDb extends Dexie {
       reminders: "id, remindAt, status",
       notes: "id, targetDate",
     });
+    // Phase 4: journal entries, routines (+ ticks) and task comments.
+    this.version(3).stores({
+      journal: "key, kind",
+      routines: "id, sortOrder",
+      routineCompletions: "[routineId+targetDate], targetDate",
+      comments: "id, taskId",
+    });
   }
 }
 
@@ -69,8 +95,8 @@ export function openOfflineDb(userId: string): JotlyOfflineDb {
   return new JotlyOfflineDb(`jotly-offline-${userId}`);
 }
 
-export function entityOf(kind: OutboxKind): SyncEntity | "timeEntry" {
-  return kind.split(".")[0] as SyncEntity | "timeEntry";
+export function entityOf(kind: OutboxKind): SyncEntity | "timeEntry" | "journal" | "routineCompletion" {
+  return kind.split(".")[0] as SyncEntity | "timeEntry" | "journal" | "routineCompletion";
 }
 
 export function actionOf(kind: OutboxKind): string {

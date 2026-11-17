@@ -54,6 +54,38 @@ import {
   updateReminderApi,
 } from "@/lib/offline/reminder-repository";
 import { createNoteApi, deleteNoteApi, loadNotes, updateNoteApi } from "@/lib/offline/note-repository";
+import type { TaskComment } from "@/lib/api/comment-types";
+import type {
+  DayAffirmation,
+  DayBilan,
+  DayBilanMutationInput,
+  MonthlyEntry,
+  WeeklyEntry,
+} from "@/lib/api/journal-types";
+import type {
+  RoutineCompletion,
+  RoutineFormValues,
+  RoutineMonthlySummary,
+  RoutineTemplate,
+} from "@/lib/api/routine-types";
+import {
+  loadDayAffirmation,
+  loadDayBilan,
+  loadMonthlyEntry,
+  loadWeeklyEntry,
+  upsertDayAffirmation,
+  upsertDayBilan,
+  upsertMonthlyEntry,
+  upsertWeeklyEntry,
+} from "@/lib/offline/journal-repository";
+import {
+  createRoutineApi,
+  deleteRoutineApi,
+  loadRoutineMonth,
+  updateRoutineApi,
+  upsertRoutineCompletionApi,
+} from "@/lib/offline/routine-repository";
+import { createTaskComment, deleteTaskComment, loadTaskComments } from "@/lib/offline/comment-repository";
 
 type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 type AlertUrgency = "overdue" | "today" | "tomorrow";
@@ -129,14 +161,6 @@ type AlertsSummary = {
   overdueCount: number;
   todayCount: number;
   tomorrowCount: number;
-};
-
-type TaskComment = {
-  id: string;
-  taskId: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
 };
 
 type TaskAttachment = {
@@ -217,103 +241,12 @@ type TaskAttachmentMutationInput = {
   file: File;
 };
 
-type DayAffirmation = {
-  id: string;
-  targetDate: string;
-  text: string;
-  isCompleted: boolean;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type DayBilan = {
-  id: string;
-  targetDate: string;
-  mood: number | null;
-  wins: string | null;
-  blockers: string | null;
-  lessonsLearned: string | null;
-  tomorrowTop3: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type WeeklyEntry = {
-  id: string;
-  year: number;
-  isoWeek: number;
-  objective: string | null;
-  review: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type MonthlyEntry = {
-  id: string;
-  year: number;
-  month: number;
-  objective: string | null;
-  review: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type RoutineChallenge = "normal" | "bonus";
-
-type RoutineTemplate = {
-  id: string;
-  challenge: RoutineChallenge;
-  startTime: string | null;
-  endTime: string | null;
-  title: string;
-  sortOrder: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type RoutineCompletion = {
-  id: string;
-  routineId: string;
-  targetDate: string;
-  isCompleted: boolean;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type RoutineMonthlySummary = {
-  month: string;
-  days: string[];
-  routines: RoutineTemplate[];
-  completions: RoutineCompletion[];
-  dailyPercentages: Array<{ date: string; percentage: number }>;
-  monthPercentage: number;
-};
-
-type RoutineFormValues = {
-  challenge: RoutineChallenge;
-  startTime: string;
-  endTime: string;
-  title: string;
-};
-
 type DayBilanFormValues = {
   mood: string;
   wins: string;
   blockers: string;
   lessonsLearned: string;
   tomorrowTop3: string;
-};
-
-type DayBilanMutationInput = {
-  date: string;
-  mood: number | null;
-  wins: string | null;
-  blockers: string | null;
-  lessonsLearned: string | null;
-  tomorrowTop3: string | null;
 };
 
 type NoteAttachment = {
@@ -2362,64 +2295,6 @@ async function deleteCalendarEventNote(eventId: string, token: string): Promise<
   }
 }
 
-async function loadTaskComments(taskId: string, token: string): Promise<TaskComment[]> {
-  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/comments`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: TaskComment[]; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load comments"));
-  }
-
-  return Array.isArray(payload?.data) ? payload.data : [];
-}
-
-async function createTaskComment(taskId: string, body: string, token: string): Promise<TaskComment> {
-  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/comments`, {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({ body }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: TaskComment; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create comment"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to create comment.");
-  }
-
-  return payload.data;
-}
-
-async function deleteTaskComment(taskId: string, commentId: string, token: string): Promise<void> {
-  const response = await fetch(
-    `/backend-api/tasks/${encodeURIComponent(taskId)}/comments/${encodeURIComponent(commentId)}`,
-    {
-      method: "DELETE",
-      headers: createAuthHeaders(token, false),
-    }
-  );
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: TaskComment; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete comment"));
-  }
-}
-
 async function loadTaskAttachments(taskId: string, token: string): Promise<TaskAttachment[]> {
   const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/attachments`, {
     method: "GET",
@@ -2603,62 +2478,6 @@ async function requestAssistantRewrite(
 
   if (!payload?.data) {
     throw new Error("Unable to rewrite text.");
-  }
-
-  return payload.data;
-}
-
-async function loadDayAffirmation(
-  date: string,
-  token: string,
-  signal?: AbortSignal
-): Promise<DayAffirmation | null> {
-  const searchParams = new URLSearchParams({
-    date,
-    _: `${Date.now()}`,
-  });
-  const response = await fetch(`/backend-api/day-affirmation?${searchParams.toString()}`, {
-    method: "GET",
-    headers: {
-      ...createAuthHeaders(token, false),
-      "Cache-Control": "no-store, no-cache, max-age=0",
-      Pragma: "no-cache",
-    },
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: DayAffirmation | null; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load day affirmation"));
-  }
-
-  return payload?.data ?? null;
-}
-
-async function upsertDayAffirmation(
-  input: { date: string; text: string; isCompleted: boolean },
-  token: string
-): Promise<DayAffirmation> {
-  const response = await fetch("/backend-api/day-affirmation", {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: DayAffirmation; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save day affirmation"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to save day affirmation.");
   }
 
   return payload.data;
@@ -2949,99 +2768,6 @@ async function deleteReminderAttachmentApi(
   }
 }
 
-async function loadRoutineMonth(month: string, token: string, signal?: AbortSignal): Promise<RoutineMonthlySummary> {
-  const response = await fetch(`/backend-api/routine-completions?month=${encodeURIComponent(month)}`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: RoutineMonthlySummary; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load routine tracker"));
-  }
-  if (!payload?.data) throw new Error("Unable to load routine tracker.");
-  return payload.data;
-}
-
-async function createRoutineApi(input: RoutineFormValues, token: string): Promise<RoutineTemplate> {
-  const response = await fetch("/backend-api/routines", {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({
-      challenge: input.challenge,
-      startTime: input.startTime || null,
-      endTime: input.endTime || null,
-      title: input.title,
-    }),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: RoutineTemplate; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create routine"));
-  }
-  if (!payload?.data) throw new Error("Unable to create routine.");
-  return payload.data;
-}
-
-async function updateRoutineApi(id: string, input: RoutineFormValues, token: string): Promise<RoutineTemplate> {
-  const response = await fetch(`/backend-api/routines/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({
-      challenge: input.challenge,
-      startTime: input.startTime || null,
-      endTime: input.endTime || null,
-      title: input.title,
-    }),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: RoutineTemplate; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update routine"));
-  }
-  if (!payload?.data) throw new Error("Unable to update routine.");
-  return payload.data;
-}
-
-async function deleteRoutineApi(id: string, token: string): Promise<RoutineTemplate> {
-  const response = await fetch(`/backend-api/routines/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: createAuthHeaders(token, false),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: RoutineTemplate; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete routine"));
-  }
-  if (!payload?.data) throw new Error("Unable to delete routine.");
-  return payload.data;
-}
-
-async function upsertRoutineCompletionApi(
-  input: { routineId: string; targetDate: string; isCompleted: boolean },
-  token: string
-): Promise<RoutineCompletion> {
-  const response = await fetch("/backend-api/routine-completions", {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: RoutineCompletion; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update routine completion"));
-  }
-  if (!payload?.data) throw new Error("Unable to update routine completion.");
-  return payload.data;
-}
-
 async function carryOverYesterdayTasks(targetDate: string, token: string): Promise<CarryOverYesterdayPayload> {
   const response = await fetch("/backend-api/tasks/carry-over-yesterday", {
     method: "POST",
@@ -3089,141 +2815,6 @@ async function autoCancelUntouchedTasks(
     throw new Error("Unable to auto-cancel untouched tasks.");
   }
 
-  return payload.data;
-}
-
-async function loadDayBilan(
-  date: string,
-  token: string,
-  signal?: AbortSignal
-): Promise<DayBilan | null> {
-  const response = await fetch(`/backend-api/day-bilan?date=${encodeURIComponent(date)}`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: DayBilan | null; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load day bilan"));
-  }
-
-  return payload?.data ?? null;
-}
-
-async function upsertDayBilan(input: DayBilanMutationInput, token: string): Promise<DayBilan> {
-  const response = await fetch("/backend-api/day-bilan", {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: DayBilan; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save day bilan"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to save day bilan.");
-  }
-
-  return payload.data;
-}
-
-async function loadWeeklyEntry(
-  year: number,
-  week: number,
-  token: string,
-  signal?: AbortSignal
-): Promise<WeeklyEntry | null> {
-  const response = await fetch(
-    `/backend-api/weekly-entry?year=${year}&week=${week}`,
-    {
-      method: "GET",
-      headers: createAuthHeaders(token, false),
-      signal,
-      cache: "no-store",
-    }
-  );
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: WeeklyEntry | null; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load weekly entry"));
-  }
-  return payload?.data ?? null;
-}
-
-async function upsertWeeklyEntry(
-  input: { year: number; week: number; objective?: string | null; review?: string | null },
-  token: string
-): Promise<WeeklyEntry> {
-  const response = await fetch("/backend-api/weekly-entry", {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: WeeklyEntry; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save weekly entry"));
-  }
-  if (!payload?.data) {
-    throw new Error("Unable to save weekly entry.");
-  }
-  return payload.data;
-}
-
-async function loadMonthlyEntry(
-  year: number,
-  month: number,
-  token: string,
-  signal?: AbortSignal
-): Promise<MonthlyEntry | null> {
-  const response = await fetch(
-    `/backend-api/monthly-entry?year=${year}&month=${month}`,
-    {
-      method: "GET",
-      headers: createAuthHeaders(token, false),
-      signal,
-      cache: "no-store",
-    }
-  );
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: MonthlyEntry | null; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load monthly entry"));
-  }
-  return payload?.data ?? null;
-}
-
-async function upsertMonthlyEntry(
-  input: { year: number; month: number; objective?: string | null; review?: string | null },
-  token: string
-): Promise<MonthlyEntry> {
-  const response = await fetch("/backend-api/monthly-entry", {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: MonthlyEntry; error?: { message?: string } }
-    | null;
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save monthly entry"));
-  }
-  if (!payload?.data) {
-    throw new Error("Unable to save monthly entry.");
-  }
   return payload.data;
 }
 
@@ -7379,7 +6970,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, routineMonth]);
+  }, [authToken, authUser, isAuthReady, isFrench, routineMonth, offlineSyncVersion]);
 
   // Poll for pending reminders every 30s
   useEffect(() => {
@@ -7665,7 +7256,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [affirmationRefreshKey, applyDayAffirmationState, authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [affirmationRefreshKey, applyDayAffirmationState, authToken, authUser, isAuthReady, isFrench, selectedDate, offlineSyncVersion]);
 
   useEffect(() => {
     if (!isAuthReady) {
@@ -7715,7 +7306,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate, offlineSyncVersion]);
 
   useEffect(() => {
     if (!authToken || !authUser || !isAuthReady) {
@@ -7742,7 +7333,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate, offlineSyncVersion]);
 
   useEffect(() => {
     if (!authToken || !authUser || !isAuthReady) {
@@ -7770,7 +7361,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate, offlineSyncVersion]);
 
   useEffect(() => {
     if (!isAuthReady) {
