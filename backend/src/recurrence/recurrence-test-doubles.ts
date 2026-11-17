@@ -35,9 +35,12 @@ export class InMemoryTaskStore implements TaskStore {
   }
 
   async create(input: TaskCreateInput): Promise<Task> {
+    if (input.id && this.tasks.has(input.id)) {
+      throw { code: "P2002" };
+    }
     const now = new Date();
     const task: Task = {
-      id: `task-${this.idCounter++}`,
+      id: input.id ?? `task-${this.idCounter++}`,
       userId: input.userId,
       title: input.title,
       description: input.description,

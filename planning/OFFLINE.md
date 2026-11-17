@@ -83,3 +83,36 @@ Tests:
 - Manual: Chrome DevTools offline mode, Lighthouse PWA check, phone install + airplane mode.
 
 Out of scope: IndexedDB, outbox, backend changes, offline writes (phase 2+).
+
+## Phase 1 — status
+Done (commit `8d6be53`, branch `feat/NOJIRA-offline-pwa-shell`).
+
+## Phase 2 — status and decisions (branch `feat/NOJIRA-offline-tasks-sync`)
+
+Implemented with a simpler backend than the original design:
+- No idempotency-key table: `POST /api/tasks` accepts an optional client `id`
+  (8–64 chars, `[A-Za-z0-9_-]`); replaying the same id returns the existing task (200).
+  An id owned by another user → 409.
+- `PATCH /api/tasks/:id` accepts optional `baseUpdatedAt`; stale → 409 with the server copy in `data`.
+- Delete replay → 404 treated as success; time entry PUT is already an upsert.
+- No "changes since" endpoint: after pushing, the client re-downloads the window
+  (today −7 / +30 days) with `GET /api/tasks/all?dateFrom&dateTo` and replaces its local copy.
+
+Frontend:
+- `src/lib/api/task-types.ts`, `src/lib/api/tasks-api.ts`: task types + network calls moved out of `app-shell.tsx`.
+- `src/lib/offline/`: `db.ts` (Dexie, one DB per account), `outbox-plan.ts` (pure merge rules),
+  `outbox.ts`, `local-store.ts`, `sync-engine.ts`, `task-repository.ts`, `session.ts`,
+  `offline-session.ts` (triggers: online, visibility, 60 s retry), `sync-status.ts`.
+- Conflict rule: compare the local edit time with the server `updatedAt`; the most recent wins,
+  and the conflict is shown in the banner.
+- A change rejected by the server (4xx) is set aside and reported; it does not block the queue.
+- Logout keeps the local DB so unsent changes are pushed at next sign-in of the same account.
+
+Still online-only after phase 2: comments, attachments, recurrence, carry-over, auto-cancel,
+alerts/triage (served from the service-worker cache, possibly stale).
+
+Rule exceptions (approved 2026-11-17): `app-shell.tsx` only had its task data-access code
+extracted (12.7k → 12.5k lines); full split is a separate refactoring ticket.
+`backend/src/routes/tasks.ts` was split in the same branch: `routes/tasks.ts` (plugin + auth hook),
+`routes/task-read-routes.ts`, `task-time-entry-routes.ts`, `task-write-routes.ts`,
+`task-maintenance-routes.ts` and `tasks/task-route-helpers.ts`, all under 500 lines.
