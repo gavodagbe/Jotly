@@ -141,3 +141,33 @@ Frontend:
 - Due reminders while offline: computed from the local copy and marked fired locally so the in-app alert
   still shows once; the server marks them fired after reconnecting. No push notification when closed.
 - Still online-only: reminder/note attachments, Google Calendar event notes, task comments.
+
+## Phase 3 — merged (#93).
+
+## Phase 4 — status and decisions (branch `feat/NOJIRA-offline-journal-routines`)
+
+Scope decided with the user: journal entries, routines (ticks **and** create / edit / delete) and
+task comments all work offline.
+
+Backend:
+- `PUT /api/day-affirmation`, `/api/day-bilan`, `/api/weekly-entry`, `/api/monthly-entry` accept
+  `baseUpdatedAt` → 409 with the server copy (they are upserts, so replays are already harmless).
+- `POST /api/routines` and `POST /api/tasks/:id/comments` accept a client `id` (replay → 200);
+  `PATCH /api/routines/:id` and `PATCH /api/tasks/:id/comments/:commentId` accept `baseUpdatedAt`.
+- Routine ticks (`PUT /api/routine-completions`) and routine delete (soft) are naturally replay-safe.
+- Shared in-memory doubles added for routines, day affirmation, day bilan, weekly and monthly entries.
+
+Frontend:
+- Dexie schema v3: `journal` (keyed `affirmation:<date>`, `bilan:<date>`, `weekly:<year>-<week>`,
+  `monthly:<year>-<month>`), `routines`, `routineCompletions`, `comments`.
+- Outbox: `journal.put` saves of the same entry are merged; routine ticks use the routine id as
+  entity so deleting a routine created offline also drops its ticks.
+- `journal-repository.ts`, `routine-repository.ts` (tracker percentages recomputed locally with the
+  server formula), `comment-repository.ts`; downloads moved to `pull-window.ts` (adds today's
+  affirmation / bilan, current week and month entries, current routine month).
+- Fix: a sync requested while a run is in progress now triggers a fresh run afterwards (previously a
+  sync right after reconnecting could join a run that started offline and push nothing for ~60 s).
+
+Still online-only: affirmation text extraction from a photo and AI reformatting, attachments,
+Google Calendar. Not handled: deleting offline a task created offline does not drop comments queued
+for it (the server rejects them and the banner reports it).

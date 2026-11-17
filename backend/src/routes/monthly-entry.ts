@@ -9,6 +9,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { baseUpdatedAtSchema, conflictPayload, hasConcurrentChange } from "./offline-sync-helpers";
 
 type MonthlyEntryRoutesOptions = {
   authService: AuthService;
@@ -25,6 +26,7 @@ const upsertMonthlyEntryBodySchema = z.object({
   month: z.number().int().min(1).max(12),
   objective: z.string().max(50000).nullable().optional(),
   review: z.string().max(50000).nullable().optional(),
+  baseUpdatedAt: baseUpdatedAtSchema.optional(),
 });
 
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
@@ -110,6 +112,15 @@ const monthlyEntryRoutes: FastifyPluginAsync<MonthlyEntryRoutesOptions> = async 
     }
 
     try {
+      if (bodyResult.data.baseUpdatedAt !== undefined) {
+        const existing = await monthlyEntryStore.getByMonth(bodyResult.data.year, bodyResult.data.month, authUserId);
+        if (existing && hasConcurrentChange(existing, bodyResult.data.baseUpdatedAt)) {
+          return reply
+            .code(409)
+            .send(conflictPayload("Monthly entry was modified since this change was made", serializeMonthlyEntry(existing)));
+        }
+      }
+
       const saved = await monthlyEntryStore.upsert({
         userId: authUserId,
         year: bodyResult.data.year,

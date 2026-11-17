@@ -5,6 +5,7 @@
 import type { Note } from "../api/note-types";
 import type { Reminder } from "../api/reminder-types";
 import type { Task } from "../api/task-types";
+import { FakePhase4Routes } from "./test-support-phase4";
 
 type StoredTask = Task & { updatedAt: string; createdAt: string };
 
@@ -13,6 +14,7 @@ export class FakeTaskServer {
   timeEntries = new Map<string, number>();
   reminders = new Map<string, Reminder>();
   notes = new Map<string, Note>();
+  phase4 = new FakePhase4Routes(() => this.tick());
   requests: Array<{ method: string; path: string; body: unknown }> = [];
   online = true;
   private clock = Date.parse("2026-11-17T08:00:00.000Z");
@@ -172,6 +174,8 @@ export class FakeTaskServer {
 
     const handled = this.handleRemindersAndNotes(method, path, url, body);
     if (handled) return handled;
+    const phase4 = this.phase4.handle(method, path, url, body, (status, payload) => this.json(status, payload));
+    if (phase4) return phase4;
 
     if (method === "GET" && path === "/tasks") {
       const date = url.searchParams.get("date");

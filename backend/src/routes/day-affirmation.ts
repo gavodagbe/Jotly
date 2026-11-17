@@ -10,6 +10,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { baseUpdatedAtSchema, conflictPayload, hasConcurrentChange } from "./offline-sync-helpers";
 
 type DayAffirmationRoutesOptions = {
   authService: AuthService;
@@ -34,6 +35,7 @@ const upsertDayAffirmationBodySchema = z.object({
   date: targetDateSchema,
   text: z.string().trim().min(1, "Affirmation text is required").max(5000, "Affirmation is too long"),
   isCompleted: z.boolean(),
+  baseUpdatedAt: baseUpdatedAtSchema.optional(),
 });
 
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
@@ -169,6 +171,12 @@ const dayAffirmationRoutes: FastifyPluginAsync<DayAffirmationRoutesOptions> = as
 
     try {
       const existingAffirmation = await dayAffirmationStore.getByDate(targetDate, authUserId);
+      if (existingAffirmation && hasConcurrentChange(existingAffirmation, bodyResult.data.baseUpdatedAt)) {
+        return reply
+          .code(409)
+          .send(conflictPayload("Affirmation was modified since this change was made", serializeDayAffirmation(existingAffirmation)));
+      }
+
       const nextCompletedAt = bodyResult.data.isCompleted
         ? existingAffirmation?.completedAt ?? new Date()
         : null;

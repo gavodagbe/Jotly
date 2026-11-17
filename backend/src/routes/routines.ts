@@ -10,6 +10,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { baseUpdatedAtSchema, clientIdSchema, conflictPayload, hasConcurrentChange, isUniqueConstraintError } from "./offline-sync-helpers";
 
 type RoutineRoutesOptions = {
   authService: AuthService;
@@ -25,6 +26,7 @@ const routineTimeSchema = z
   .nullable();
 
 const createRoutineBodySchema = z.object({
+  id: clientIdSchema.optional(),
   challenge: routineChallengeSchema.default("normal"),
   startTime: routineTimeSchema,
   endTime: routineTimeSchema,
@@ -34,6 +36,7 @@ const createRoutineBodySchema = z.object({
 });
 
 const updateRoutineBodySchema = z.object({
+  baseUpdatedAt: baseUpdatedAtSchema.optional(),
   challenge: routineChallengeSchema.optional(),
   startTime: routineTimeSchema,
   endTime: routineTimeSchema,
@@ -177,9 +180,17 @@ const routineRoutes: FastifyPluginAsync<RoutineRoutesOptions> = async (app, opti
     }
 
     try {
+      if (bodyResult.data.id) {
+        // Offline replay of a create that already reached the server.
+        const alreadyCreated = await routineStore.getTemplate(bodyResult.data.id, authUserId);
+        if (alreadyCreated) return reply.code(200).send({ data: serializeRoutine(alreadyCreated) });
+      }
       const routine = await routineStore.createTemplate({ ...bodyResult.data, userId: authUserId });
       return reply.code(201).send({ data: serializeRoutine(routine) });
     } catch (error) {
+      if (bodyResult.data.id && isUniqueConstraintError(error)) {
+        return sendError(reply, 409, "CONFLICT", "Routine id is already in use");
+      }
       if (isStorageNotInitializedPrismaError(error)) return sendStorageNotInitializedError(reply, "Routine");
       request.log.error(error, "Failed to create routine");
       return sendError(reply, 500, "INTERNAL_ERROR", "Unable to create routine");
@@ -198,7 +209,17 @@ const routineRoutes: FastifyPluginAsync<RoutineRoutesOptions> = async (app, opti
     }
 
     try {
-      const routine = await routineStore.updateTemplate(params.id, authUserId, bodyResult.data);
+      const { baseUpdatedAt, ...changes } = bodyResult.data;
+      if (baseUpdatedAt !== undefined) {
+        const existing = await routineStore.getTemplate(params.id, authUserId);
+        if (!existing) return sendError(reply, 404, "NOT_FOUND", "Routine not found");
+        if (hasConcurrentChange(existing, baseUpdatedAt)) {
+          return reply
+            .code(409)
+            .send(conflictPayload("Routine was modified since this change was made", serializeRoutine(existing)));
+        }
+      }
+      const routine = await routineStore.updateTemplate(params.id, authUserId, changes);
       if (!routine) return sendError(reply, 404, "NOT_FOUND", "Routine not found");
       return reply.send({ data: serializeRoutine(routine) });
     } catch (error) {

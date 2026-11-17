@@ -25,9 +25,12 @@ export class InMemoryCommentStore implements CommentStore {
   }
 
   async create(input: TaskCommentCreateInput): Promise<TaskComment> {
+    if (input.id && this.comments.has(input.id)) {
+      throw { code: "P2002" };
+    }
     const now = new Date();
     const comment: TaskComment = {
-      id: `comment-${this.idCounter++}`,
+      id: input.id ?? `comment-${this.idCounter++}`,
       taskId: input.taskId,
       body: input.body,
       createdAt: now,

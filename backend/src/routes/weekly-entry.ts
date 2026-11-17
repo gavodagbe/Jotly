@@ -9,6 +9,7 @@ import {
   sendStorageNotInitializedError,
   zodIssuesToStrings,
 } from "./route-helpers";
+import { baseUpdatedAtSchema, conflictPayload, hasConcurrentChange } from "./offline-sync-helpers";
 
 type WeeklyEntryRoutesOptions = {
   authService: AuthService;
@@ -25,6 +26,7 @@ const upsertWeeklyEntryBodySchema = z.object({
   week: z.number().int().min(1).max(53),
   objective: z.string().max(50000).nullable().optional(),
   review: z.string().max(50000).nullable().optional(),
+  baseUpdatedAt: baseUpdatedAtSchema.optional(),
 });
 
 function getAuthenticatedUserId(request: { authUserId?: string }): string | null {
@@ -110,6 +112,15 @@ const weeklyEntryRoutes: FastifyPluginAsync<WeeklyEntryRoutesOptions> = async (a
     }
 
     try {
+      if (bodyResult.data.baseUpdatedAt !== undefined) {
+        const existing = await weeklyEntryStore.getByWeek(bodyResult.data.year, bodyResult.data.week, authUserId);
+        if (existing && hasConcurrentChange(existing, bodyResult.data.baseUpdatedAt)) {
+          return reply
+            .code(409)
+            .send(conflictPayload("Weekly entry was modified since this change was made", serializeWeeklyEntry(existing)));
+        }
+      }
+
       const saved = await weeklyEntryStore.upsert({
         userId: authUserId,
         year: bodyResult.data.year,
