@@ -113,4 +113,6 @@ alerts/triage (served from the service-worker cache, possibly stale).
 
 Rule exceptions (approved 2026-11-17): `app-shell.tsx` only had its task data-access code
 extracted (12.7k → 12.5k lines); full split is a separate refactoring ticket.
-`backend/src/routes/tasks.ts` (≈1.28k lines) received ~30 lines; same follow-up applies.
+`backend/src/routes/tasks.ts` was split in the same branch: `routes/tasks.ts` (plugin + auth hook),
+`routes/task-read-routes.ts`, `task-time-entry-routes.ts`, `task-write-routes.ts`,
+`task-maintenance-routes.ts` and `tasks/task-route-helpers.ts`, all under 500 lines.
