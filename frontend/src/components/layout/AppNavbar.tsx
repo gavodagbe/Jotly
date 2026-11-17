@@ -1,10 +1,11 @@
 "use client";
 
-import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { APP_NAME } from "@/lib/app-meta";
 import { controlButtonClass } from "@/components/ui/constants";
-import { BellIcon, SearchIcon } from "@/components/ui/icons";
+import { BellIcon, ChatIcon, SearchIcon } from "@/components/ui/icons";
+import { MobileTabBar } from "@/components/mobile/MobileTabBar";
+import type { MobileScreen } from "@/components/mobile/mobile-screens";
 
 type UserLocale = "en" | "fr";
 
@@ -49,6 +50,10 @@ type AppNavbarProps = {
   isAssistantPanelOpen?: boolean;
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
+  /** Mobile (below lg): current screen of the bottom tab bar. */
+  mobileScreen?: MobileScreen;
+  onMobileScreenChange?: (screen: MobileScreen) => void;
+  onToggleAssistant?: () => void;
 };
 
 export function AppNavbar({
@@ -67,11 +72,12 @@ export function AppNavbar({
   showMonthlyReview = false,
   showWeeklyReview = false,
   activeSectionId = "",
-  onSectionChange,
-  isProfileDialogOpen = false,
   isAssistantPanelOpen = false,
   isSidebarCollapsed = false,
   onToggleSidebar,
+  mobileScreen = "today",
+  onMobileScreenChange,
+  onToggleAssistant,
 }: AppNavbarProps) {
   const isLoggedIn = user !== null;
   const isFrench = locale === "fr";
@@ -79,26 +85,6 @@ export function AppNavbar({
   const initials = profileLabel.slice(0, 2).toUpperCase();
   const taskAlertsCount = alertsSummary?.count ?? 0;
   const taskAlertsLabel = isFrench ? "Alertes" : "Alerts";
-
-  const activeMobileTab =
-    isProfileDialogOpen ? "profil" :
-    isAssistantPanelOpen ? "assistant" :
-    ["overview", "dailyControls", "routine", "reminders"].includes(activeSectionId) ? "jour" :
-    activeSectionId === "board" ? "kanban" :
-    activeSectionId === "affirmation" ? "affirmation" :
-    ["bilan", "monthlyObjective", "monthlyReview", "weeklyObjective", "weeklyReview"].includes(activeSectionId) ? "bilan" :
-    ["notes", "gaming"].includes(activeSectionId) ? "espace" : "";
-
-  function handleTabClick(event: ReactMouseEvent<HTMLAnchorElement>, targetId: string) {
-    const elementId = targetId.replace("#", "");
-    const element = document.getElementById(elementId);
-    if (element) {
-      event.preventDefault();
-      window.history.pushState(null, "", targetId);
-      element.scrollIntoView({ behavior: "smooth" });
-      onSectionChange?.(elementId);
-    }
-  }
 
   function navItem(ids: string | string[], collapsed: boolean) {
     const idList = Array.isArray(ids) ? ids : [ids];
@@ -333,12 +319,21 @@ export function AppNavbar({
         <div className="flex items-center gap-2">
           {isLoggedIn ? (
             <>
-              <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenSearch} disabled={!onOpenSearch} aria-label={isFrench ? "Rechercher" : "Search"}>
+              <button
+                type="button"
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${isAssistantPanelOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-soft hover:text-foreground"}`}
+                onClick={onToggleAssistant}
+                disabled={!onToggleAssistant}
+                aria-label={isFrench ? "Assistant IA" : "AI assistant"}
+              >
+                <ChatIcon />
+              </button>
+              <button type="button" className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-soft hover:text-foreground" onClick={onOpenSearch} disabled={!onOpenSearch} aria-label={isFrench ? "Rechercher" : "Search"}>
                 <SearchIcon />
               </button>
               <button
                 type="button"
-                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${isTaskAlertsPanelOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-soft hover:text-foreground"}`}
+                className={`relative inline-flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${isTaskAlertsPanelOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-soft hover:text-foreground"}`}
                 onClick={onOpenTaskAlerts}
                 disabled={isBusy || !onOpenTaskAlerts}
                 aria-label={taskAlertsLabel}
@@ -359,73 +354,8 @@ export function AppNavbar({
         </div>
       </nav>
 
-      {isLoggedIn && (
-        <nav
-          className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-line bg-surface/95 backdrop-blur-sm lg:hidden"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        >
-          {(
-            [
-              {
-                id: "jour",
-                href: "#overview",
-                label: isFrench ? "Jour" : "Day",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4" strokeLinecap="round"/></svg>,
-              },
-              {
-                id: "kanban",
-                href: "#board",
-                label: isFrench ? "Tâches" : "Tasks",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14M8 7v10M13 7v10"/></svg>,
-              },
-              {
-                id: "affirmation",
-                href: "#affirmation",
-                label: isFrench ? "Affirm." : "Affirm.",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>,
-              },
-              {
-                id: "bilan",
-                href: "#bilan",
-                label: "Bilan",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 15V8M8 15V5M12 15V9M16 15V6" strokeLinecap="round"/></svg>,
-              },
-              {
-                id: "espace",
-                href: "#notes",
-                label: isFrench ? "Espace" : "Space",
-                icon: <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 3h10a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 7h6M7 10h6M7 13h4" strokeLinecap="round"/></svg>,
-              },
-            ] as const
-          ).map((tab) => (
-            <a
-              key={tab.id}
-              href={tab.href}
-              onClick={(event) => handleTabClick(event, tab.href)}
-              className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
-                activeMobileTab === tab.id ? "text-accent" : "text-muted hover:text-foreground"
-              }`}
-            >
-              {tab.icon}
-              {tab.label}
-            </a>
-          ))}
-          <button
-            type="button"
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
-              activeMobileTab === "profil" ? "text-accent" : "text-muted hover:text-foreground"
-            }`}
-            onClick={onOpenProfile}
-            disabled={isBusy || !onOpenProfile}
-          >
-            <span className={`grid h-5 w-5 place-items-center rounded-full text-[9px] font-semibold ${
-              activeMobileTab === "profil" ? "bg-accent text-white" : "bg-accent-soft text-accent"
-            }`}>
-              {initials}
-            </span>
-            {isFrench ? "Profil" : "Profile"}
-          </button>
-        </nav>
+      {isLoggedIn && onMobileScreenChange && (
+        <MobileTabBar isFrench={isFrench} activeScreen={mobileScreen} onSelect={onMobileScreenChange} />
       )}
     </>
   );

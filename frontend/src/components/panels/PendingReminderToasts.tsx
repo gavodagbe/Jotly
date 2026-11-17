@@ -41,7 +41,7 @@ export function PendingReminderToasts({
   const isFrench = locale === "fr";
 
   return (
-    <div className="fixed bottom-24 right-6 z-50 flex max-w-sm flex-col gap-2">
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-24 left-4 right-4 z-50 flex max-w-sm sm:left-auto sm:right-6 flex-col gap-2">
       {reminders.map((reminder) => {
         const remindAtDate = new Date(reminder.remindAt);
         const timeStr = remindAtDate.toLocaleTimeString(isFrench ? "fr-FR" : "en-US", {

@@ -60,7 +60,7 @@ export function AssistantPanel({
   const isFrench = locale === "fr";
 
   return (
-    <section className="animate-scale-in fixed bottom-24 left-4 right-4 z-40 flex max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[580px]">
+    <section className="animate-scale-in fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-24 left-4 right-4 z-40 flex max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-6 sm:w-[580px]">
       <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
         <div className="flex items-center gap-2.5">
           <div className="grid h-7 w-7 place-items-center rounded-lg bg-accent-soft text-accent">
@@ -227,7 +227,7 @@ export function AssistantFab({ isOpen, locale, onToggle }: AssistantFabProps) {
   return (
     <button
       type="button"
-      className="animate-pulse-soft fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-strong text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      className="animate-pulse-soft fixed bottom-6 right-6 z-40 hidden h-14 w-14 lg:inline-flex items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-strong text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       onClick={onToggle}
       aria-label={
         isOpen

@@ -20,6 +20,9 @@ import { GlobalSearchModal } from "@/components/dialogs/GlobalSearchModal";
 import { DeleteTaskDialog, NavigationBlockersDialog } from "@/components/dialogs/SystemDialogs";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { ActiveSectionIndicator, SectionIdentityPills, getMainContentSectionClass } from "@/components/layout/section-navigation";
+import { useMobileScreen } from "@/components/mobile/use-mobile-screen";
+import { MobileCreateFab } from "@/components/mobile/MobileCreateFab";
+import { MobileMoreScreen } from "@/components/mobile/MobileMoreScreen";
 import { AssistantFab, AssistantPanel } from "@/components/panels/AssistantPanel";
 import { PendingReminderToasts } from "@/components/panels/PendingReminderToasts";
 import { TaskAlertsPanel } from "@/components/panels/TaskAlertsPanel";
@@ -2854,6 +2857,8 @@ export function AppShell() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [guestLocale, setGuestLocale] = useState<UserLocale>("en");
   const [activeSectionId, setActiveSectionId] = useState<string>("overview");
+  // Mobile (below lg): which bottom-tab screen is shown. Desktop keeps the single page.
+  const [mobileScreen, setMobileScreen] = useMobileScreen();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("jotly-sidebar-collapsed") === "true"; } catch { return false; }
   });
@@ -8125,6 +8130,12 @@ export function AppShell() {
         isProfileDialogOpen={isProfileDialogOpen}
         isAssistantPanelOpen={isAssistantPanelOpen}
         isSidebarCollapsed={isSidebarCollapsed}
+        mobileScreen={mobileScreen}
+        onMobileScreenChange={setMobileScreen}
+        onToggleAssistant={() => {
+          setIsTaskAlertsPanelOpen(false);
+          setIsAssistantPanelOpen((isOpen) => !isOpen);
+        }}
         onToggleSidebar={() => {
           setIsSidebarCollapsed((prev) => {
             const next = !prev;
@@ -8167,8 +8178,22 @@ export function AppShell() {
       />
     ) : null}
 
-    <div className={`flex min-h-screen flex-col gap-6 px-4 py-6 pb-24 sm:px-8 lg:pb-8 lg:px-10 lg:py-8 ${isSidebarCollapsed ? "lg:ml-[56px]" : "lg:ml-[260px]"} transition-[margin] duration-200`}>
-      <div className="flex items-center justify-between">
+    <div
+      data-mobile-screen={mobileScreen}
+      className={`mobile-screens flex min-h-screen flex-col gap-6 px-4 py-6 pb-[calc(10rem+env(safe-area-inset-bottom))] sm:px-8 lg:pb-8 lg:px-10 lg:py-8 ${isSidebarCollapsed ? "lg:ml-[56px]" : "lg:ml-[260px]"} transition-[margin] duration-200`}
+    >
+      {authUser ? (
+        <MobileMoreScreen
+          isFrench={isFrench}
+          displayName={authUser.displayName ?? authUser.email}
+          email={authUser.displayName ? authUser.email : null}
+          isBusy={isMutationPending}
+          onOpenProfile={openProfileDialog}
+          onOpenProjectPlanning={openProjectPlanning}
+          onLogout={() => void handleLogout()}
+        />
+      ) : null}
+      <div className="hidden items-center justify-between lg:flex">
         <div />
         <button
           type="button"
@@ -8185,6 +8210,7 @@ export function AppShell() {
 
       <header
         id="overview"
+        data-screen="today"
         className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("overview", activeSectionId)} ${getDashboardDropClassName("overview")}`}
         style={{ order: getDashboardBlockVisualOrder("overview") }}
         onDragOver={(event) => handleDashboardBlockDragOver("overview", event)}
@@ -8311,6 +8337,7 @@ export function AppShell() {
       />
 
       <section id="dailyControls"
+        data-screen="today"
         className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("dailyControls", activeSectionId)} ${getDashboardDropClassName("dailyControls")}`}
         style={{ order: getDashboardBlockVisualOrder("dailyControls"), animationDelay: "0.1s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("dailyControls", event)}
@@ -8669,6 +8696,7 @@ export function AppShell() {
 
       <section
         id="routine"
+        data-screen="today"
         className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("routine", activeSectionId)} ${getDashboardDropClassName("routine")}`}
         style={{ order: getDashboardBlockVisualOrder("routine"), animationDelay: "0.12s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("routine", event)}
@@ -8932,6 +8960,7 @@ export function AppShell() {
 
       <section
         id="affirmation"
+        data-screen="journal"
         className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/50 via-surface to-violet-50/30 p-6 shadow-sm ${getMainContentSectionClass("affirmation", activeSectionId)} ${getDashboardDropClassName("affirmation")}`}
         style={{ order: getDashboardBlockVisualOrder("affirmation"), animationDelay: "0.15s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("affirmation", event)}
@@ -9424,6 +9453,7 @@ export function AppShell() {
 
       <section
         id="bilan"
+        data-screen="journal"
         className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("bilan", activeSectionId)} ${getDashboardDropClassName("bilan")}`}
         style={{ order: getDashboardBlockVisualOrder("bilan"), animationDelay: "0.25s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("bilan", event)}
@@ -9703,6 +9733,7 @@ export function AppShell() {
             {showMonthlyObjective ? (
               <section
                 id="monthlyObjective"
+                data-screen="journal"
                 className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("monthlyObjective", activeSectionId)}`}
                 style={{ order: 43 }}
               >
@@ -9758,6 +9789,7 @@ export function AppShell() {
             {showMonthlyReview ? (
               <section
                 id="monthlyReview"
+                data-screen="journal"
                 className={`animate-fade-in-up rounded-xl border-2 border-amber-300 bg-amber-50/50 p-6 shadow-sm ${getMainContentSectionClass("monthlyReview", activeSectionId)}`}
                 style={{ order: 44 }}
               >
@@ -9810,6 +9842,7 @@ export function AppShell() {
             {showWeeklyObjective ? (
               <section
                 id="weeklyObjective"
+                data-screen="journal"
                 className={`animate-fade-in-up rounded-xl border-2 border-indigo-300 bg-indigo-50/50 p-6 shadow-sm ${getMainContentSectionClass("weeklyObjective", activeSectionId)}`}
                 style={{ order: 41 }}
               >
@@ -9868,6 +9901,7 @@ export function AppShell() {
             {showWeeklyReview ? (
               <section
                 id="weeklyReview"
+                data-screen="journal"
                 className={`animate-fade-in-up rounded-xl border-2 border-violet-300 bg-violet-50/50 p-6 shadow-sm ${getMainContentSectionClass("weeklyReview", activeSectionId)}`}
                 style={{ order: 42 }}
               >
@@ -9928,6 +9962,7 @@ export function AppShell() {
 
       <section
         id="notes"
+        data-screen="notes"
         className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-violet-50/40 via-surface to-indigo-50/30 p-6 shadow-sm ${getMainContentSectionClass("notes", activeSectionId)} ${getDashboardDropClassName("notes")}`}
         style={{ order: getDashboardBlockVisualOrder("notes"), animationDelay: "0.19s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("notes", event)}
@@ -10256,6 +10291,7 @@ export function AppShell() {
 
       <section
         id="gaming"
+        data-screen="more"
         className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("gaming", activeSectionId)} ${getDashboardDropClassName("gamingTrack")}`}
         style={{ order: getDashboardBlockVisualOrder("gamingTrack"), animationDelay: "0.05s" }}
         onDragOver={(event) => handleDashboardBlockDragOver("gamingTrack", event)}
@@ -11831,6 +11867,16 @@ export function AppShell() {
         }}
         formatAssistantSourceLabel={formatAssistantSourceLabel}
         formatDateTime={formatDateTime}
+      />
+
+      <MobileCreateFab
+        isFrench={isFrench}
+        screen={mobileScreen}
+        disabled={isMutationPending || !authUser}
+        isHidden={isTaskAlertsPanelOpen || isAssistantPanelOpen || isTaskTriagePanelOpen}
+        onCreateTask={() => openCreateTaskDialog("todo")}
+        onCreateNote={() => openCreateNoteDialog({ targetDate: selectedDate })}
+        onCreateReminder={openCreateReminderDialog}
       />
 
       <AssistantFab
