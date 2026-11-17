@@ -258,3 +258,18 @@ section {
   border-radius: 0.375rem;
   margin: 0.25rem 0;
 }
+
+/*
+ * Mobile screens (below the lg breakpoint): only the sections of the current
+ * bottom-tab screen are shown. Desktop (lg and up) keeps the single page.
+ * See src/components/mobile/mobile-screens.ts for the section → screen mapping.
+ */
+@media (max-width: 1023.98px) {
+  .mobile-screens[data-mobile-screen="today"] > [data-screen]:not([data-screen="today"]),
+  .mobile-screens[data-mobile-screen="tasks"] > [data-screen]:not([data-screen="tasks"]),
+  .mobile-screens[data-mobile-screen="journal"] > [data-screen]:not([data-screen="journal"]),
+  .mobile-screens[data-mobile-screen="notes"] > [data-screen]:not([data-screen="notes"]),
+  .mobile-screens[data-mobile-screen="more"] > [data-screen]:not([data-screen="more"]) {
+    display: none;
+  }
+}

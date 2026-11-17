@@ -196,6 +196,7 @@ export function TaskBoardSection({
   return (
     <section
       id="board"
+      data-screen="tasks"
       className={`animate-fade-in-up rounded-xl bg-surface p-6 shadow-sm ${getMainContentSectionClass("board", activeSectionId)} ${dropClassName}`}
       style={{ order: visualOrder, animationDelay: "0.2s" }}
       onDragOver={onBlockDragOver}

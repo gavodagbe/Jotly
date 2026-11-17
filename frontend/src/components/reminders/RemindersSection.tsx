@@ -101,6 +101,7 @@ export function RemindersSection({
   return (
     <section
       id="reminders"
+      data-screen="notes"
       className={`animate-fade-in-up overflow-hidden rounded-xl bg-gradient-to-br from-amber-50/40 via-surface to-orange-50/30 p-6 shadow-sm ${getMainContentSectionClass("reminders", activeSectionId)} ${dropClassName}`}
       style={{ order: visualOrder, animationDelay: "0.18s" }}
       onDragOver={onBlockDragOver}

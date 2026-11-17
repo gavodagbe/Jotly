@@ -132,7 +132,7 @@ export function SectionIdentityPills({
   const meta = MAIN_CONTENT_SECTION_META[sectionId];
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className="mb-3 hidden flex-wrap items-center gap-2 lg:flex">
       <span
         className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${meta.chipClass}`}
       >
@@ -162,7 +162,7 @@ export function ActiveSectionIndicator({
   const meta = MAIN_CONTENT_SECTION_META[activeSectionId];
 
   return (
-    <div className="sticky top-[4.75rem] z-20 lg:top-4">
+    <div className="sticky top-[4.75rem] z-20 hidden lg:top-4 lg:block">
       <div className="rounded-2xl border border-line bg-white/90 px-4 py-3 shadow-sm backdrop-blur-sm">
         <div className="flex flex-wrap items-center gap-2">
           <span
