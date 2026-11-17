@@ -116,3 +116,28 @@ extracted (12.7k → 12.5k lines); full split is a separate refactoring ticket.
 `backend/src/routes/tasks.ts` was split in the same branch: `routes/tasks.ts` (plugin + auth hook),
 `routes/task-read-routes.ts`, `task-time-entry-routes.ts`, `task-write-routes.ts`,
 `task-maintenance-routes.ts` and `tasks/task-route-helpers.ts`, all under 500 lines.
+
+## Phase 2 — merged (#92).
+
+## Phase 3 — status and decisions (branch `feat/NOJIRA-offline-reminders-notes`)
+
+Backend:
+- Shared helpers moved to `routes/offline-sync-helpers.ts` (`clientIdSchema`, `baseUpdatedAtSchema`,
+  `hasConcurrentChange`, `conflictPayload`); `tasks/task-offline-sync.ts` removed.
+- `POST /api/reminders` and `POST /api/notes` accept a client `id` (replay → 200 with the existing record).
+- `PUT /api/reminders/:id` and `PATCH /api/notes/:id` accept `baseUpdatedAt` → 409 with the server copy.
+- `routes/reminders.ts` and `routes/notes.ts` split (pure move) into read / write / attachment route
+  modules + `reminders/reminder-route-helpers.ts`, `notes/note-route-helpers.ts`.
+- Shared in-memory doubles: `reminders/reminder-store.in-memory.ts`, `notes/note-store.in-memory.ts`
+  (older test files keep their inline copies).
+
+Frontend:
+- `src/lib/api/http.ts` (shared client: `ApiError`, `OfflineError`), `reminders-api.ts`, `notes-api.ts`,
+  `reminder-types.ts`, `note-types.ts`.
+- Offline layer made generic: Dexie schema v2 (reminders, notes tables), generic outbox merge rules,
+  `entity-sync.ts` (per-entity send + pull), `sync-helpers.ts` (conflict resolution), `sync-issues.ts`,
+  `repository-helpers.ts`, `reminder-repository.ts`, `note-repository.ts`.
+- Pull: tasks in window, all reminders, notes in window (or without date).
+- Due reminders while offline: computed from the local copy and marked fired locally so the in-app alert
+  still shows once; the server marks them fired after reconnecting. No push notification when closed.
+- Still online-only: reminder/note attachments, Google Calendar event notes, task comments.

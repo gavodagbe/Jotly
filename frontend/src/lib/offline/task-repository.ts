@@ -25,7 +25,6 @@ import type {
   TaskTimeEntriesPayload,
   TaskTimeEntrySavePayload,
 } from "../api/task-types";
-import type { OutboxOp } from "./db";
 import {
   getLocalTasks,
   getLocalTasksByDate,
@@ -33,24 +32,12 @@ import {
   replaceTasksInRange,
   replaceTimeEntriesForDate,
   setLocalTimeEntry,
-  upsertServerTasks,
+  upsertServerRecords,
 } from "./local-store";
-import { countOutbox, enqueue } from "./outbox";
-import { createClientId, getOfflineSession, isBrowserOnline, type OfflineSession } from "./session";
-import { syncNow } from "./sync-engine";
-import { updateSyncState } from "./sync-status";
+import { canWriteDirectly, queueLocally } from "./repository-helpers";
+import { createClientId, getOfflineSession } from "./session";
 
 const OFFLINE_EDIT_UNAVAILABLE = "This task is not available offline. Reconnect to edit it.";
-
-async function canWriteDirectly(session: OfflineSession): Promise<boolean> {
-  return isBrowserOnline() && (await countOutbox(session.db)) === 0;
-}
-
-async function queueLocally(session: OfflineSession, op: OutboxOp): Promise<void> {
-  await enqueue(session.db, op);
-  updateSyncState({ pendingCount: await countOutbox(session.db) });
-  void syncNow({ pull: false });
-}
 
 function buildLocalTask(id: string, input: TaskMutationInput): Task {
   return {
@@ -95,7 +82,7 @@ export async function loadAllTasks(token: string, filters: TaskListFilters, sign
   }
   try {
     const serverTasks = await fetchAllTasks(token, filters, signal);
-    await upsertServerTasks(session.db, serverTasks);
+    await upsertServerRecords(session.db, session.db.tasks, serverTasks);
     return serverTasks;
   } catch (error) {
     if (!isOfflineError(error)) throw error;

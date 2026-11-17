@@ -10,86 +10,9 @@ import type {
   TaskTimeEntriesPayload,
   TaskTimeEntrySavePayload,
 } from "./task-types";
+import { apiRequest as request, requireData, withBase } from "./http";
 
-const API_BASE = "/backend-api";
-
-type ApiPayload<T> = { data?: T; error?: { code?: string; message?: string } } | null;
-
-/** The server answered with an error status. */
-export class TaskApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly code: string | null = null,
-    readonly data: unknown = null
-  ) {
-    super(message);
-    this.name = "TaskApiError";
-  }
-}
-
-/** The request never reached the server (no network, or the service worker reported offline). */
-export class OfflineError extends Error {
-  constructor(message = "You are offline.") {
-    super(message);
-    this.name = "OfflineError";
-  }
-}
-
-export function isOfflineError(error: unknown): error is OfflineError {
-  return error instanceof OfflineError;
-}
-
-function authHeaders(token: string, hasJsonBody: boolean): HeadersInit {
-  return {
-    ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
-    Authorization: `Bearer ${token}`,
-  };
-}
-
-async function request<T>(
-  path: string,
-  init: { method: string; token: string; body?: unknown; signal?: AbortSignal },
-  fallbackMessage: string
-): Promise<T | undefined> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      method: init.method,
-      headers: authHeaders(init.token, init.body !== undefined),
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      signal: init.signal,
-      cache: init.method === "GET" ? "no-store" : undefined,
-    });
-  } catch (error) {
-    if (init.signal?.aborted) {
-      throw error;
-    }
-    throw new OfflineError();
-  }
-
-  // X-Jotly-Offline: the service worker could not reach the server.
-  // X-Jotly-Offline-Cache: it served a stale cached copy; the local database is fresher.
-  if (response.headers.get("X-Jotly-Offline") === "1" || response.headers.get("X-Jotly-Offline-Cache") === "1") {
-    throw new OfflineError();
-  }
-
-  const payload = (await response.json().catch(() => null)) as ApiPayload<T>;
-
-  if (!response.ok) {
-    const message = payload?.error?.message ?? `${fallbackMessage} (HTTP ${response.status}).`;
-    throw new TaskApiError(response.status, message, payload?.error?.code ?? null, payload?.data ?? null);
-  }
-
-  return payload?.data;
-}
-
-function requireData<T>(data: T | undefined, fallbackMessage: string): T {
-  if (data === undefined || data === null) {
-    throw new Error(`${fallbackMessage}.`);
-  }
-  return data;
-}
+export { ApiError, isOfflineError, OfflineError } from "./http";
 
 export async function fetchTasksByDate(date: string, token: string, signal?: AbortSignal): Promise<Task[]> {
   const data = await request<Task[]>(
@@ -123,7 +46,7 @@ export async function patchTask(
   options: { baseUpdatedAt?: string; errorMessage?: string } = {}
 ): Promise<Task> {
   const message = options.errorMessage ?? "Unable to update task";
-  const body = options.baseUpdatedAt ? { ...patch, baseUpdatedAt: options.baseUpdatedAt } : patch;
+  const body = withBase(patch, options.baseUpdatedAt);
   const data = await request<Task>(`/tasks/${encodeURIComponent(taskId)}`, { method: "PATCH", token, body }, message);
   return requireData(data, message);
 }

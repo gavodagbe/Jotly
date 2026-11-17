@@ -43,9 +43,19 @@ import {
 } from "@/lib/offline/task-repository";
 import { startOfflineSession, stopOfflineSession } from "@/lib/offline/offline-session";
 import { SYNC_APPLIED_EVENT } from "@/lib/offline/sync-status";
+import type { Reminder, ReminderStatus } from "@/lib/api/reminder-types";
+import type { Note } from "@/lib/api/note-types";
+import {
+  cancelReminderApi,
+  completeReminderApi,
+  createReminderApi,
+  loadPendingReminders,
+  loadReminders,
+  updateReminderApi,
+} from "@/lib/offline/reminder-repository";
+import { createNoteApi, deleteNoteApi, loadNotes, updateNoteApi } from "@/lib/offline/note-repository";
 
 type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
-type ReminderStatus = "pending" | "fired" | "completed" | "cancelled";
 type AlertUrgency = "overdue" | "today" | "tomorrow";
 
 type ProjectNode = {
@@ -63,14 +73,6 @@ type CalendarEventLinkedTask = {
   dueDate: string | null;
   priority: TaskPriority;
   project: string | null;
-};
-
-type LinkedCalendarEvent = {
-  id: string;
-  title: string;
-  startTime: string;
-  endTime: string;
-  htmlLink: string | null;
 };
 
 type CalendarEventLinkedNote = {
@@ -314,18 +316,6 @@ type DayBilanMutationInput = {
   tomorrowTop3: string | null;
 };
 
-type Note = {
-  id: string;
-  title: string | null;
-  body: string;
-  color: string | null;
-  targetDate: string | null;
-  calendarEventId: string | null;
-  linkedCalendarEvent: LinkedCalendarEvent | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
 type NoteAttachment = {
   id: string;
   noteId: string;
@@ -366,26 +356,6 @@ function toCalendarEventLinkedNote(note: Note): CalendarEventLinkedNote {
     updatedAt: note.updatedAt,
   };
 }
-
-type Reminder = {
-  id: string;
-  title: string;
-  description: string | null;
-  project: string | null;
-  subProject?: string | null;
-  projectId?: string | null;
-  assignees: string | null;
-  remindAt: string;
-  status: ReminderStatus;
-  isFired: boolean;
-  firedAt: string | null;
-  isDismissed: boolean;
-  dismissedAt: string | null;
-  completedAt: string | null;
-  cancelledAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
 
 type ReminderFormValues = {
   title: string;
@@ -2749,142 +2719,6 @@ async function reformatAffirmationText(
   return payload.data.text;
 }
 
-async function loadReminders(
-  date: string,
-  token: string,
-  signal?: AbortSignal
-): Promise<Reminder[]> {
-  const response = await fetch(`/backend-api/reminders?date=${encodeURIComponent(date)}`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Reminder[]; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load reminders"));
-  }
-
-  return payload?.data ?? [];
-}
-
-async function loadPendingReminders(
-  token: string,
-  signal?: AbortSignal
-): Promise<Reminder[]> {
-  const response = await fetch("/backend-api/reminders/pending", {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Reminder[]; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load pending reminders"));
-  }
-
-  return payload?.data ?? [];
-}
-
-async function loadNotes(token: string, date?: string, signal?: AbortSignal): Promise<Note[]> {
-  const url = date ? `/backend-api/notes?date=${encodeURIComponent(date)}` : "/backend-api/notes";
-  const response = await fetch(url, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Note[]; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load notes"));
-  }
-
-  return payload?.data ?? [];
-}
-
-async function createNoteApi(
-  input: {
-    title?: string | null;
-    body: string;
-    color?: string | null;
-    targetDate?: string | null;
-    calendarEventId?: string | null;
-  },
-  token: string
-): Promise<Note> {
-  const response = await fetch("/backend-api/notes", {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Note; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create note"));
-  }
-
-  if (!payload?.data) throw new Error("Unable to create note");
-  return payload.data;
-}
-
-async function updateNoteApi(
-  id: string,
-  input: {
-    title?: string | null;
-    body?: string;
-    color?: string | null;
-    targetDate?: string | null;
-    calendarEventId?: string | null;
-  },
-  token: string
-): Promise<Note> {
-  const response = await fetch(`/backend-api/notes/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Note; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update note"));
-  }
-
-  if (!payload?.data) throw new Error("Unable to update note");
-  return payload.data;
-}
-
-async function deleteNoteApi(id: string, token: string): Promise<void> {
-  const response = await fetch(`/backend-api/notes/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: createAuthHeaders(token, false),
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: { message?: string } }
-      | null;
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete note"));
-  }
-}
-
 async function loadNoteAttachments(noteId: string, token: string): Promise<NoteAttachment[]> {
   const response = await fetch(`/backend-api/notes/${encodeURIComponent(noteId)}/attachments`, {
     method: "GET",
@@ -3041,57 +2875,6 @@ async function deleteProjectApi(projectId: string, token: string): Promise<void>
   }
 }
 
-async function createReminderApi(
-  input: { title: string; description?: string | null; project?: string | null; projectId?: string | null; assignees?: string | null; remindAt: string },
-  token: string
-): Promise<Reminder> {
-  const response = await fetch("/backend-api/reminders", {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Reminder; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create reminder"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to create reminder.");
-  }
-
-  return payload.data;
-}
-
-async function updateReminderApi(
-  id: string,
-  input: { title?: string; description?: string | null; project?: string | null; projectId?: string | null; assignees?: string | null; remindAt?: string },
-  token: string
-): Promise<Reminder> {
-  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}`, {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Reminder; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update reminder"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to update reminder.");
-  }
-
-  return payload.data;
-}
-
 async function loadReminderAttachments(reminderId: string, token: string): Promise<ReminderAttachment[]> {
   const response = await fetch(`/backend-api/reminders/${encodeURIComponent(reminderId)}/attachments`, {
     method: "GET",
@@ -3164,50 +2947,6 @@ async function deleteReminderAttachmentApi(
       | null;
     throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete attachment"));
   }
-}
-
-async function completeReminderApi(id: string, token: string): Promise<Reminder> {
-  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}/complete`, {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({}),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Reminder; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to complete reminder"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to complete reminder.");
-  }
-
-  return payload.data;
-}
-
-async function cancelReminderApi(id: string, token: string): Promise<Reminder> {
-  const response = await fetch(`/backend-api/reminders/${encodeURIComponent(id)}/cancel`, {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({}),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Reminder; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to cancel reminder"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to cancel reminder.");
-  }
-
-  return payload.data;
 }
 
 async function loadRoutineMonth(month: string, token: string, signal?: AbortSignal): Promise<RoutineMonthlySummary> {
@@ -3697,6 +3436,8 @@ export function AppShell() {
   const [isTaskTriagePanelOpen, setIsTaskTriagePanelOpen] = useState(false);
   const [taskTriageReloadKey, setTaskTriageReloadKey] = useState(0);
   const [tasksReloadKey, setTasksReloadKey] = useState(0);
+  // Bumped when queued offline changes have been pushed, so reminders and notes reload.
+  const [offlineSyncVersion, setOfflineSyncVersion] = useState(0);
   const [pendingTriageTaskId, setPendingTriageTaskId] = useState<string | null>(null);
   const [pendingTransferTaskId, setPendingTransferTaskId] = useState<string | null>(null);
   const [taskTimeEntryByTaskId, setTaskTimeEntryByTaskId] = useState<Map<string, number>>(new Map());
@@ -7483,6 +7224,7 @@ export function AppShell() {
       setTasksReloadKey((currentValue) => currentValue + 1);
       setTaskAlertsReloadKey((currentValue) => currentValue + 1);
       setTaskTriageReloadKey((currentValue) => currentValue + 1);
+      setOfflineSyncVersion((currentValue) => currentValue + 1);
     };
     window.addEventListener(SYNC_APPLIED_EVENT, reloadAfterSync);
     return () => window.removeEventListener(SYNC_APPLIED_EVENT, reloadAfterSync);
@@ -7576,7 +7318,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate, offlineSyncVersion]);
 
   // Fetch notes
   useEffect(() => {
@@ -7602,7 +7344,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, selectedDate]);
+  }, [authToken, authUser, isAuthReady, selectedDate, offlineSyncVersion]);
 
   useEffect(() => {
     if (!isAuthReady) return;
