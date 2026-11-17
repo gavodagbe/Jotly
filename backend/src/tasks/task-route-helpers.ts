@@ -5,7 +5,7 @@ import type { Task, TaskPriority, TaskStatus } from "@prisma/client";
 import { z } from "zod";
 import { isStorageNotInitializedPrismaError, sendStorageNotInitializedError } from "../routes/route-helpers";
 import { formatDateOnly, parseDateOnly } from "./task-store";
-import { baseUpdatedAtSchema, clientTaskIdSchema } from "./task-offline-sync";
+import { baseUpdatedAtSchema, clientIdSchema } from "../routes/offline-sync-helpers";
 import type { CalendarEventStore } from "../google-calendar/calendar-event-store";
 
 export const taskStatusSchema = z.enum(["todo", "in_progress", "done", "cancelled"]);
@@ -18,7 +18,7 @@ export const targetDateSchema = z
   });
 
 export const createTaskBodySchema = z.object({
-  id: clientTaskIdSchema.optional(),
+  id: clientIdSchema.optional(),
   title: z.string().trim().min(1, "Title is required"),
   description: z.string().trim().optional().nullable(),
   status: taskStatusSchema.optional(),

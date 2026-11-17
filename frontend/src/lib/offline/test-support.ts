@@ -2,6 +2,8 @@
  * Test-only helpers: an in-memory fake of the task API installed as global fetch,
  * with a switch to simulate losing the network. Not imported by the app.
  */
+import type { Note } from "../api/note-types";
+import type { Reminder } from "../api/reminder-types";
 import type { Task } from "../api/task-types";
 
 type StoredTask = Task & { updatedAt: string; createdAt: string };
@@ -9,6 +11,8 @@ type StoredTask = Task & { updatedAt: string; createdAt: string };
 export class FakeTaskServer {
   tasks = new Map<string, StoredTask>();
   timeEntries = new Map<string, number>();
+  reminders = new Map<string, Reminder>();
+  notes = new Map<string, Note>();
   requests: Array<{ method: string; path: string; body: unknown }> = [];
   online = true;
   private clock = Date.parse("2026-11-17T08:00:00.000Z");
@@ -40,12 +44,116 @@ export class FakeTaskServer {
     return stored;
   }
 
+  seedReminder(reminder: Partial<Reminder> & { id: string; title: string; remindAt: string }): Reminder {
+    const stamp = this.tick();
+    const stored: Reminder = {
+      description: null,
+      project: null,
+      assignees: null,
+      status: "pending",
+      isFired: false,
+      firedAt: null,
+      isDismissed: false,
+      dismissedAt: null,
+      completedAt: null,
+      cancelledAt: null,
+      ...reminder,
+      createdAt: stamp,
+      updatedAt: stamp,
+    };
+    this.reminders.set(stored.id, stored);
+    return stored;
+  }
+
+  seedNote(note: Partial<Note> & { id: string; body: string }): Note {
+    const stamp = this.tick();
+    const stored: Note = {
+      title: null,
+      color: null,
+      targetDate: null,
+      calendarEventId: null,
+      linkedCalendarEvent: null,
+      ...note,
+      createdAt: stamp,
+      updatedAt: stamp,
+    };
+    this.notes.set(stored.id, stored);
+    return stored;
+  }
+
   install(): () => void {
     const original = globalThis.fetch;
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => this.handle(String(input), init)) as typeof fetch;
     return () => {
       globalThis.fetch = original;
     };
+  }
+
+  private handleRemindersAndNotes(method: string, path: string, url: URL, body: Record<string, unknown> | undefined) {
+    if (method === "GET" && path === "/reminders") {
+      return this.json(200, { data: [...this.reminders.values()] });
+    }
+    if (method === "GET" && path === "/reminders/pending") {
+      const due = [...this.reminders.values()].filter((r) => r.status === "pending" && Date.parse(r.remindAt) <= Date.now());
+      const fired = due.map((r) => ({ ...r, status: "fired" as const, isFired: true, firedAt: this.tick() }));
+      fired.forEach((r) => this.reminders.set(r.id, r));
+      return this.json(200, { data: fired });
+    }
+    if (method === "POST" && path === "/reminders") {
+      const existing = body?.id ? this.reminders.get(String(body.id)) : undefined;
+      if (existing) return this.json(200, { data: existing });
+      const created = this.seedReminder({ ...(body as object), id: String(body?.id ?? `srv-r-${this.reminders.size + 1}`) } as Reminder);
+      return this.json(201, { data: created });
+    }
+    const reminderMatch = path.match(/^\/reminders\/([^/]+)(?:\/(complete|cancel))?$/);
+    if (reminderMatch) {
+      const reminder = this.reminders.get(decodeURIComponent(reminderMatch[1]));
+      if (!reminder) return this.json(404, { error: { code: "NOT_FOUND", message: "Reminder not found" } });
+      if (method === "POST" && reminderMatch[2]) {
+        const status = reminderMatch[2] === "complete" ? "completed" : "cancelled";
+        const updated = { ...reminder, status, isDismissed: true, updatedAt: this.tick() } as Reminder;
+        this.reminders.set(reminder.id, updated);
+        return this.json(200, { data: updated });
+      }
+      if (method === "PUT") {
+        const { baseUpdatedAt, ...fields } = body ?? {};
+        if (baseUpdatedAt && Date.parse(reminder.updatedAt) > Date.parse(String(baseUpdatedAt))) {
+          return this.json(409, { error: { code: "CONFLICT", message: "Reminder was modified" }, data: reminder });
+        }
+        const updated = { ...reminder, ...fields, updatedAt: this.tick() } as Reminder;
+        this.reminders.set(reminder.id, updated);
+        return this.json(200, { data: updated });
+      }
+    }
+    if (method === "GET" && path === "/notes") {
+      const date = url.searchParams.get("date");
+      return this.json(200, { data: [...this.notes.values()].filter((n) => !date || n.targetDate === date) });
+    }
+    if (method === "POST" && path === "/notes") {
+      const existing = body?.id ? this.notes.get(String(body.id)) : undefined;
+      if (existing) return this.json(200, { data: existing });
+      const created = this.seedNote({ ...(body as object), id: String(body?.id ?? `srv-n-${this.notes.size + 1}`) } as Note);
+      return this.json(201, { data: created });
+    }
+    const noteMatch = path.match(/^\/notes\/([^/]+)$/);
+    if (noteMatch) {
+      const note = this.notes.get(decodeURIComponent(noteMatch[1]));
+      if (!note) return this.json(404, { error: { code: "NOT_FOUND", message: "Note not found" } });
+      if (method === "DELETE") {
+        this.notes.delete(note.id);
+        return this.json(200, { data: note });
+      }
+      if (method === "PATCH") {
+        const { baseUpdatedAt, ...fields } = body ?? {};
+        if (baseUpdatedAt && Date.parse(note.updatedAt) > Date.parse(String(baseUpdatedAt))) {
+          return this.json(409, { error: { code: "CONFLICT", message: "Note was modified" }, data: note });
+        }
+        const updated = { ...note, ...fields, updatedAt: this.tick() } as Note;
+        this.notes.set(note.id, updated);
+        return this.json(200, { data: updated });
+      }
+    }
+    return null;
   }
 
   private json(status: number, payload: unknown): Response {
@@ -61,6 +169,9 @@ export class FakeTaskServer {
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     const path = url.pathname.replace(/^\/backend-api/, "");
     this.requests.push({ method, path: `${path}${url.search}`, body });
+
+    const handled = this.handleRemindersAndNotes(method, path, url, body);
+    if (handled) return handled;
 
     if (method === "GET" && path === "/tasks") {
       const date = url.searchParams.get("date");

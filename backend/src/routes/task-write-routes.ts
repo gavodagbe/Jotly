@@ -3,7 +3,7 @@ import type { Task } from "@prisma/client";
 import { sendError, zodIssuesToStrings } from "./route-helpers";
 import { parseDateOnly, type TaskUpdateInput } from "../tasks/task-store";
 import { resolveProjectSelection } from "../projects/project-selection";
-import { hasConcurrentChange } from "../tasks/task-offline-sync";
+import { conflictPayload, hasConcurrentChange } from "./offline-sync-helpers";
 import type { TasksRouteOptions } from "./tasks";
 import {
   createTaskBodySchema,
@@ -190,10 +190,9 @@ export function registerTaskWriteRoutes(app: FastifyInstance, options: TasksRout
       }
 
       if (hasConcurrentChange(existingTask, updateBody.baseUpdatedAt)) {
-        return reply.code(409).send({
-          error: { code: "CONFLICT", message: "Task was modified since this change was made" },
-          data: serializeTask(existingTask),
-        });
+        return reply
+          .code(409)
+          .send(conflictPayload("Task was modified since this change was made", serializeTask(existingTask)));
       }
 
       const updateInput: TaskUpdateInput = {};

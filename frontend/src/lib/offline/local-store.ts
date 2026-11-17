@@ -2,12 +2,47 @@
  * Local database helpers: merging server data without overwriting pending local
  * changes, and local queries used while offline.
  */
+import type { Table } from "dexie";
 import type { Task, TaskListFilters } from "../api/task-types";
 import type { JotlyOfflineDb, TimeEntryRecord } from "./db";
 
 export async function getPendingEntityIds(db: JotlyOfflineDb): Promise<Set<string>> {
   const entries = await db.outbox.toArray();
   return new Set(entries.map((entry) => entry.entityId));
+}
+
+/**
+ * Replace the local records matching `isInScope` with the server list. Records with
+ * pending local changes are left untouched; records the server no longer returns are removed.
+ */
+export async function replaceMatching<T extends { id: string }>(
+  db: JotlyOfflineDb,
+  table: Table<T, string>,
+  isInScope: (record: T) => boolean,
+  serverRecords: T[]
+): Promise<void> {
+  await db.transaction("rw", table, db.outbox, async () => {
+    const pending = await getPendingEntityIds(db);
+    const serverIds = new Set(serverRecords.map((record) => record.id));
+    const local = await table.toArray();
+    const staleIds = local
+      .filter((record) => isInScope(record) && !serverIds.has(record.id) && !pending.has(record.id))
+      .map((record) => record.id);
+    await table.bulkDelete(staleIds);
+    await table.bulkPut(serverRecords.filter((record) => !pending.has(record.id)));
+  });
+}
+
+/** Store server records (e.g. from a filtered list) without removing anything. */
+export async function upsertServerRecords<T extends { id: string }>(
+  db: JotlyOfflineDb,
+  table: Table<T, string>,
+  serverRecords: T[]
+): Promise<void> {
+  await db.transaction("rw", table, db.outbox, async () => {
+    const pending = await getPendingEntityIds(db);
+    await table.bulkPut(serverRecords.filter((record) => !pending.has(record.id)));
+  });
 }
 
 function sortTasks(tasks: Task[]): Task[] {
@@ -18,34 +53,9 @@ function sortTasks(tasks: Task[]): Task[] {
   });
 }
 
-/**
- * Replace the local copy of the tasks whose targetDate is in [from, to] with the
- * server list. Tasks with pending local changes are left untouched.
- */
-export async function replaceTasksInRange(
-  db: JotlyOfflineDb,
-  from: string,
-  to: string,
-  serverTasks: Task[]
-): Promise<void> {
-  await db.transaction("rw", db.tasks, db.outbox, async () => {
-    const pending = await getPendingEntityIds(db);
-    const serverIds = new Set(serverTasks.map((task) => task.id));
-    const localInRange = await db.tasks.where("targetDate").between(from, to, true, true).toArray();
-    const staleIds = localInRange
-      .filter((task) => !serverIds.has(task.id) && !pending.has(task.id))
-      .map((task) => task.id);
-    await db.tasks.bulkDelete(staleIds);
-    await db.tasks.bulkPut(serverTasks.filter((task) => !pending.has(task.id)));
-  });
-}
-
-/** Store server tasks (e.g. from a filtered list) without removing anything. */
-export async function upsertServerTasks(db: JotlyOfflineDb, serverTasks: Task[]): Promise<void> {
-  await db.transaction("rw", db.tasks, db.outbox, async () => {
-    const pending = await getPendingEntityIds(db);
-    await db.tasks.bulkPut(serverTasks.filter((task) => !pending.has(task.id)));
-  });
+/** Replace the local tasks whose targetDate is in [from, to] with the server list. */
+export function replaceTasksInRange(db: JotlyOfflineDb, from: string, to: string, serverTasks: Task[]): Promise<void> {
+  return replaceMatching(db, db.tasks, (task) => task.targetDate >= from && task.targetDate <= to, serverTasks);
 }
 
 export async function getLocalTasksByDate(db: JotlyOfflineDb, date: string): Promise<Task[]> {

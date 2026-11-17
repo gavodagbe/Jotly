@@ -5,7 +5,7 @@ import { countOutbox } from "./outbox";
 import { JotlyOfflineDb } from "./db";
 import { clearOfflineSessionState, getOfflineSession, setOfflineSession } from "./session";
 import { getSyncWindow, syncNow } from "./sync-engine";
-import { getSyncState } from "./sync-status";
+import { getSyncState, resetSyncState } from "./sync-status";
 import {
   createTask,
   deleteTaskById,
@@ -28,6 +28,7 @@ function db() {
 }
 
 beforeEach(() => {
+  resetSyncState();
   server = new FakeTaskServer();
   uninstall = server.install();
   dbCounter += 1;

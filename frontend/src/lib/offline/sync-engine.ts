@@ -1,19 +1,19 @@
 /**
- * Pushes the outbox to the server in order, then refreshes the local window.
- * See planning/OFFLINE.md (phase 2) for the rules.
+ * Pushes the outbox to the server in order, then refreshes the local copy.
+ * See planning/OFFLINE.md for the rules.
  */
-import { deleteTask, fetchAllTasks, isOfflineError, patchTask, postTask, putTaskTimeEntry, TaskApiError } from "../api/tasks-api";
-import type { Task } from "../api/task-types";
-import { readMeta, writeMeta, type JotlyOfflineDb, type OutboxEntry, type SyncIssue } from "./db";
-import { replaceTasksInRange } from "./local-store";
-import { countOutbox, hasOtherPendingOps, peekOutbox, setInFlightSeq } from "./outbox";
+import { ApiError, isOfflineError } from "../api/http";
+import { entityOf, type JotlyOfflineDb, type OutboxEntry } from "./db";
+import { pullAll, sendEntry, tableFor } from "./entity-sync";
+import { countOutbox, peekOutbox, setInFlightSeq } from "./outbox";
 import { getOfflineSession, isBrowserOnline } from "./session";
+import { recordIssue } from "./sync-issues";
 import { notifySyncApplied, updateSyncState } from "./sync-status";
+
+export { dismissSyncIssues, loadSyncIssues } from "./sync-issues";
 
 const WINDOW_DAYS_BEFORE = 7;
 const WINDOW_DAYS_AFTER = 30;
-const MAX_ISSUES = 20;
-const ISSUES_META_KEY = "issues";
 
 type OpOutcome = "done" | "stop";
 
@@ -32,95 +32,9 @@ export function getSyncWindow(now = new Date()): { from: string; to: string } {
   return { from: toLocalDateString(from), to: toLocalDateString(to) };
 }
 
-async function recordIssue(db: JotlyOfflineDb, issue: Omit<SyncIssue, "at">): Promise<void> {
-  const issues = await readMeta<SyncIssue[]>(db, ISSUES_META_KEY, []);
-  const next = [...issues, { ...issue, at: Date.now() }].slice(-MAX_ISSUES);
-  await writeMeta(db, ISSUES_META_KEY, next);
-  updateSyncState({ issues: next });
-}
-
-export async function loadSyncIssues(db: JotlyOfflineDb): Promise<SyncIssue[]> {
-  return readMeta<SyncIssue[]>(db, ISSUES_META_KEY, []);
-}
-
-export async function dismissSyncIssues(): Promise<void> {
-  const session = getOfflineSession();
-  if (session) {
-    await writeMeta(session.db, ISSUES_META_KEY, []);
-  }
-  updateSyncState({ issues: [] });
-}
-
-/** Store the server copy, unless later local edits are still waiting (keep them, refresh the version only). */
-async function storeServerTask(db: JotlyOfflineDb, entry: OutboxEntry, serverTask: Task): Promise<void> {
-  if (await hasOtherPendingOps(db, entry.entityId, entry.seq ?? -1)) {
-    const local = await db.tasks.get(entry.entityId);
-    await db.tasks.put(
-      local ? { ...local, updatedAt: serverTask.updatedAt, createdAt: serverTask.createdAt } : serverTask
-    );
-    return;
-  }
-  await db.tasks.put(serverTask);
-}
-
-async function sendUpdate(db: JotlyOfflineDb, entry: OutboxEntry & { kind: "task.update" }, token: string) {
-  try {
-    const task = await patchTask(entry.entityId, entry.payload, token, { baseUpdatedAt: entry.baseUpdatedAt });
-    await storeServerTask(db, entry, task);
-  } catch (error) {
-    if (!(error instanceof TaskApiError) || error.status !== 409 || !error.data) {
-      throw error;
-    }
-    // Conflict: the most recent change wins.
-    const serverTask = error.data as Task;
-    const serverEditedAt = serverTask.updatedAt ? Date.parse(serverTask.updatedAt) : 0;
-    if (entry.editedAt > serverEditedAt) {
-      const task = await patchTask(entry.entityId, entry.payload, token);
-      await storeServerTask(db, entry, task);
-      await recordIssue(db, {
-        kind: "conflict",
-        entityId: entry.entityId,
-        opKind: entry.kind,
-        message: `"${task.title}": changed elsewhere too — your offline change was more recent and was kept.`,
-      });
-    } else {
-      await storeServerTask(db, entry, serverTask);
-      await recordIssue(db, {
-        kind: "conflict",
-        entityId: entry.entityId,
-        opKind: entry.kind,
-        message: `"${serverTask.title}": changed elsewhere more recently — the other version was kept.`,
-      });
-    }
-  }
-}
-
-async function sendEntry(db: JotlyOfflineDb, entry: OutboxEntry, token: string): Promise<void> {
-  switch (entry.kind) {
-    case "task.create": {
-      const task = await postTask({ ...entry.payload, id: entry.entityId }, token);
-      await storeServerTask(db, entry, task);
-      return;
-    }
-    case "task.update":
-      await sendUpdate(db, entry, token);
-      return;
-    case "task.delete":
-      try {
-        await deleteTask(entry.entityId, token);
-      } catch (error) {
-        if (!(error instanceof TaskApiError && error.status === 404)) throw error;
-      }
-      return;
-    case "timeEntry.put":
-      await putTaskTimeEntry(entry.entityId, entry.payload, token);
-      return;
-  }
-}
-
 function isRetryable(error: unknown): boolean {
   if (isOfflineError(error)) return true;
-  if (error instanceof TaskApiError) {
+  if (error instanceof ApiError) {
     return error.status >= 500 || error.status === 429 || error.status === 401 || error.status === 408;
   }
   return true;
@@ -136,15 +50,19 @@ async function processEntry(db: JotlyOfflineDb, entry: OutboxEntry, token: strin
       return "stop";
     }
     // Rejected by the server (validation, not found...): set it aside so the rest can sync.
-    const local = await db.tasks.get(entry.entityId);
-    if (entry.kind === "task.create" || (error instanceof TaskApiError && error.status === 404)) {
-      await db.tasks.delete(entry.entityId);
+    const entity = entityOf(entry.kind);
+    const table = entity === "timeEntry" ? null : tableFor(db, entity);
+    const local = table ? await table.get(entry.entityId) : undefined;
+    const isGone = entry.kind.endsWith(".create") || (error instanceof ApiError && error.status === 404);
+    if (table && isGone) {
+      await table.delete(entry.entityId);
     }
+    const label = local?.title ? `"${local.title}": ` : "";
     await recordIssue(db, {
       kind: "rejected",
       entityId: entry.entityId,
       opKind: entry.kind,
-      message: `${local ? `"${local.title}": ` : ""}${error instanceof Error ? error.message : "change rejected"}`,
+      message: `${label}${error instanceof Error ? error.message : "change rejected"}`,
     });
   } finally {
     setInFlightSeq(null);
@@ -155,21 +73,27 @@ async function processEntry(db: JotlyOfflineDb, entry: OutboxEntry, token: strin
 
 /** Download the date window and replace the local copy (pending local edits are preserved). */
 export async function pullWindow(db: JotlyOfflineDb, token: string, now = new Date()): Promise<void> {
-  const { from, to } = getSyncWindow(now);
-  const tasks = await fetchAllTasks(token, { dateFrom: from, dateTo: to });
-  await replaceTasksInRange(db, from, to, tasks);
+  await pullAll(db, token, getSyncWindow(now));
 }
 
-let running: Promise<void> | null = null;
+let running: { promise: Promise<void>; session: ReturnType<typeof getOfflineSession> } | null = null;
 
-/** Push pending changes then pull fresh data. Concurrent calls share the same run. */
-export function syncNow(options: { pull?: boolean } = {}): Promise<void> {
+/**
+ * Push pending changes then pull fresh data. Concurrent calls for the same account
+ * share the same run; a run started for another account is awaited first.
+ */
+export async function syncNow(options: { pull?: boolean } = {}): Promise<void> {
+  const session = getOfflineSession();
+  if (running && running.session !== session) {
+    await running.promise.catch(() => undefined);
+  }
   if (!running) {
-    running = runSync(options.pull ?? true).finally(() => {
+    const promise = runSync(options.pull ?? true).finally(() => {
       running = null;
     });
+    running = { promise, session };
   }
-  return running;
+  return running.promise;
 }
 
 async function runSync(pull: boolean): Promise<void> {
