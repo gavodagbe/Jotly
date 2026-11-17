@@ -264,16 +264,23 @@ Gaming Track status:
   - persisted claim/usage/dismiss states reflected in summary
 - Next phases:
   - deeper social loops and collaborative mechanics
+- Offline mode — installable PWA usable without network (2026-11-17, PRs #91–#94, see `planning/OFFLINE.md`):
+  - service worker serving the app shell and cached reads offline
+  - local IndexedDB copy + ordered outbox, pushed automatically on reconnect
+  - offline create / edit / delete for tasks, time entries, reminders, notes (text), journal
+    (affirmation, bilan, weekly, monthly), routines (templates and ticks) and task comments
+  - last-write-wins conflicts (`baseUpdatedAt` → 409) surfaced in the offline banner
+  - still online-only: assistant, search, Google Calendar, attachments, AI reformat / OCR, recurrence,
+    carry-over, auto-cancel
 
 Still not implemented:
 - reporting
 - gaming track phase 6+ collaborative/social engagement layer
 - calendar write-back to Google
 - background/webhook calendar sync
-- notifications
-- mobile client
+- notifications (including push notifications when the app is closed)
+- native mobile client (phone use is covered by the installable PWA)
 - real-time sync
-- offline-first behavior
 
 ## Working rules per ticket
 1. Move Jira ticket to In Progress.

@@ -53,15 +53,16 @@ Implemented in the current codebase:
 - Docker Compose local runtime (frontend, backend, postgres) driven through `scripts/start.sh` / `scripts/stop.sh`, plus `scripts/deploy.sh` for production rollout
 - route tests for auth/tasks/comments/attachments/recurrence/assistant/day-affirmation/day-bilan/profile/gaming-track/reminders/search plus Google Calendar OAuth/events
 
+- offline mode: installable PWA, service worker, IndexedDB outbox with ordered sync and last-write-wins conflicts (`frontend/public/sw.js`, `frontend/src/lib/offline/`, `backend/src/routes/offline-sync-helpers.ts`)
+
 Not implemented yet:
 - reporting
 - gaming track phase 6+ (deeper collaborative loops)
 - calendar write-back to Google
 - background/webhook calendar sync
-- notifications
-- mobile client
+- notifications (including push notifications when the app is closed)
+- native mobile client (phone use is covered by the installable PWA)
 - real-time sync
-- offline-first behavior
 
 ## Key decisions
 
@@ -171,6 +172,21 @@ Reason:
 - doubling API calls (one for classification, one for answer) adds latency and cost
 - the current regex classifier already works for domain-specific questions
 - if heuristic classification fails, the fallback is a global overview, which is acceptable
+
+### 12. Offline mode: PWA + local outbox, not a native app
+Jotly works offline as an installable PWA (details in `planning/OFFLINE.md`).
+
+Reason:
+- reuses every existing screen instead of rebuilding a native client
+- one local database per account, changes queued and replayed in order on reconnect
+- the backend stays the source of truth; conflicts resolved by last write
+
+Review rule for any new write endpoint, pick one:
+- make it offline-capable: accept a client-generated `id` on create (replay returns the existing
+  record) and an optional `baseUpdatedAt` on update (stale → 409 with the server copy, using
+  `routes/offline-sync-helpers.ts`), then wire it through `frontend/src/lib/offline/`
+- or declare it online-only in `planning/OFFLINE.md` and in the service worker rules
+  (`frontend/public/sw-routes.js`) when it is a read that must not be cached
 
 ## Module boundary map
 The boundaries below reflect current ownership and future evolution points.
