@@ -43,7 +43,7 @@ function Row({ label, hint, onClick, href, tone = "default", disabled }: {
 export function MobileMoreScreen({ isFrench, displayName, email, isBusy, onOpenProfile, onOpenProjectPlanning, onLogout }: MobileMoreScreenProps) {
   const initials = displayName.slice(0, 2).toUpperCase();
   return (
-    <section data-screen="more" className="flex flex-col gap-4 lg:hidden">
+    <section data-screen="more" data-screen-bare className="flex flex-col gap-4 lg:hidden">
       <div className="flex items-center gap-3 rounded-xl bg-surface p-4 shadow-sm">
         <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent-soft text-base font-semibold text-accent">{initials}</div>
         <div className="min-w-0">

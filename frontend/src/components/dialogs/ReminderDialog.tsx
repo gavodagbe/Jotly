@@ -111,7 +111,7 @@ export function ReminderDialog({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+      className="mobile-sheet-overlay animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeReminderDialog();
       }}
@@ -124,7 +124,7 @@ export function ReminderDialog({
             ? isFrench ? "Modifier le rappel" : "Edit Reminder"
             : isFrench ? "Ajouter un rappel" : "Add Reminder"
         }
-        className="animate-scale-in flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+        className="mobile-sheet animate-scale-in flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
       >
         <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
           <div>
@@ -420,7 +420,7 @@ export function ReminderDialog({
             ) : null}
           </div>
 
-          <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-line pt-3 mt-3">
+          <footer className="mobile-sheet-footer flex shrink-0 items-center justify-end gap-2 border-t border-line pt-3 mt-3">
             <button
               type="button"
               className={controlButtonClass}

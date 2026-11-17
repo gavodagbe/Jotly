@@ -26,12 +26,12 @@ export function NavigationBlockersDialog({
   const isFrench = locale === "fr";
 
   return (
-    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+    <div className="mobile-sheet-overlay-bottom animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <section
         role="dialog"
         aria-modal="true"
         aria-label={isFrench ? "Navigation bloquee" : "Navigation blocked"}
-        className="animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+        className="mobile-sheet-bottom animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
       >
         <h3 className="text-lg font-semibold text-foreground">
           {isFrench ? "Compléter les champs requis" : "Complete required fields"}
@@ -86,7 +86,7 @@ export function DeleteTaskDialog({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+      className="mobile-sheet-overlay-bottom animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onCancel();
@@ -97,7 +97,7 @@ export function DeleteTaskDialog({
         role="dialog"
         aria-modal="true"
         aria-label={isFrench ? "Confirmation de suppression de tache" : "Delete task confirmation"}
-        className="animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+        className="mobile-sheet-bottom animate-scale-in w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
       >
         <h3 className="text-lg font-semibold text-foreground">
           {isFrench ? "Supprimer la tache ?" : "Delete task?"}

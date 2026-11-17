@@ -83,7 +83,7 @@ export function ProfileDialog({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+      className="mobile-sheet-overlay animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeProfileDialog();
       }}
@@ -92,7 +92,7 @@ export function ProfileDialog({
         role="dialog"
         aria-modal="true"
         aria-label={isFrench ? "Parametres du profil" : "Profile settings"}
-        className="animate-scale-in w-full max-w-lg rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
+        className="mobile-sheet animate-scale-in w-full max-w-lg rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6"
       >
         <header>
           <h3 className="text-lg font-semibold text-foreground">
@@ -280,7 +280,7 @@ export function ProfileDialog({
             </p>
           ) : null}
 
-          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+          <div className="mobile-sheet-footer flex flex-wrap items-center justify-end gap-2 pt-1">
             <button
               type="button"
               className={controlButtonClass}
