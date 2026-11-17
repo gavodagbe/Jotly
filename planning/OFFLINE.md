@@ -1,0 +1,85 @@
+# Jotly — Offline mobile mode
+
+Status: architecture agreed on 2026-11-17. No Jira tickets (NOJIRA branches).
+Production: https://jotly.godwinavodagbe.com (HTTPS via nginx + Let's Encrypt — required for service workers).
+
+This document supersedes "offline-first: not implemented" in `planning/PLAN.md`
+and "V1 mobile reste online-first" in `mobile.md` (branch `feat/JOT-13-mobile-app`).
+
+## Goal
+
+Use Jotly from a phone with no network (no Wi-Fi, no 4G/5G). Everything done offline
+is pushed to the server automatically when the connection comes back.
+
+## Architecture
+
+1. **PWA on the existing Next.js app** (not a native Expo app).
+   - `manifest.webmanifest` → installable on the home screen.
+   - Hand-written service worker (`frontend/public/sw.js`) → app shell opens offline.
+2. **Local database**: IndexedDB through Dexie. Screens read local data first.
+   Keeps a window of data (≈ 30 days around today) plus everything pending.
+3. **Outbox**: every mutation (create / update / status / delete) is applied
+   optimistically to the local DB and appended to an ordered outbox queue.
+   New entities get a client-generated id (cuid), so offline-created records can be
+   edited/commented before reaching the server.
+4. **Sync engine** triggered on `online` event, app open, tab focus/visibility, and a
+   periodic timer. iOS has no Background Sync → on iPhone, sync happens on next open.
+   - Push: replay outbox in order, each entry with an idempotency key (safe retries).
+   - Pull: fetch "changes since <cursor>" and merge into the local DB.
+5. **Conflicts**: last-write-wins. Each mutation carries the `updatedAt` it was based
+   on; the server answers 409 if the record changed meanwhile; the client keeps the
+   most recent version and shows "synced with conflicts".
+6. **Online-only** (disabled offline): AI assistant, search, Google Calendar,
+   AI reformat / text extraction, attachment upload.
+
+### Backend changes (phase 2+)
+- Accept a client-provided `id` on create.
+- Accept an `Idempotency-Key` header; replays return the original result.
+- Accept a base version (`baseUpdatedAt`) on update/delete → 409 on mismatch.
+- `GET /api/sync/changes?since=<cursor>` returning changed + deleted records.
+
+### Main risk
+~80 fetch calls live inline in `frontend/src/components/layout/app-shell.tsx`
+(≈12.7k lines). Rerouting them through the offline data layer means touching that
+file, which triggers the 500-line rule: extract the data-access code into
+`frontend/src/lib/api/*` before plugging the offline layer.
+
+## Phases (one branch each)
+
+| # | Branch | Outcome on the phone |
+|---|--------|----------------------|
+| 1 | `feat/NOJIRA-offline-pwa-shell` | Install Jotly, open it in airplane mode, see already-visited data (read-only) |
+| 2 | `feat/NOJIRA-offline-tasks-sync` | Create / edit / complete tasks + time entries offline, auto-pushed on reconnect |
+| 3 | `feat/NOJIRA-offline-reminders-notes` | Same for reminders and notes (text only) |
+| 4 | `feat/NOJIRA-offline-journal-sync-ui` | Journal entries + routines offline, sync indicator, conflict notice |
+| 5 | `chore/NOJIRA-offline-docs` | PLAN.md / AGENT.md / mobile.md aligned |
+
+## Phase 1 — detailed plan (PWA shell + read cache)
+
+Scope: installable app, opens offline, shows the last server data already seen.
+No offline writes (mutations fail with a clear "offline" message). `app-shell.tsx` untouched.
+
+Files:
+- `frontend/public/manifest.webmanifest` — name, icons, `display: standalone`, theme colors.
+- `frontend/public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`.
+- `frontend/public/sw.js` — service worker:
+  - precache `/` + offline fallback on install;
+  - navigations: network-first, fallback to cached `/`;
+  - `/_next/static/*`: cache-first (hashed, immutable);
+  - Google Fonts: stale-while-revalidate;
+  - `GET /backend-api/*`: network-first with cache fallback, except online-only
+    endpoints (assistant, search, google-calendar, attachments, AI);
+  - non-GET requests: never cached, pass-through;
+  - clears the API cache on `POST /backend-api/auth/logout` and on 401 responses;
+  - versioned cache names, old caches deleted on `activate`.
+- `frontend/src/lib/offline/sw-routes.mjs` (or shared rules) — pure route classification, unit-tested.
+- `frontend/src/lib/offline/register-service-worker.ts` — registers `/sw.js` in production only.
+- `frontend/src/components/offline/OfflineStatus.tsx` — registers SW + shows an "Offline — read-only" banner.
+- `frontend/src/app/layout.tsx` — manifest link, theme-color, apple-touch-icon, `<OfflineStatus />`.
+- `frontend/next.config.ts` — headers for `/sw.js` (`Cache-Control: no-cache`, `Service-Worker-Allowed: /`).
+
+Tests:
+- `node --test` on route classification rules.
+- Manual: Chrome DevTools offline mode, Lighthouse PWA check, phone install + airplane mode.
+
+Out of scope: IndexedDB, outbox, backend changes, offline writes (phase 2+).
