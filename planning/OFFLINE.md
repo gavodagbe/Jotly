@@ -1,10 +1,12 @@
 # Jotly — Offline mobile mode
 
-Status: architecture agreed on 2026-11-17. No Jira tickets (NOJIRA branches).
+Status: **delivered** — phases 1–4 merged on 2026-11-17 (#91, #92, #93, #94); docs aligned in phase 5.
+No Jira tickets (NOJIRA branches).
 Production: https://jotly.godwinavodagbe.com (HTTPS via nginx + Let's Encrypt — required for service workers).
 
-This document supersedes "offline-first: not implemented" in `planning/PLAN.md`
-and "V1 mobile reste online-first" in `mobile.md` (branch `feat/JOT-13-mobile-app`).
+This document supersedes "V1 mobile reste online-first" in `mobile.md`, which only exists on the
+unmerged branch `feat/JOT-13-mobile-app` (kept as is): phone use is covered by the installable PWA,
+a native client is no longer required for offline use.
 
 ## Goal
 
@@ -171,3 +173,26 @@ Frontend:
 Still online-only: affirmation text extraction from a photo and AI reformatting, attachments,
 Google Calendar. Not handled: deleting offline a task created offline does not drop comments queued
 for it (the server rejects them and the banner reports it).
+
+## Phase 4 — merged (#94).
+
+## Phase 5 — docs (branch `chore/NOJIRA-offline-docs`)
+`PLAN.md`, `REVIEW.md` (decision 12 + review rule for new write endpoints) and `AGENT.md` aligned.
+
+## Final summary
+
+Works offline: tasks (+ time entries), reminders (in-app alert when due), notes (text), journal
+(affirmation, bilan, weekly, monthly), routines (templates and ticks, tracker computed locally),
+task comments. Changes are pushed in order when the network returns; conflicts are resolved by the
+most recent edit and shown in the banner.
+
+Online-only: AI assistant, search, Google Calendar (events and event notes), attachments, affirmation
+OCR / AI reformat, recurrence, carry-over, auto-cancel, `/admin`.
+
+Known limits:
+- iOS has no background sync: changes are pushed when Jotly is open.
+- No push notification when the app is closed.
+- Offline data window: tasks today −7 / +30 days, all reminders, notes in the window, today's journal,
+  current week / month / routine month, plus anything opened online.
+- A comment queued offline on a task created then deleted offline is rejected by the server (reported).
+- `app-shell.tsx` is still ~11.9k lines: its full split is a separate refactoring ticket.

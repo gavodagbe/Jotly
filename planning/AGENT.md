@@ -251,11 +251,14 @@ The following modules are explicitly postponed after Sprint 1 implementation:
 - reporting
 - gaming track phase 6+
 - notifications
-- mobile app
+- native mobile app
 - real-time sync
-- offline-first
 
 These can be documented, but must not be implemented unless a ticket explicitly requires it.
+
+Offline mode (installable PWA) was delivered on 2026-11-17 — see `planning/OFFLINE.md`.
+New write endpoints must either support offline sync (client id + `baseUpdatedAt`) or be
+declared online-only there (rule detailed in `planning/REVIEW.md`, decision 12).
 
 ## Future module boundaries (documentation only)
 The modules below define intended boundaries without pre-building abstractions.
