@@ -19,6 +19,11 @@ import { TaskTimeEntryStore } from "../tasks/task-time-entry-store";
 import { AssistantSearchSyncService } from "../assistant/assistant-search-sync";
 import { ProjectStore } from "../projects/project-store";
 import { resolveProjectSelection } from "../projects/project-selection";
+import {
+  baseUpdatedAtSchema,
+  clientTaskIdSchema,
+  hasConcurrentChange,
+} from "../tasks/task-offline-sync";
 
 type TasksRouteOptions = {
   taskStore: TaskStore;
@@ -41,6 +46,7 @@ const targetDateSchema = z
   });
 
 const createTaskBodySchema = z.object({
+  id: clientTaskIdSchema.optional(),
   title: z.string().trim().min(1, "Title is required"),
   description: z.string().trim().optional().nullable(),
   status: taskStatusSchema.optional(),
@@ -69,8 +75,9 @@ const updateTaskBodySchema = z
     plannedTime: z.number().int().nonnegative().optional().nullable(),
     calendarEventId: z.string().trim().min(1, "calendarEventId is required").optional().nullable(),
     autoCancelIfUntouched: z.boolean().optional(),
+    baseUpdatedAt: baseUpdatedAtSchema.optional(),
   })
-  .refine((body) => Object.keys(body).length > 0, {
+  .refine((body) => Object.keys(body).some((key) => key !== "baseUpdatedAt"), {
     message: "At least one field must be provided"
   });
 
@@ -780,8 +787,17 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
     const status = bodyResult.data.status ?? "todo";
     const now = new Date();
+    const clientTaskId = bodyResult.data.id;
 
     try {
+      if (clientTaskId) {
+        // Offline replay of a create that already reached the server.
+        const alreadyCreated = await taskStore.getById(clientTaskId, authUserId);
+        if (alreadyCreated) {
+          return reply.code(200).send({ data: serializeTask(alreadyCreated) });
+        }
+      }
+
       const linkedCalendarEvent = await resolveCalendarEventId(
         bodyResult.data.calendarEventId,
         authUserId,
@@ -812,6 +828,7 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
       }
 
       const task = await taskStore.create({
+        ...(clientTaskId ? { id: clientTaskId } : {}),
         userId: authUserId,
         title: bodyResult.data.title,
         description: normalizeNullableText(bodyResult.data.description) ?? null,
@@ -837,6 +854,10 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
       if (isTaskTableMissingError(error)) {
         request.log.warn(error, "Task table is missing");
         return sendTaskStorageNotInitializedError(reply);
+      }
+
+      if (clientTaskId && isUniqueConstraintError(error)) {
+        return sendError(reply, 409, "CONFLICT", "Task id is already in use");
       }
 
       request.log.error(error, "Failed to create task");
@@ -1076,6 +1097,13 @@ const tasksRoutes: FastifyPluginAsync<TasksRouteOptions> = async (app, options) 
 
       if (!existingTask) {
         return sendError(reply, 404, "NOT_FOUND", "Task not found");
+      }
+
+      if (hasConcurrentChange(existingTask, updateBody.baseUpdatedAt)) {
+        return reply.code(409).send({
+          error: { code: "CONFLICT", message: "Task was modified since this change was made" },
+          data: serializeTask(existingTask),
+        });
       }
 
       const updateInput: TaskUpdateInput = {};

@@ -29,47 +29,24 @@ import { RemindersSection } from "@/components/reminders/RemindersSection";
 import { AuthPanel } from "@/components/auth/AuthPanel";
 import { TaskBoardSection } from "@/components/dashboard/TaskBoardSection";
 import { DAY_FRACTION_OPTIONS } from "@/components/tasks/TaskBoardParts";
+import type { Task, TaskMutationInput, TaskPriority, TaskStatus } from "@/lib/api/task-types";
+import {
+  createTask,
+  deleteTaskById,
+  loadAllTasks,
+  loadTaskTimeEntries,
+  loadTasksByDate,
+  rescheduleTask,
+  saveTaskTimeEntry,
+  updateTask,
+  updateTaskStatus,
+} from "@/lib/offline/task-repository";
+import { startOfflineSession, stopOfflineSession } from "@/lib/offline/offline-session";
+import { SYNC_APPLIED_EVENT } from "@/lib/offline/sync-status";
 
-type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
-type TaskPriority = "low" | "medium" | "high";
 type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 type ReminderStatus = "pending" | "fired" | "completed" | "cancelled";
 type AlertUrgency = "overdue" | "today" | "tomorrow";
-
-type Task = {
-  id: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  targetDate: string;
-  dueDate: string | null;
-  priority: TaskPriority;
-  project: string | null;
-  subProject?: string | null;
-  projectId?: string | null;
-  assignees: string | null;
-  plannedTime: number | null;
-  rolledFromTaskId: string | null;
-  recurrenceSourceTaskId: string | null;
-  recurrenceOccurrenceDate: string | null;
-  calendarEventId: string | null;
-  autoCancelIfUntouched?: boolean;
-};
-
-type TaskMutationInput = {
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  targetDate: string;
-  dueDate: string;
-  priority: TaskPriority;
-  project: string | null;
-  projectId?: string | null;
-  assignees: string | null;
-  plannedTime: number | null;
-  calendarEventId?: string | null;
-  autoCancelIfUntouched: boolean;
-};
 
 type ProjectNode = {
   id: string;
@@ -2328,117 +2305,6 @@ async function logoutUser(token: string): Promise<void> {
   }
 }
 
-async function loadTasksByDate(date: string, token: string, signal?: AbortSignal): Promise<Task[]> {
-  const response = await fetch(`/backend-api/tasks?date=${encodeURIComponent(date)}`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Task[]; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load tasks for this date"));
-  }
-
-  return Array.isArray(payload?.data) ? payload.data : [];
-}
-
-async function loadAllTasks(
-  token: string,
-  filters: { project?: string; status?: string; dateFrom?: string; dateTo?: string },
-  signal?: AbortSignal
-): Promise<Task[]> {
-  const params = new URLSearchParams();
-  if (filters.project) params.set("project", filters.project);
-  if (filters.status && filters.status !== "all") params.set("status", filters.status);
-  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
-  if (filters.dateTo) params.set("dateTo", filters.dateTo);
-  const query = params.toString() ? `?${params.toString()}` : "";
-
-  const response = await fetch(`/backend-api/tasks/all${query}`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Task[]; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load tasks"));
-  }
-
-  return Array.isArray(payload?.data) ? payload.data : [];
-}
-
-type TaskTimeEntriesPayload = {
-  date: string;
-  total: number;
-  entries: Array<{ taskId: string; fraction: number }>;
-};
-
-type TaskTimeEntrySavePayload = {
-  taskId: string;
-  date: string;
-  fraction: number;
-  dayTotal: number;
-};
-
-async function loadTaskTimeEntries(
-  date: string,
-  token: string,
-  signal?: AbortSignal
-): Promise<TaskTimeEntriesPayload> {
-  const response = await fetch(`/backend-api/tasks/time-entries?date=${encodeURIComponent(date)}`, {
-    method: "GET",
-    headers: createAuthHeaders(token, false),
-    signal,
-    cache: "no-store",
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: TaskTimeEntriesPayload; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to load imputed time"));
-  }
-
-  return payload?.data ?? { date, total: 0, entries: [] };
-}
-
-async function saveTaskTimeEntry(
-  taskId: string,
-  input: { date: string; fraction: number },
-  token: string
-): Promise<TaskTimeEntrySavePayload> {
-  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}/time-entry`, {
-    method: "PUT",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: TaskTimeEntrySavePayload; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to save imputed time"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to save imputed time.");
-  }
-
-  return payload.data;
-}
-
 async function loadTaskAlerts(date: string, token: string, signal?: AbortSignal): Promise<TaskAlertsSummary> {
   const response = await fetch(`/backend-api/tasks/alerts?date=${encodeURIComponent(date)}`, {
     method: "GET",
@@ -2485,50 +2351,6 @@ async function loadTaskTriage(date: string, token: string, signal?: AbortSignal)
   return payload.data;
 }
 
-async function createTask(input: TaskMutationInput, token: string): Promise<Task> {
-  const response = await fetch("/backend-api/tasks", {
-    method: "POST",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Task; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to create task"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to create task.");
-  }
-
-  return payload.data;
-}
-
-async function updateTask(taskId: string, input: TaskMutationInput, token: string): Promise<Task> {
-  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
-    method: "PATCH",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Task; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to update task"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to update task.");
-  }
-
-  return payload.data;
-}
-
 async function saveCalendarEventNote(
   eventId: string,
   body: string,
@@ -2568,69 +2390,6 @@ async function deleteCalendarEventNote(eventId: string, token: string): Promise<
   if (!response.ok) {
     throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete calendar event note"));
   }
-}
-
-async function deleteTaskById(taskId: string, token: string): Promise<void> {
-  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
-    method: "DELETE",
-    headers: createAuthHeaders(token, false),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Task; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to delete task"));
-  }
-}
-
-async function updateTaskStatus(taskId: string, status: TaskStatus, token: string): Promise<Task> {
-  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
-    method: "PATCH",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify({ status }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Task; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to move task"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to move task.");
-  }
-
-  return payload.data;
-}
-
-async function rescheduleTask(
-  taskId: string,
-  input: { targetDate: string; dueDate?: string },
-  token: string
-): Promise<Task> {
-  const response = await fetch(`/backend-api/tasks/${encodeURIComponent(taskId)}`, {
-    method: "PATCH",
-    headers: createAuthHeaders(token, true),
-    body: JSON.stringify(input),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: Task; error?: { message?: string } }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(response.status, payload, "Unable to reschedule task"));
-  }
-
-  if (!payload?.data) {
-    throw new Error("Unable to reschedule task.");
-  }
-
-  return payload.data;
 }
 
 async function loadTaskComments(taskId: string, token: string): Promise<TaskComment[]> {
@@ -4552,6 +4311,7 @@ export function AppShell() {
   }
 
   const clearAuthSession = useCallback(() => {
+    stopOfflineSession();
     window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     setAuthToken(null);
     setAuthUser(null);
@@ -7709,6 +7469,25 @@ export function AppShell() {
     };
   }, [authToken, authUser, isAuthReady, activeLocale, taskAlertsAnchorDate]);
 
+  // Offline mode: local database + sync engine for the signed-in account.
+  useEffect(() => {
+    if (!isAuthReady || !authToken || !authUser) {
+      return;
+    }
+    void startOfflineSession(authUser.id, authToken);
+  }, [authToken, authUser, isAuthReady]);
+
+  // Reload the board once queued offline changes have been pushed to the server.
+  useEffect(() => {
+    const reloadAfterSync = () => {
+      setTasksReloadKey((currentValue) => currentValue + 1);
+      setTaskAlertsReloadKey((currentValue) => currentValue + 1);
+      setTaskTriageReloadKey((currentValue) => currentValue + 1);
+    };
+    window.addEventListener(SYNC_APPLIED_EVENT, reloadAfterSync);
+    return () => window.removeEventListener(SYNC_APPLIED_EVENT, reloadAfterSync);
+  }, []);
+
   // Load imputed time entries for the selected date
   useEffect(() => {
     if (!isAuthReady) {
@@ -7746,7 +7525,7 @@ export function AppShell() {
       });
 
     return () => controller.abort();
-  }, [authToken, authUser, isAuthReady, isFrench, selectedDate]);
+  }, [authToken, authUser, isAuthReady, isFrench, selectedDate, tasksReloadKey]);
 
   // Fetch calendar events for the selected date
   useEffect(() => {
