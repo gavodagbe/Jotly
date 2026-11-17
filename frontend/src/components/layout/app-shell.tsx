@@ -23,6 +23,7 @@ import { ActiveSectionIndicator, SectionIdentityPills, getMainContentSectionClas
 import { useMobileScreen } from "@/components/mobile/use-mobile-screen";
 import { MobileCreateFab } from "@/components/mobile/MobileCreateFab";
 import { MobileMoreScreen } from "@/components/mobile/MobileMoreScreen";
+import { RoutineChecklistRow } from "@/components/routines/RoutineChecklistRow";
 import { AssistantFab, AssistantPanel } from "@/components/panels/AssistantPanel";
 import { PendingReminderToasts } from "@/components/panels/PendingReminderToasts";
 import { TaskAlertsPanel } from "@/components/panels/TaskAlertsPanel";
@@ -8250,32 +8251,32 @@ export function AppShell() {
         {dashboardBlockCollapsed.overview ? (
           <p className="mt-3 text-xs text-muted">{collapsedHintLabel}</p>
         ) : (
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-500">
+          <div className="mt-4 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-4">
+            <div className="group flex min-w-0 items-center gap-4 rounded-xl border border-line bg-surface px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-4">
+              <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg sm:grid bg-indigo-50 text-indigo-500">
                 <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="14" height="11" rx="2"/><path d="M7 3v4M13 3v4M3 9h14" strokeLinecap="round"/></svg>
               </div>
               <div>
-                <p className="text-2xl font-semibold text-foreground">{tasks.length}</p>
-                <p className="text-xs text-muted">{isFrench ? "Total taches" : "Total Tasks"}</p>
+                <p className="text-xl font-semibold text-foreground sm:text-2xl">{tasks.length}</p>
+                <p className="truncate text-xs text-muted">{isFrench ? "Total taches" : "Total Tasks"}</p>
               </div>
             </div>
-            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-500">
+            <div className="group flex min-w-0 items-center gap-4 rounded-xl border border-line bg-surface px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-4">
+              <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg sm:grid bg-amber-50 text-amber-500">
                 <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 3v14M5 8l5-5 5 5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
               <div>
-                <p className="text-2xl font-semibold text-foreground">{actionableTaskCount}</p>
-                <p className="text-xs text-muted">{isFrench ? "Actionnables" : "Actionable"}</p>
+                <p className="text-xl font-semibold text-foreground sm:text-2xl">{actionableTaskCount}</p>
+                <p className="truncate text-xs text-muted">{isFrench ? "Actionnables" : "Actionable"}</p>
               </div>
             </div>
-            <div className="group flex items-center gap-4 rounded-xl border border-line bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-500">
+            <div className="group flex min-w-0 items-center gap-4 rounded-xl border border-line bg-surface px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-4">
+              <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg sm:grid bg-emerald-50 text-emerald-500">
                 <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.5l2.8 1.7" strokeLinecap="round"/></svg>
               </div>
               <div>
-                <p className="text-2xl font-semibold text-foreground">{formatPlannedTime(totalPlannedMinutes)}</p>
-                <p className="text-xs text-muted">{isFrench ? "Temps planifie" : "Planned Time"}</p>
+                <p className="text-xl font-semibold text-foreground sm:text-2xl">{formatPlannedTime(totalPlannedMinutes)}</p>
+                <p className="truncate text-xs text-muted">{isFrench ? "Temps planifie" : "Planned Time"}</p>
               </div>
             </div>
           </div>
@@ -8744,7 +8745,7 @@ export function AppShell() {
         ) : (
           <div className="mt-5 space-y-4">
             <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
                 <div className="rounded-lg border border-line bg-surface-soft px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
                     {isFrench ? "Aujourd'hui" : "Today"}
@@ -8759,7 +8760,7 @@ export function AppShell() {
                   <p className="mt-1 text-2xl font-semibold text-foreground">{routineSummary?.monthPercentage ?? 0}%</p>
                   <p className="text-xs text-muted">{routineMonth}</p>
                 </div>
-                <label className="block rounded-lg border border-line bg-surface-soft px-4 py-3 text-sm font-semibold text-foreground">
+                <label className={`col-span-2 rounded-lg border border-line bg-surface-soft px-4 py-3 text-sm font-semibold text-foreground sm:col-span-1 sm:block ${routineViewMode === "month" ? "block" : "hidden"}`}>
                   {isFrench ? "Mois suivi" : "Tracked month"}
                   <input
                     type="month"
@@ -8858,46 +8859,23 @@ export function AppShell() {
                 {isFrench ? "Chargement de la routine..." : "Loading routine..."}
               </p>
             ) : routineViewMode === "today" ? (
-              <div className="grid gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {(routineSummary?.routines ?? []).map((routine) => {
                   const key = getRoutineCompletionKey(routine.id, selectedDate);
                   const completion = routineCompletionsByKey.get(key);
                   const isCompleted = Boolean(completion?.isCompleted);
                   return (
-                    <div key={routine.id} className="grid gap-3 rounded-lg border border-line bg-surface px-3 py-2 sm:grid-cols-[88px_80px_minmax(0,1fr)_auto] sm:items-center">
-                      <span className={`rounded-full border px-2 py-1 text-center text-[11px] font-semibold uppercase ${
-                        routine.challenge === "bonus" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      }`}>
-                        {routine.challenge}
-                      </span>
-                      <span className="text-sm font-semibold text-muted">{getRoutineTimeLabel(routine)}</span>
-                      <button
-                        type="button"
-                        className={`min-w-0 text-left text-sm font-medium transition-colors ${isCompleted ? "text-muted line-through" : "text-foreground"}`}
-                        onClick={() => void handleToggleRoutineCompletion(routine.id, selectedDate)}
-                      >
-                        {routine.title}
-                      </button>
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          className={`grid h-8 w-8 place-items-center rounded-md border transition-colors ${
-                            isCompleted ? "border-emerald-500 bg-emerald-500 text-white" : "border-line bg-surface-soft text-transparent hover:border-accent"
-                          }`}
-                          disabled={pendingRoutineCompletionKeys.includes(key)}
-                          onClick={() => void handleToggleRoutineCompletion(routine.id, selectedDate)}
-                          aria-label={isFrench ? "Basculer la routine" : "Toggle routine"}
-                        >
-                          ✓
-                        </button>
-                        <button type="button" className={controlIconButtonClass} onClick={() => openEditRoutineForm(routine)} aria-label={isFrench ? "Modifier" : "Edit"}>
-                          <PencilIcon />
-                        </button>
-                        <button type="button" className={controlIconButtonClass} onClick={() => void handleDeleteRoutine(routine.id)} aria-label={isFrench ? "Supprimer" : "Delete"}>
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    </div>
+                    <RoutineChecklistRow
+                      key={routine.id}
+                      routine={routine}
+                      timeLabel={getRoutineTimeLabel(routine)}
+                      isCompleted={isCompleted}
+                      isPending={pendingRoutineCompletionKeys.includes(key)}
+                      isFrench={isFrench}
+                      onToggle={() => void handleToggleRoutineCompletion(routine.id, selectedDate)}
+                      onEdit={() => openEditRoutineForm(routine)}
+                      onDelete={() => void handleDeleteRoutine(routine.id)}
+                    />
                   );
                 })}
               </div>
@@ -10565,7 +10543,7 @@ export function AppShell() {
 
       {isNoteDialogOpen ? (
         <div
-          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className="mobile-sheet-overlay animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeNoteDialog();
@@ -10576,7 +10554,7 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={noteDialogTitle}
-            className={`animate-scale-in flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${noteDialogHeightClass}`}
+            className={`mobile-sheet animate-scale-in flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${noteDialogHeightClass}`}
           >
             <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
               <div>
@@ -10811,7 +10789,7 @@ export function AppShell() {
                 </section>
               ) : null}
 
-              <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+              <div className="mobile-sheet-footer flex flex-wrap justify-end gap-2 border-t border-line pt-4">
                 <button
                   type="button"
                   className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-soft hover:text-foreground"
@@ -10835,7 +10813,7 @@ export function AppShell() {
 
       {isTaskDialogOpen ? (
         <div
-          className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className="mobile-sheet-overlay animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeTaskDialog();
@@ -10846,7 +10824,7 @@ export function AppShell() {
             role="dialog"
             aria-modal="true"
             aria-label={taskDialogTitle}
-            className={`animate-scale-in flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${taskDialogHeightClass}`}
+            className={`mobile-sheet animate-scale-in flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${taskDialogHeightClass}`}
           >
             <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
               <div>
@@ -11663,7 +11641,7 @@ export function AppShell() {
                 </p>
               ) : null}
 
-              <footer className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <footer className="mobile-sheet-footer flex flex-wrap items-center justify-between gap-2 pt-1">
                 {taskDialogMode === "edit" ? (
                   <button
                     type="button"

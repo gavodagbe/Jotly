@@ -273,3 +273,55 @@ section {
     display: none;
   }
 }
+
+/* Mobile density: tighter cards and spacing below lg (desktop unchanged). */
+@media (max-width: 1023.98px) {
+  .mobile-screens {
+    gap: 1rem;
+  }
+  .mobile-screens > [data-screen]:not([data-screen-bare]) {
+    padding: 1rem;
+  }
+}
+
+/*
+ * Dialogs on phones (below sm): forms open full screen with their action bar
+ * pinned at the bottom; confirmations slide up as a bottom sheet.
+ * Larger screens keep the centered window.
+ */
+@media (max-width: 639.98px) {
+  .mobile-sheet-overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+  .mobile-sheet {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    overflow-y: auto;
+    padding-top: max(1.25rem, env(safe-area-inset-top));
+    padding-bottom: 0;
+  }
+  .mobile-sheet-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    margin-top: auto;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .mobile-sheet-overlay-bottom {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .mobile-sheet-bottom {
+    max-width: none;
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+  }
+}
