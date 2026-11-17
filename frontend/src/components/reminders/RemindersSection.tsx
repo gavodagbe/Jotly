@@ -146,6 +146,7 @@ export function RemindersSection({
             type="button"
             className={dashboardIconButtonClass}
             onClick={onToggleCollapse}
+            data-block-toggle
             aria-expanded={!isCollapsed}
             aria-label={collapseToggleLabel}
             title={collapseToggleLabel}
