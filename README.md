@@ -408,7 +408,8 @@ Tools:
 - tasks and reminders: `creer_tache`, `terminer_tache`, `modifier_tache`, `creer_rappel`
 - bulk (preview, then confirmation token): `reporter_taches_veille`, `creer_taches`, `publier_objectifs`
 - objectives and reviews: `lire_objectifs`, `lire_periode` (week or month summary), `lire_tendances` (week by week)
-- memory: `chercher` (search over notes, meeting notes, tasks, attachments…), `lire_element`, `lire_reunions`
+- agenda: `lire_agenda` (Google Calendar events synced in Jotly, one day or a period); today's agenda is also in `lire_journee`
+- memory: `chercher` (search over notes, meeting notes, tasks, attachments…), `lire_element`
 - evening review, task by task: `terminer_tache`, `reporter_tache` (one task to tomorrow), `modifier_tache`
 - `annuler`: undoes an LLM write within 7 days from the `action_id` in its proof
 

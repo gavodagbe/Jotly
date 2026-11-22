@@ -2,7 +2,6 @@ import { normalizePlainText } from "../../assistant/assistant-search-sync";
 import type { AssistantSearchSourceType } from "../../assistant/assistant-search-document-types";
 import { z } from "zod";
 import { parseDateOnly } from "../../tasks/task-store";
-import { addUtcDays } from "../../tasks/task-route-helpers";
 import { dayBoundsUtc, formatDateOnly, formatLocalDateTime } from "../mcp-dates";
 import { describeTask } from "./day-tools";
 import { McpTool } from "./tool-definition";
@@ -226,59 +225,5 @@ export const lireElement: McpTool<typeof lireElementShape> = {
           : await readMeeting(memory, ctx.userId, id, ctx.timeZone);
     if (!result) throw new McpToolError(`Élément introuvable : ${type} ${id}.`);
     return result;
-  },
-};
-
-const lireReunionsShape = {
-  du: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Premier jour (AAAA-MM-JJ)."),
-  au: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Dernier jour inclus (AAAA-MM-JJ), 62 jours au plus après le premier."),
-};
-
-export const lireReunions: McpTool<typeof lireReunionsShape> = {
-  name: "lire_reunions",
-  title: "Lire les réunions",
-  description:
-    "Liste les réunions de l'agenda sur une période, avec participants et un extrait de leurs notes. Pour préparer un rendez-vous ou retrouver ce qui a été dit à un client.",
-  inputSchema: lireReunionsShape,
-  write: false,
-  async handler({ du, au }, ctx, stores) {
-    const memory = requireMemory(stores);
-    if (!memory.calendarEventStore) throw new McpToolError("L'agenda n'est pas connecté à Jotly.");
-    const start = parseDay(du, "Date de début");
-    const end = parseDay(au, "Date de fin");
-    if (end < start || end > addUtcDays(start, 62)) {
-      throw new McpToolError("Période invalide : la fin doit suivre le début, sur 62 jours au plus.");
-    }
-
-    const events = await memory.calendarEventStore.listByDateRange(start, end, ctx.userId, ctx.timeZone);
-    const ids = events.map((event) => event.id);
-    const [notes, legacyNotes] = await Promise.all([
-      memory.noteStore.listByCalendarEventIds(ids, ctx.userId),
-      memory.calendarEventNoteStore?.listByCalendarEventIds(ids, ctx.userId) ?? [],
-    ]);
-    const noteFor = (eventId: string) =>
-      normalizePlainText(
-        notes.find((note) => note.calendarEventId === eventId)?.body,
-        legacyNotes.find((note) => note.calendarEventId === eventId)?.body
-      );
-
-    return {
-      du,
-      au,
-      nombre: events.length,
-      reunions: events
-        .filter((event) => event.status !== "cancelled")
-        .map((event) => {
-          const note = noteFor(event.id);
-          return {
-            id: event.id,
-            titre: event.title,
-            debut: formatLocalDateTime(event.startTime, ctx.timeZone),
-            participants: event.attendees,
-            a_une_note: note.length > 0,
-            extrait_note: truncate(note, 500),
-          };
-        }),
-    };
   },
 };
