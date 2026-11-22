@@ -1,5 +1,11 @@
 import { buildApp } from "./app";
 import { getEnv } from "./config/env";
+import { createPrismaAuthStore } from "./auth/auth-store";
+import { loadMcpConfig } from "./mcp/mcp-config";
+import { registerMcp } from "./mcp/mcp-plugin";
+import { createGoogleIdentityProvider } from "./mcp/oauth/google-identity";
+import { OAUTH_PATHS } from "./mcp/oauth/metadata-routes";
+import { createPrismaMcpOAuthStore } from "./mcp/oauth/oauth-store";
 
 async function start(): Promise<void> {
   const env = getEnv();
@@ -17,6 +23,22 @@ async function start(): Promise<void> {
     googleRedirectUri: env.GOOGLE_REDIRECT_URI,
     googleCalendarEncryptionKey: env.GOOGLE_CALENDAR_ENCRYPTION_KEY,
   });
+
+  // MCP server for LLM clients (ChatGPT, Claude); off unless MCP_ENABLED=true.
+  const mcpConfig = loadMcpConfig(process.env);
+  if (mcpConfig) {
+    registerMcp(app, {
+      config: mcpConfig,
+      oauthStore: createPrismaMcpOAuthStore(),
+      authStore: createPrismaAuthStore(),
+      google: createGoogleIdentityProvider({
+        clientId: mcpConfig.googleClientId,
+        clientSecret: mcpConfig.googleClientSecret,
+        redirectUri: `${mcpConfig.baseUrl}${OAUTH_PATHS.googleCallback}`,
+      }),
+    });
+    app.log.info({ resource: mcpConfig.resourceUrl }, "MCP server enabled");
+  }
 
   try {
     await app.listen({ host: env.HOST, port: env.PORT });
