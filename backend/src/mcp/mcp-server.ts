@@ -7,7 +7,8 @@ import { McpAuthContext } from "./oauth/bearer-guard";
 import { DailyQuota, TokenBucketLimiter } from "./rate-limit";
 import { ecrireAffirmation, lireAffirmation, lireJournee } from "./tools/day-tools";
 import { creerTaches } from "./tools/bulk-task-tools";
-import { chercher, lireElement, lireReunions } from "./tools/memory-tools";
+import { lireAgenda } from "./tools/agenda-tools";
+import { chercher, lireElement } from "./tools/memory-tools";
 import { lireTendances } from "./tools/trend-tools";
 import { lireObjectifs, publierObjectifs } from "./tools/objective-tools";
 import { ecrireBilan, lirePeriode } from "./tools/review-tools";
@@ -41,7 +42,7 @@ export const MCP_TOOLS: AnyMcpTool[] = [
   reporterTache,
   chercher,
   lireElement,
-  lireReunions,
+  lireAgenda,
   lireTendances,
 ];
 
@@ -55,7 +56,9 @@ export const MCP_INSTRUCTIONS = `Jotly : l'outil d'action quotidienne de Godwin 
   2. Poser les questions du bilan, une à la fois : humeur de 1 à 5, victoires, blocages, leçons, top 3 de demain. Écrire avec ecrire_bilan dans les mots de Godwin.
   3. Proposer les tâches de demain à partir du top 3 et des objectifs de la semaine ; si Godwin le veut, creer_taches (aperçu, accord, jeton).
   4. Sans attendre de demande, déposer le résumé dans le Coffre Vision avec son outil capturer (nature « note », sujet « Journal du JJ/MM/AAAA ») : tâches faites et non faites, affirmation, bilan. Seule exception : si le résumé contient une donnée sensible (secret d'affaires ou chiffres confidentiels d'un client ou de l'employeur, santé, informations intimes sur un tiers), demander d'abord.
-- Mémoire : pour une question sur un client, un projet, une personne ou une réunion passée, chercher puis lire_element (champ lire_avec) ; lire_reunions pour l'agenda d'une période ; lire_tendances pour l'évolution sur plusieurs semaines. Pour garder une notion dans le coffre : la proposer à Godwin puis la capturer dans le coffre (validation seulement si elle est sensible).
+- Agenda (événements, rendez-vous, réunions de Google Agenda synchronisés dans Jotly) : aujourd'hui, c'est le bloc agenda de lire_journee ; un autre jour ou une période, lire_agenda. Ne jamais dire que l'agenda est inaccessible sans avoir appelé ces outils.
+- Planning du jour : partir des rendez-vous de l'agenda (fixes), puis placer les tâches ouvertes dans les créneaux libres par priorité et durée prévue ; signaler ce qui ne tient pas dans la journée.
+- Mémoire : pour une question sur un client, un projet, une personne ou une réunion passée, chercher puis lire_element (champ lire_avec) ; lire_agenda pour les réunions passées d'une période ; lire_tendances pour l'évolution sur plusieurs semaines. Pour garder une notion dans le coffre : la proposer à Godwin puis la capturer dans le coffre (validation seulement si elle est sensible).
 - Analyse mensuelle : lire le plan et les objectifs dans le Coffre Vision ; lire_periode sur le mois écoulé (et ses semaines si utile) ; proposer à Godwin les objectifs du mois suivant et de ses semaines ; après validation du plan, publier_objectifs (aperçu, accord, jeton). Les décisions et la capture restent dans le coffre.
 - Aucune suppression n'est possible. Pour revenir sur une écriture faite par un LLM (7 jours au plus), appeler annuler avec l'action_id de sa preuve ; pour abandonner une tâche, statut cancelled.
 - Utiliser les identifiants renvoyés par lire_journee ; ne jamais deviner un id.

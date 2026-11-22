@@ -9,7 +9,9 @@ import type {
 import { InMemoryCommentStore } from "../comments/comment-store.in-memory";
 import type { CalendarEventStore } from "../google-calendar/calendar-event-store";
 import { InMemoryNoteStore } from "../notes/note-store.in-memory";
+import { addUtcDays } from "../tasks/task-route-helpers";
 import { parseDateOnly } from "../tasks/task-store";
+import { dayBoundsUtc } from "./mcp-dates";
 import { buildHarness, callTool, JOTLY_USER_ID, obtainTokens, TestHarness } from "./mcp-test-helpers";
 
 // Monday 23/11/2026, 20:00 in Paris.
@@ -101,15 +103,35 @@ async function setup(reindexCalls: { userId: string; types: string[] }[] = []) {
   const events = new Map<string, CalendarEvent>([
     ["ev-1", meeting("ev-1", "Point Tenbou", "2026-11-20T09:00:00Z")],
     ["ev-2", meeting("ev-2", "Annulée", "2026-11-21T09:00:00Z", { status: "cancelled" })],
+    ["ev-3", meeting("ev-3", "Comité Mikan", "2026-11-23T13:30:00Z", { location: "Visio" })],
+    [
+      "ev-4",
+      meeting("ev-4", "Salon IA", "2026-11-23T00:00:00Z", {
+        isAllDay: true,
+        startDate: day("2026-11-23"),
+        endDate: day("2026-11-25"),
+      }),
+    ],
   ]);
+  // Mirrors the Prisma store: the range END DATE IS EXCLUSIVE, cancelled events are filtered out.
+  const overlaps = (event: CalendarEvent, start: Date, endExclusive: Date) =>
+    event.isAllDay
+      ? (event.startDate as Date) < endExclusive && (event.endDate as Date) > start
+      : event.startTime < dayBoundsUtc(endExclusive, "Europe/Paris").start &&
+        event.endTime > dayBoundsUtc(start, "Europe/Paris").start;
   const calendarEventStore = {
     async getById(id: string, userId: string) {
       const event = events.get(id);
       return event && event.userId === userId ? event : null;
     },
-    async listByDateRange(start: Date, end: Date, userId: string) {
+    async listByDate(date: Date, userId: string) {
       return [...events.values()].filter(
-        (event) => event.userId === userId && event.startTime >= start && event.startTime < new Date(end.getTime() + 86_400_000)
+        (event) => event.userId === userId && event.status !== "cancelled" && overlaps(event, date, addUtcDays(date, 1))
+      );
+    },
+    async listByDateRange(start: Date, endExclusive: Date, userId: string) {
+      return [...events.values()].filter(
+        (event) => event.userId === userId && event.status !== "cancelled" && overlaps(event, start, endExclusive)
       );
     },
   } as unknown as CalendarEventStore;
@@ -198,22 +220,70 @@ test("lire_element reads a task with its comments, and a meeting with its note",
   await h.app.close();
 });
 
-test("lire_reunions lists the period's meetings, skipping cancelled ones, with note excerpts", async () => {
+test("lire_agenda includes the last day: a single day (du = au) returns its events", async () => {
   const { h, token, noteStore } = await setup();
-  await noteStore.create({ userId: JOTLY_USER_ID, body: "Devis à envoyer", calendarEventId: "ev-1" });
-  const { data } = await callTool(h, token, "lire_reunions", { du: "2026-11-16", au: "2026-11-22" });
-  assert.deepEqual(data.reunions, [
-    {
-      id: "ev-1",
-      titre: "Point Tenbou",
-      debut: "2026-11-20 10:00",
+  await noteStore.create({ userId: JOTLY_USER_ID, body: "Ordre du jour validé", calendarEventId: "ev-3" });
+
+  // The case that returned nothing in production on 23/11/2026.
+  for (const args of [{ du: "2026-11-23", au: "2026-11-23" }, { du: "2026-11-23" }]) {
+    const { data } = await callTool(h, token, "lire_agenda", args);
+    assert.equal(data.nombre, 2, JSON.stringify(args));
+    assert.deepEqual(data.evenements[0], {
+      id: "ev-3",
+      titre: "Comité Mikan",
+      toute_la_journee: false,
+      debut: "2026-11-23 14:30",
+      fin: "2026-11-23 15:30",
+      lieu: "Visio",
       participants: "serge@tenbou.test",
       a_une_note: true,
-      extrait_note: "Devis à envoyer",
-    },
-  ]);
-  const tooLong = await callTool(h, token, "lire_reunions", { du: "2026-01-01", au: "2026-06-01" });
+      extrait_note: "Ordre du jour validé",
+    });
+    assert.deepEqual(
+      { ...data.evenements[1], participants: undefined },
+      {
+        id: "ev-4",
+        titre: "Salon IA",
+        toute_la_journee: true,
+        du: "2026-11-23",
+        au: "2026-11-24",
+        lieu: null,
+        participants: undefined,
+        a_une_note: false,
+        extrait_note: null,
+      }
+    );
+  }
+  await h.app.close();
+});
+
+test("lire_agenda covers a period, skips cancelled events and bounds the range", async () => {
+  const { h, token } = await setup();
+  const { data } = await callTool(h, token, "lire_agenda", { du: "2026-11-20", au: "2026-11-23" });
+  assert.deepEqual(
+    data.evenements.map((event: { titre: string }) => event.titre).sort(),
+    ["Comité Mikan", "Point Tenbou", "Salon IA"]
+  );
+  const before = await callTool(h, token, "lire_agenda", { du: "2026-11-16", au: "2026-11-19" });
+  assert.equal(before.data.nombre, 0);
+  const tooLong = await callTool(h, token, "lire_agenda", { du: "2026-01-01", au: "2026-06-01" });
   assert.equal(tooLong.isError, true);
+  await h.app.close();
+});
+
+test("lire_journee includes the day's agenda", async () => {
+  const { h, token } = await setup();
+  const { data } = await callTool(h, token, "lire_journee");
+  assert.deepEqual(
+    data.agenda.map((event: { titre: string }) => event.titre).sort(),
+    ["Comité Mikan", "Salon IA"]
+  );
+
+  const noAgenda = await buildHarness({}, { now: () => NOW });
+  const fresh = (await obtainTokens(noAgenda)).access_token;
+  const without = await callTool(noAgenda, fresh, "lire_journee");
+  assert.match(without.data.agenda.indisponible, /pas connecté/);
+  await noAgenda.app.close();
   await h.app.close();
 });
 
