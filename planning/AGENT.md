@@ -458,7 +458,8 @@ The modules below define intended boundaries without pre-building abstractions.
 - Objectives (phase 2): week/month objectives from the Coffre Vision are written into the existing `WeeklyEntry`/`MonthlyEntry.objective` text (first line `[Coffre Vision] …`); day objectives are the day's tasks. The MCP adds no column to existing Jotly tables.
 - Undo (phase 2): `McpActionLog` (MCP-owned) stores before/after snapshots per LLM write; `annuler` restores or cancels (never deletes) within 7 days, refusing if the entity changed since.
 - Rule: MCP work must not modify existing Jotly code; it lives under `backend/src/mcp/`, wired from `server.ts`.
-- Out of scope (later phases): note search, automatic daily summary into the Coffre Vision.
+- Memory (phase 3): `chercher`/`lire_element`/`lire_reunions` read the existing search index and stores; MCP writes trigger a scoped reindex through the existing search sync service. Wiring lives in `backend/src/mcp/mcp-bootstrap.ts` (one shared Prisma client for MCP stores).
+- Evening review: driven by the LLM (server instructions), task by task, then bilan questions; the day summary is then captured into the Coffre Vision Inbox through the coffre's own MCP tool, automatically unless sensitive. No scheduled job in Jotly.
 
 ### Profile and preferences
 - Relation to task history: cross-cutting user preferences for locale/timezone and display identity.

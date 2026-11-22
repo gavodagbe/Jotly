@@ -136,6 +136,7 @@ export const publierObjectifs: McpTool<typeof publierShape> = {
     "Publie dans Jotly des objectifs de mois et de semaine décidés dans le Coffre Vision. Opération en masse, en deux temps : 1) sans jeton, aperçu (ancien et nouveau texte de chaque période), rien n'est modifié ; 2) après accord explicite de Godwin, rappeler avec le même contenu et le jeton. Remplace l'objectif existant de chaque période.",
   inputSchema: publierShape,
   write: true,
+  reindexes: ["weeklyObjective", "monthlyObjective"],
   async handler({ publications, note_source, jeton_confirmation }, ctx, stores) {
     const now = ctx.now();
     const periods = publications.map((publication) => ({

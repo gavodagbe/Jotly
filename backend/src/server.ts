@@ -1,21 +1,6 @@
 import { buildApp } from "./app";
 import { getEnv } from "./config/env";
-import { createPrismaAuthStore } from "./auth/auth-store";
-import { loadMcpConfig } from "./mcp/mcp-config";
-import { registerMcp } from "./mcp/mcp-plugin";
-import { createGoogleIdentityProvider } from "./mcp/oauth/google-identity";
-import { OAUTH_PATHS } from "./mcp/oauth/metadata-routes";
-import { createPrismaMcpOAuthStore } from "./mcp/oauth/oauth-store";
-import { createPrismaMcpAuditStore } from "./mcp/audit-log";
-import { createPrismaMcpActionLogStore } from "./mcp/actions/action-log-store";
-import { createPrismaDayAffirmationStore } from "./day-affirmation/day-affirmation-store";
-import { createPrismaDayBilanStore } from "./day-bilan/day-bilan-store";
-import { createPrismaProjectStore } from "./projects/project-store";
-import { createPrismaRecurrenceStore } from "./recurrence/recurrence-store";
-import { createPrismaReminderStore } from "./reminders/reminder-store";
-import { createPrismaTaskStore } from "./tasks/task-store";
-import { createPrismaWeeklyEntryStore } from "./weekly-entry/weekly-entry-store";
-import { createPrismaMonthlyEntryStore } from "./monthly-entry/monthly-entry-store";
+import { registerMcpFromEnv } from "./mcp/mcp-bootstrap";
 
 async function start(): Promise<void> {
   const env = getEnv();
@@ -35,32 +20,7 @@ async function start(): Promise<void> {
   });
 
   // MCP server for LLM clients (ChatGPT, Claude); off unless MCP_ENABLED=true.
-  const mcpConfig = loadMcpConfig(process.env);
-  if (mcpConfig) {
-    registerMcp(app, {
-      config: mcpConfig,
-      oauthStore: createPrismaMcpOAuthStore(),
-      authStore: createPrismaAuthStore(),
-      auditStore: createPrismaMcpAuditStore(),
-      actionLog: createPrismaMcpActionLogStore(),
-      stores: {
-        taskStore: createPrismaTaskStore(),
-        reminderStore: createPrismaReminderStore(),
-        dayAffirmationStore: createPrismaDayAffirmationStore(),
-        dayBilanStore: createPrismaDayBilanStore(),
-        projectStore: createPrismaProjectStore(),
-        weeklyEntryStore: createPrismaWeeklyEntryStore(),
-        monthlyEntryStore: createPrismaMonthlyEntryStore(),
-        recurrenceStore: createPrismaRecurrenceStore(),
-      },
-      google: createGoogleIdentityProvider({
-        clientId: mcpConfig.googleClientId,
-        clientSecret: mcpConfig.googleClientSecret,
-        redirectUri: `${mcpConfig.baseUrl}${OAUTH_PATHS.googleCallback}`,
-      }),
-    });
-    app.log.info({ resource: mcpConfig.resourceUrl }, "MCP server enabled");
-  }
+  registerMcpFromEnv(app, env);
 
   try {
     await app.listen({ host: env.HOST, port: env.PORT });

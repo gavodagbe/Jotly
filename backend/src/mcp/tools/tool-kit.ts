@@ -6,6 +6,14 @@ import type { RecurrenceStore } from "../../recurrence/recurrence-store";
 import type { ReminderStore } from "../../reminders/reminder-store";
 import type { TaskStore } from "../../tasks/task-store";
 import type { WeeklyEntryStore } from "../../weekly-entry/weekly-entry-store";
+import type { AttachmentStore } from "../../attachments/attachment-store";
+import type { AssistantEmbeddingClient } from "../../assistant/assistant-embedding-client";
+import type { AssistantSearchDocumentStore } from "../../assistant/assistant-search-document-store";
+import type { CommentStore } from "../../comments/comment-store";
+import type { CalendarEventNoteStore } from "../../google-calendar/calendar-event-note-store";
+import type { CalendarEventStore } from "../../google-calendar/calendar-event-store";
+import type { NoteAttachmentStore } from "../../notes/note-attachment-store";
+import type { NoteStore } from "../../notes/note-store";
 import type { ActionChange } from "../actions/snapshots";
 import { MCP_SCOPE } from "../mcp-config";
 
@@ -21,7 +29,25 @@ export type McpDomainStores = {
   weeklyEntryStore: WeeklyEntryStore;
   monthlyEntryStore: MonthlyEntryStore;
   recurrenceStore?: RecurrenceStore;
+  /** Read-only access to notes, meetings and the search index (phase 3). */
+  memory?: McpMemoryStores;
 };
+
+export type McpMemoryStores = {
+  searchDocumentStore: AssistantSearchDocumentStore;
+  embeddingClient?: AssistantEmbeddingClient;
+  noteStore: NoteStore;
+  noteAttachmentStore?: NoteAttachmentStore;
+  calendarEventStore?: CalendarEventStore;
+  calendarEventNoteStore?: CalendarEventNoteStore;
+  commentStore?: CommentStore;
+  attachmentStore?: AttachmentStore;
+};
+
+export function requireMemory(stores: McpDomainStores): McpMemoryStores {
+  if (!stores.memory) throw new McpToolError("La recherche dans les notes n'est pas disponible sur ce serveur.");
+  return stores.memory;
+}
 
 /** Per-call context: who is calling and as which Jotly user. */
 export type ToolContext = {

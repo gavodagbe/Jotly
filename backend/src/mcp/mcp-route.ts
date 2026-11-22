@@ -3,7 +3,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { McpActionLogStore } from "./actions/action-log-store";
 import { McpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
-import { buildMcpServer } from "./mcp-server";
+import { buildMcpServer, McpReindex } from "./mcp-server";
 import { BearerGuard } from "./oauth/bearer-guard";
 import { DailyQuota, TokenBucketLimiter } from "./rate-limit";
 import { McpDomainStores } from "./tools/tool-kit";
@@ -14,6 +14,7 @@ export type McpRouteOptions = {
   stores: McpDomainStores;
   auditStore: McpAuditStore;
   actionLog: McpActionLogStore;
+  reindex?: McpReindex;
   now?: () => Date;
 };
 
@@ -33,6 +34,7 @@ export function registerMcpRoute(app: FastifyInstance, options: McpRouteOptions)
       stores: options.stores,
       auditStore: options.auditStore,
       actionLog: options.actionLog,
+      reindex: options.reindex,
       callLimiter,
       writeQuota,
       log: request.log,
