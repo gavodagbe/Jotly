@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import type { Task } from "@prisma/client";
 import { autoCancelUntouchedTasks } from "../tasks/auto-cancel-untouched-service";
+import { carryOverYesterdayTasks } from "../tasks/carry-over-service";
 import { sendError, zodIssuesToStrings } from "./route-helpers";
 import { parseDateOnly } from "../tasks/task-store";
 import type { TasksRouteOptions } from "./tasks";
@@ -8,12 +8,8 @@ import {
   carryOverYesterdayBodySchema,
   autoCancelUntouchedBodySchema,
   isTaskTableMissingError,
-  isUniqueConstraintError,
   sendTaskStorageNotInitializedError,
   serializeTask,
-  getPreviousDate,
-  shouldCarryOverTask,
-  getCarryOverDueDate,
   getAuthenticatedUserId,
 } from "../tasks/task-route-helpers";
 
@@ -51,45 +47,8 @@ export function registerTaskMaintenanceRoutes(app: FastifyInstance, options: Tas
       );
     }
 
-    const yesterdayDate = getPreviousDate(targetDate);
-
     try {
-      const yesterdayTasks = await taskStore.listByDate(yesterdayDate, authUserId);
-      const carryOverCandidates = yesterdayTasks.filter(shouldCarryOverTask);
-      const createdTasks: Task[] = [];
-      let skippedCount = 0;
-
-      for (const sourceTask of carryOverCandidates) {
-        try {
-          const createdTask = await taskStore.create({
-            userId: authUserId,
-            rolledFromTaskId: sourceTask.id,
-            title: sourceTask.title,
-            description: sourceTask.description,
-            status: sourceTask.status,
-            targetDate,
-            dueDate: getCarryOverDueDate(sourceTask, targetDate),
-            priority: sourceTask.priority,
-            project: sourceTask.project,
-            subProject: sourceTask.subProject,
-            projectId: sourceTask.projectId,
-            plannedTime: sourceTask.plannedTime,
-            recurrenceSourceTaskId: null,
-            recurrenceOccurrenceDate: null,
-            completedAt: null,
-            cancelledAt: null,
-          });
-
-          createdTasks.push(createdTask);
-        } catch (error) {
-          if (isUniqueConstraintError(error)) {
-            skippedCount += 1;
-            continue;
-          }
-
-          throw error;
-        }
-      }
+      const { createdTasks, skippedCount } = await carryOverYesterdayTasks(taskStore, authUserId, targetDate);
 
       assistantSearchSyncService?.syncUserWorkspace(authUserId, { onlySourceTypes: ["task"] }).catch(() => {});
       return reply.send({

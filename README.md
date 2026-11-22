@@ -370,3 +370,41 @@ npm run prisma:verify-task-ownership
 ```
 
 This reports task ownership counts by user and fails if any orphaned tasks are detected.
+
+### 7. MCP server (ChatGPT and Claude)
+
+The backend can expose Jotly to LLM clients through an MCP server (`backend/src/mcp/`).
+It is off unless `MCP_ENABLED=true`. Jotly is its own OAuth authorization server;
+Google is only used to prove who is connecting.
+
+Before opening it: check Postgres backups, disk encryption and VM updates — the
+LLM clients will read professional and client data in clear.
+
+1. In the Google Cloud console, add
+   `https://jotly.godwinavodagbe.com/oauth/google/callback` to the redirect URIs of
+   the OAuth client (the Calendar client is reused unless `MCP_GOOGLE_CLIENT_ID/SECRET` are set).
+2. In `.env.prod`, set the `MCP_*` block from `.env.prod.example`:
+   - `MCP_ALLOWED_EMAILS`: Google accounts allowed to connect (comma-separated)
+   - `MCP_JOTLY_USER_EMAIL`: the Jotly account every MCP call acts as
+   - `MCP_ALLOWED_REDIRECT_URIS`: Claude and ChatGPT callback URLs
+3. Deploy (`./scripts/deploy.sh main`): the backend is published on
+   `127.0.0.1:${BACKEND_HOST_PORT:-3101}` and the migration adds the MCP tables.
+4. Reinstall the Nginx site (`sudo ./scripts/install-nginx-site.sh https`): it routes
+   `/mcp`, `/oauth/` and `/.well-known/oauth-*` to the backend.
+5. Check discovery and the 401:
+
+   ```bash
+   curl -s https://jotly.godwinavodagbe.com/.well-known/oauth-protected-resource/mcp
+   curl -si -X POST https://jotly.godwinavodagbe.com/mcp | grep -i www-authenticate
+   ```
+
+6. Connect the clients with the URL `https://jotly.godwinavodagbe.com/mcp`:
+   - Claude (web or mobile): add a custom connector.
+   - ChatGPT: use the web connector on chatgpt.com (developer mode), which also works on
+     mobile. The local MCP mode of the ChatGPT Mac app did not forward the token.
+
+Tools: `lire_journee`, `lire_affirmation`, `ecrire_affirmation`, `creer_tache`,
+`terminer_tache`, `modifier_tache`, `creer_rappel`, `reporter_taches_veille` (preview, then
+confirmation token). No deletion tool. Every write returns a proof (id, date); every call
+is written to `McpAuditLog` (who, tool, duration, argument names — never content).
+Removing an address from `MCP_ALLOWED_EMAILS` and restarting the backend cuts its access.
