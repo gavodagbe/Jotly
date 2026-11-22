@@ -96,3 +96,27 @@ export function formatLocalDateTime(instant: Date, timeZone: string): string {
 }
 
 export { formatDateOnly };
+
+/** ISO 8601 week (year, week) of a Jotly day. */
+export function isoWeekOf(day: Date): { year: number; week: number } {
+  const date = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
+  const weekday = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - weekday); // Thursday of the same ISO week
+  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
+  return { year: date.getUTCFullYear(), week: Math.ceil(((date.getTime() - yearStart) / 86_400_000 + 1) / 7) };
+}
+
+/** Number of ISO weeks (52 or 53) in an ISO year: the week of 28 December. */
+export function isoWeeksInYear(year: number): number {
+  return isoWeekOf(new Date(Date.UTC(year, 11, 28))).week;
+}
+
+/** Monday..Sunday of an ISO week, as Jotly days. */
+export function isoWeekRange(year: number, week: number): { start: Date; end: Date } {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const start = new Date(jan4);
+  start.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1) + (week - 1) * 7);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  return { start, end };
+}

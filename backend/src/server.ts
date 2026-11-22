@@ -13,6 +13,8 @@ import { createPrismaProjectStore } from "./projects/project-store";
 import { createPrismaRecurrenceStore } from "./recurrence/recurrence-store";
 import { createPrismaReminderStore } from "./reminders/reminder-store";
 import { createPrismaTaskStore } from "./tasks/task-store";
+import { createPrismaWeeklyEntryStore } from "./weekly-entry/weekly-entry-store";
+import { createPrismaMonthlyEntryStore } from "./monthly-entry/monthly-entry-store";
 
 async function start(): Promise<void> {
   const env = getEnv();
@@ -45,6 +47,8 @@ async function start(): Promise<void> {
         dayAffirmationStore: createPrismaDayAffirmationStore(),
         dayBilanStore: createPrismaDayBilanStore(),
         projectStore: createPrismaProjectStore(),
+        weeklyEntryStore: createPrismaWeeklyEntryStore(),
+        monthlyEntryStore: createPrismaMonthlyEntryStore(),
         recurrenceStore: createPrismaRecurrenceStore(),
       },
       google: createGoogleIdentityProvider({

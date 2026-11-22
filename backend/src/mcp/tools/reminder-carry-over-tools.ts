@@ -1,9 +1,8 @@
-import { createHmac, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { carryOverYesterdayTasks, listCarryOverCandidates } from "../../tasks/carry-over-service";
 import { getPreviousDate } from "../../tasks/task-route-helpers";
 import { formatDateOnly, formatLocalDateTime, parseReminderTime, resolveDay } from "../mcp-dates";
-import { safeEqual } from "../oauth/oauth-crypto";
+import { createConfirmationToken, isValidConfirmationToken } from "./confirmation-token";
 import { describeTask, projectLabel } from "./day-tools";
 import { resolveProjectByName } from "./task-tools";
 import { McpTool } from "./tool-definition";
@@ -61,28 +60,6 @@ export const creerRappel: McpTool<typeof creerRappelShape> = {
 };
 
 // ---------------------------------------------------------------- carry-over (bulk: preview, then confirm)
-
-const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
-// Per-process secret: a restart simply invalidates pending previews.
-const confirmationSecret = randomBytes(32);
-
-function signPreview(userId: string, day: string, taskIds: string[], expiresAt: number): string {
-  return createHmac("sha256", confirmationSecret)
-    .update([userId, day, [...taskIds].sort().join(","), String(expiresAt)].join("|"))
-    .digest("base64url");
-}
-
-function confirmationToken(userId: string, day: string, taskIds: string[], expiresAt: number): string {
-  return `${expiresAt.toString(36)}.${signPreview(userId, day, taskIds, expiresAt)}`;
-}
-
-function isValidConfirmation(token: string, userId: string, day: string, taskIds: string[], now: number): boolean {
-  const [expiry, signature] = token.split(".");
-  const expiresAt = parseInt(expiry ?? "", 36);
-  if (!signature || !Number.isFinite(expiresAt) || expiresAt < now) return false;
-  return safeEqual(signature, signPreview(userId, day, taskIds, expiresAt));
-}
-
 const reporterShape = {
   date: z
     .string()
@@ -108,10 +85,14 @@ export const reporterTachesVeille: McpTool<typeof reporterShape> = {
     const targetDate = resolveDay(date, ctx.timeZone, now);
     const day = formatDateOnly(targetDate);
     const candidates = await listCarryOverCandidates(stores.taskStore, ctx.userId, targetDate);
-    const ids = candidates.map((task) => task.id);
+    const scope = `carry-over:${ctx.userId}:${day}`;
+    const content = candidates
+      .map((task) => task.id)
+      .sort()
+      .join(",");
 
     if (!jeton_confirmation) {
-      const expiresAt = now.getTime() + CONFIRMATION_TTL_MS;
+      const confirmation = createConfirmationToken(scope, content, now);
       return {
         apercu: true,
         modifie: false,
@@ -121,15 +102,15 @@ export const reporterTachesVeille: McpTool<typeof reporterShape> = {
         taches: candidates.map(describeTask),
         ...(candidates.length > 0
           ? {
-              jeton_confirmation: confirmationToken(ctx.userId, day, ids, expiresAt),
-              expire_a: new Date(expiresAt).toISOString(),
+              jeton_confirmation: confirmation.token,
+              expire_a: confirmation.expiresAt.toISOString(),
               consigne: "Montrer cette liste à Godwin et demander son accord avant de rappeler avec le jeton.",
             }
           : { consigne: "Rien à reporter." }),
       };
     }
 
-    if (!isValidConfirmation(jeton_confirmation, ctx.userId, day, ids, now.getTime())) {
+    if (!isValidConfirmationToken(jeton_confirmation, scope, content, now)) {
       throw new McpToolError(
         "Jeton de confirmation invalide ou expiré, ou la liste a changé depuis l'aperçu. Refaire un aperçu sans jeton."
       );

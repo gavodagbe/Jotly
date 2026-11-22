@@ -3,6 +3,7 @@ import { z } from "zod";
 import { materializeRecurringTasksForDate } from "../../recurrence/recurrence-service";
 import { listTaskAlerts } from "../../tasks/task-alerts-service";
 import { dayBoundsUtc, formatDateOnly, formatLocalDateTime, resolveDay } from "../mcp-dates";
+import { objectivesForDay } from "./objective-tools";
 import { McpTool } from "./tool-definition";
 import { McpToolError, proof, truncate } from "./tool-kit";
 
@@ -61,7 +62,7 @@ export const lireJournee: McpTool<typeof dateOnlyShape> = {
   name: "lire_journee",
   title: "Lire la journée",
   description:
-    "Lit une journée dans Jotly : tâches du jour avec leur statut, compteurs, affirmation, bilan, alertes d'échéance (en retard, aujourd'hui, demain) et rappels du jour. À appeler pour toute question sur la journée ou l'avancement.",
+    "Lit une journée dans Jotly : tâches du jour avec leur statut (ce sont les objectifs du jour), compteurs, affirmation, bilan, alertes d'échéance (en retard, aujourd'hui, demain), rappels du jour et objectifs de la semaine et du mois. À appeler pour toute question sur la journée ou l'avancement.",
   inputSchema: dateOnlyShape,
   write: false,
   async handler({ date }, ctx, stores) {
@@ -71,12 +72,13 @@ export const lireJournee: McpTool<typeof dateOnlyShape> = {
     }
 
     const { start, end } = dayBoundsUtc(day, ctx.timeZone);
-    const [tasks, affirmation, bilan, alerts, reminders] = await Promise.all([
+    const [tasks, affirmation, bilan, alerts, reminders, objectives] = await Promise.all([
       stores.taskStore.listByDate(day, ctx.userId),
       stores.dayAffirmationStore.getByDate(day, ctx.userId),
       stores.dayBilanStore.getByDate(day, ctx.userId),
       listTaskAlerts(stores.taskStore, ctx.userId, day),
       stores.reminderStore.listByUser(ctx.userId, { dateFrom: start, dateTo: end }),
+      objectivesForDay(stores, ctx.userId, day),
     ]);
 
     const sorted = [...tasks].sort(
@@ -120,6 +122,7 @@ export const lireJournee: McpTool<typeof dateOnlyShape> = {
         })),
       },
       rappels: reminders.map((reminder) => describeReminder(reminder, ctx.timeZone)),
+      objectifs: objectives,
     };
   },
 };

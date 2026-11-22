@@ -4,6 +4,8 @@ import { InMemoryDayBilanStore } from "../day-bilan/day-bilan-store.in-memory";
 import { InMemoryProjectStore } from "../projects/project-store.in-memory";
 import { InMemoryTaskStore } from "../recurrence/recurrence-test-doubles";
 import { InMemoryReminderStore } from "../reminders/reminder-store.in-memory";
+import { InMemoryMonthlyEntryStore } from "../monthly-entry/monthly-entry-store.in-memory";
+import { InMemoryWeeklyEntryStore } from "../weekly-entry/weekly-entry-store.in-memory";
 import { InMemoryMcpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
 import { registerMcp } from "./mcp-plugin";
@@ -82,6 +84,8 @@ export async function buildHarness(
     dayAffirmationStore: new InMemoryDayAffirmationStore(),
     dayBilanStore: new InMemoryDayBilanStore(),
     projectStore: new InMemoryProjectStore(),
+    weeklyEntryStore: new InMemoryWeeklyEntryStore(),
+    monthlyEntryStore: new InMemoryMonthlyEntryStore(),
   };
   const audit = new InMemoryMcpAuditStore();
 
