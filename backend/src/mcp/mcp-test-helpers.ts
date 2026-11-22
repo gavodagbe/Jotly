@@ -6,6 +6,7 @@ import { InMemoryTaskStore } from "../recurrence/recurrence-test-doubles";
 import { InMemoryReminderStore } from "../reminders/reminder-store.in-memory";
 import { InMemoryMonthlyEntryStore } from "../monthly-entry/monthly-entry-store.in-memory";
 import { InMemoryWeeklyEntryStore } from "../weekly-entry/weekly-entry-store.in-memory";
+import { InMemoryMcpActionLogStore } from "./actions/action-log-store";
 import { InMemoryMcpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
 import { registerMcp } from "./mcp-plugin";
@@ -67,6 +68,7 @@ export type TestHarness = {
     projectStore: InMemoryProjectStore;
   };
   audit: InMemoryMcpAuditStore;
+  actionLog: InMemoryMcpActionLogStore;
 };
 
 export async function buildHarness(
@@ -88,6 +90,7 @@ export async function buildHarness(
     monthlyEntryStore: new InMemoryMonthlyEntryStore(),
   };
   const audit = new InMemoryMcpAuditStore();
+  const actionLog = new InMemoryMcpActionLogStore(options.now);
 
   const { guard } = registerMcp(app, {
     config,
@@ -102,6 +105,7 @@ export async function buildHarness(
     google,
     stores,
     auditStore: audit,
+    actionLog,
     now: options.now,
     fetchMetadata: async (url) => {
       fetchedUrls.push(url);
@@ -117,7 +121,7 @@ export async function buildHarness(
   });
 
   await app.ready();
-  return { app, store, google, config, fetchedUrls, stores, audit };
+  return { app, store, google, config, fetchedUrls, stores, audit, actionLog };
 }
 
 export function hiddenInput(html: string, name: string): string {

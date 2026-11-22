@@ -1,4 +1,5 @@
 import type { DayBilan, Task } from "@prisma/client";
+import { bilanSnapshot } from "../actions/snapshots";
 import { z } from "zod";
 import { addUtcDays } from "../../tasks/task-route-helpers";
 import { formatDateOnly, isoWeekOf, isoWeekRange, isoWeeksInYear, resolveDay } from "../mcp-dates";
@@ -63,8 +64,16 @@ export const ecrireBilan: McpTool<typeof ecrireBilanShape> = {
       tomorrowTop3: merge(top3_demain, existing?.tomorrowTop3),
     });
 
+    const actionId = await ctx.recordAction([
+      {
+        entity: "bilan",
+        date: formatDateOnly(day),
+        before: existing ? bilanSnapshot(existing) : null,
+        after: bilanSnapshot(saved),
+      },
+    ]);
     return {
-      ...proof("bilan", existing ? "modifie" : "cree", saved.id, formatDateOnly(day), now),
+      ...proof("bilan", existing ? "modifie" : "cree", saved.id, formatDateOnly(day), now, actionId),
       bilan: describeBilan(saved),
       avant: describeBilan(existing),
     };

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { taskSnapshot } from "../actions/snapshots";
 import { carryOverYesterdayTasks, listCarryOverCandidates } from "../../tasks/carry-over-service";
 import { getPreviousDate } from "../../tasks/task-route-helpers";
 import { formatDateOnly, formatLocalDateTime, parseReminderTime, resolveDay } from "../mcp-dates";
@@ -46,8 +47,11 @@ export const creerRappel: McpTool<typeof creerRappelShape> = {
       remindAt,
     });
 
+    const actionId = await ctx.recordAction([
+      { entity: "reminder", id: reminder.id, before: null, after: { status: reminder.status } },
+    ]);
     return {
-      ...proof("rappel", "cree", reminder.id, formatDateOnly(remindAt), now),
+      ...proof("rappel", "cree", reminder.id, formatDateOnly(remindAt), now, actionId),
       rappel: {
         id: reminder.id,
         titre: reminder.title,
@@ -117,8 +121,13 @@ export const reporterTachesVeille: McpTool<typeof reporterShape> = {
     }
 
     const { createdTasks, skippedCount } = await carryOverYesterdayTasks(stores.taskStore, ctx.userId, targetDate);
+    const actionId = createdTasks.length
+      ? await ctx.recordAction(
+          createdTasks.map((task) => ({ entity: "task" as const, id: task.id, before: null, after: taskSnapshot(task) }))
+        )
+      : undefined;
     return {
-      ...proof("report", "reportees", createdTasks.map((task) => task.id).join(",") || "aucune", day, now),
+      ...proof("report", "reportees", createdTasks.map((task) => task.id).join(",") || "aucune", day, now, actionId),
       copiees: createdTasks.length,
       deja_reportees: skippedCount,
       taches: createdTasks.map(describeTask),

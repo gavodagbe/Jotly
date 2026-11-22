@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { taskSnapshot } from "../actions/snapshots";
 import { formatDateOnly } from "../mcp-dates";
 import { createConfirmationToken, isValidConfirmationToken } from "./confirmation-token";
 import { describeTask } from "./day-tools";
@@ -74,8 +75,18 @@ export const creerTaches: McpTool<typeof creerTachesShape> = {
     for (const input of inputs) {
       created.push(await stores.taskStore.create(input));
     }
+    const actionId = await ctx.recordAction(
+      created.map((task) => ({ entity: "task" as const, id: task.id, before: null, after: taskSnapshot(task) }))
+    );
     return {
-      ...proof("taches", "creees", created.map((task) => task.id).join(","), formatDateOnly(inputs[0].targetDate), now),
+      ...proof(
+        "taches",
+        "creees",
+        created.map((task) => task.id).join(","),
+        formatDateOnly(inputs[0].targetDate),
+        now,
+        actionId
+      ),
       nombre: created.length,
       taches: created.map(describeTask),
     };

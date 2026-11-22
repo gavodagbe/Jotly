@@ -455,7 +455,10 @@ The modules below define intended boundaries without pre-building abstractions.
 - Auth: Jotly issues its own opaque tokens (hashes in `McpToken`); Google proves identity; `MCP_ALLOWED_EMAILS` is re-checked on every call; all calls act as `MCP_JOTLY_USER_EMAIL`.
 - Rules: unit writes are immediate; bulk operations need a preview + confirmation token; no deletion tool; every write returns a proof; every call is audited in `McpAuditLog` without content.
 - Shared domain logic: carry-over and alerts live in `backend/src/tasks/carry-over-service.ts` and `task-alerts-service.ts`, used by both the REST routes and the MCP tools.
-- Out of scope (later phases): goals published from the Coffre Vision, note search, undo tool.
+- Objectives (phase 2): week/month objectives from the Coffre Vision are written into the existing `WeeklyEntry`/`MonthlyEntry.objective` text (first line `[Coffre Vision] …`); day objectives are the day's tasks. The MCP adds no column to existing Jotly tables.
+- Undo (phase 2): `McpActionLog` (MCP-owned) stores before/after snapshots per LLM write; `annuler` restores or cancels (never deletes) within 7 days, refusing if the entity changed since.
+- Rule: MCP work must not modify existing Jotly code; it lives under `backend/src/mcp/`, wired from `server.ts`.
+- Out of scope (later phases): note search, automatic daily summary into the Coffre Vision.
 
 ### Profile and preferences
 - Relation to task history: cross-cutting user preferences for locale/timezone and display identity.

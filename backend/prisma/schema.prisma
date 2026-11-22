@@ -612,3 +612,18 @@ model McpAuditLog {
 
   @@index([createdAt])
 }
+
+/// Writes made by LLM clients through the MCP, with before/after snapshots so they can be undone.
+/// Unlike McpAuditLog, this holds content (needed to restore it); purged after 30 days.
+model McpActionLog {
+  id        String    @id @default(cuid())
+  userId    String
+  clientId  String?
+  tool      String
+  changes   Json
+  createdAt DateTime  @default(now())
+  undoneAt  DateTime?
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
