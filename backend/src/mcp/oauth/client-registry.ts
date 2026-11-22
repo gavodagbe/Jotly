@@ -31,6 +31,7 @@ const metadataDocumentSchema = z.object({
   client_name: z.string().max(200).optional(),
   redirect_uris: z.array(z.string().url()).min(1).max(20),
   token_endpoint_auth_method: z.string().optional(),
+  jwks_uri: z.string().url().optional(),
 });
 
 /** Default fetcher for Client ID Metadata Documents: https only, 5 s timeout, 64 KB max, no redirects. */
@@ -88,8 +89,17 @@ export function createClientRegistry(options: {
       throw new OAuthClientError("invalid_client", "Metadata document client_id does not match its URL");
     }
     const method = document.token_endpoint_auth_method ?? "none";
-    if (method !== "none") {
+    if (method !== "none" && method !== "private_key_jwt") {
       throw new OAuthClientError("invalid_client", `Unsupported token_endpoint_auth_method: ${method}`);
+    }
+    let jwksUri: string | null = null;
+    if (method === "private_key_jwt") {
+      // ChatGPT: signs a JWT at the token endpoint; its keys must live on an allowed host.
+      const keysUrl = document.jwks_uri ? new URL(document.jwks_uri) : null;
+      if (!keysUrl || keysUrl.protocol !== "https:" || !config.cimdAllowedHosts.has(keysUrl.hostname.toLowerCase())) {
+        throw new OAuthClientError("invalid_client", "private_key_jwt requires a jwks_uri on an allowed host");
+      }
+      jwksUri = keysUrl.toString();
     }
 
     return store.upsertClient({
@@ -97,7 +107,8 @@ export function createClientRegistry(options: {
       clientSecretHash: null,
       clientName: document.client_name ?? url.hostname,
       redirectUris: document.redirect_uris,
-      tokenEndpointAuthMethod: "none",
+      tokenEndpointAuthMethod: method,
+      jwksUri,
       isMetadataDocument: true,
     });
   }
@@ -121,6 +132,7 @@ export function createClientRegistry(options: {
         clientName: parsed.data.client_name ?? null,
         redirectUris: parsed.data.redirect_uris,
         tokenEndpointAuthMethod: method,
+        jwksUri: null,
         isMetadataDocument: false,
       });
 
@@ -155,10 +167,13 @@ export function createClientRegistry(options: {
       }
     },
 
-    /** Token endpoint client authentication. */
+    /** Token endpoint authentication for "none" and client-secret methods (private_key_jwt is checked separately). */
     authenticate(client: McpOAuthClientRecord, presentedSecret: string | null): boolean {
       if (client.tokenEndpointAuthMethod === "none") {
         return true;
+      }
+      if (client.tokenEndpointAuthMethod === "private_key_jwt") {
+        return false;
       }
       return (
         presentedSecret !== null &&

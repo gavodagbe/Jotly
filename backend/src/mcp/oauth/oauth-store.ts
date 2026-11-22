@@ -6,6 +6,7 @@ export type McpOAuthClientRecord = {
   clientName: string | null;
   redirectUris: string[];
   tokenEndpointAuthMethod: string;
+  jwksUri: string | null;
   isMetadataDocument: boolean;
   updatedAt: Date;
 };
