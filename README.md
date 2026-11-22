@@ -407,7 +407,9 @@ Tools:
 - day: `lire_journee`, `lire_affirmation`, `ecrire_affirmation`, `ecrire_bilan`
 - tasks and reminders: `creer_tache`, `terminer_tache`, `modifier_tache`, `creer_rappel`
 - bulk (preview, then confirmation token): `reporter_taches_veille`, `creer_taches`, `publier_objectifs`
-- objectives and reviews: `lire_objectifs`, `lire_periode` (week or month summary)
+- objectives and reviews: `lire_objectifs`, `lire_periode` (week or month summary), `lire_tendances` (week by week)
+- memory: `chercher` (search over notes, meeting notes, tasks, attachments…), `lire_element`, `lire_reunions`
+- evening review, task by task: `terminer_tache`, `reporter_tache` (one task to tomorrow), `modifier_tache`
 - `annuler`: undoes an LLM write within 7 days from the `action_id` in its proof
 
 No deletion tool. Week and month objectives published from the Coffre Vision go into the existing

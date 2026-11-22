@@ -102,6 +102,7 @@ export const creerTache: McpTool<typeof creerTacheShape> = {
   description: "Crée UNE tâche dans Jotly. Pour plusieurs tâches d'un coup, utiliser creer_taches.",
   inputSchema: creerTacheShape,
   write: true,
+  reindexes: ["task"],
   async handler(args, ctx, stores) {
     const now = ctx.now();
     const task = await stores.taskStore.create(await prepareTaskCreate(args, ctx, stores));
@@ -121,6 +122,7 @@ export const terminerTache: McpTool<typeof terminerTacheShape> = {
   description: "Marque une tâche comme faite (statut done). Sans effet si elle l'est déjà.",
   inputSchema: terminerTacheShape,
   write: true,
+  reindexes: ["task"],
   async handler({ id }, ctx, stores) {
     const now = ctx.now();
     const task = await getOwnedTask(id, ctx.userId, stores);
@@ -165,6 +167,7 @@ export const modifierTache: McpTool<typeof modifierTacheShape> = {
     "Modifie une tâche existante (seuls les champs fournis changent). Renvoie une preuve et les valeurs avant/après pour pouvoir annuler. Aucune suppression possible.",
   inputSchema: modifierTacheShape,
   write: true,
+  reindexes: ["task"],
   async handler(args, ctx, stores) {
     const now = ctx.now();
     const task = await getOwnedTask(args.id, ctx.userId, stores);

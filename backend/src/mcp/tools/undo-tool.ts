@@ -27,6 +27,7 @@ export function createAnnulerTool(actionLog: McpActionLogStore): McpTool<typeof 
       "Annule une écriture faite par un LLM, à partir de l'action_id de sa preuve (7 jours au plus). Rien n'est supprimé : une tâche créée passe en annulée, un rappel créé est annulé, une modification revient à l'état d'avant. Refusé si l'élément a changé depuis. Si l'action a touché plusieurs éléments : aperçu d'abord, puis jeton après accord de Godwin.",
     inputSchema: annulerShape,
     write: true,
+    reindexes: ["task", "reminder", "affirmation", "bilan", "weeklyObjective", "monthlyObjective"],
     async handler({ action_id, jeton_confirmation }, ctx, stores) {
       const now = ctx.now();
       const record = await actionLog.get(action_id, ctx.userId);

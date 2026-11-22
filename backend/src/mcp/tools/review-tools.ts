@@ -43,6 +43,7 @@ export const ecrireBilan: McpTool<typeof ecrireBilanShape> = {
     "Écrit le bilan du soir dans Jotly. Seuls les champs fournis changent (une chaîne vide efface le champ). Renvoie une preuve et les valeurs d'avant.",
   inputSchema: ecrireBilanShape,
   write: true,
+  reindexes: ["bilan"],
   async handler(args, ctx, stores) {
     const { date, humeur, victoires, blocages, lecons, top3_demain } = args;
     if ([humeur, victoires, blocages, lecons, top3_demain].every((value) => value === undefined)) {
@@ -113,7 +114,7 @@ function daysOf(range: Range): Date[] {
   return days;
 }
 
-function summarizeTasks(tasks: Task[]) {
+export function summarizeTasks(tasks: Task[]) {
   const count = (status: Task["status"]) => tasks.filter((task) => task.status === status).length;
   const done = count("done");
   const cancelled = count("cancelled");

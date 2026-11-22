@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { taskSnapshot } from "../actions/snapshots";
 import { carryOverYesterdayTasks, listCarryOverCandidates } from "../../tasks/carry-over-service";
-import { getPreviousDate } from "../../tasks/task-route-helpers";
+import { addUtcDays, getCarryOverDueDate, getPreviousDate } from "../../tasks/task-route-helpers";
 import { formatDateOnly, formatLocalDateTime, parseReminderTime, resolveDay } from "../mcp-dates";
 import { createConfirmationToken, isValidConfirmationToken } from "./confirmation-token";
 import { describeTask, projectLabel } from "./day-tools";
@@ -27,6 +27,7 @@ export const creerRappel: McpTool<typeof creerRappelShape> = {
   description: "Crée un rappel daté dans Jotly (notification à l'heure indiquée).",
   inputSchema: creerRappelShape,
   write: true,
+  reindexes: ["reminder"],
   async handler(args, ctx, stores) {
     const now = ctx.now();
     const remindAt = parseReminderTime(args.quand, ctx.timeZone);
@@ -84,6 +85,7 @@ export const reporterTachesVeille: McpTool<typeof reporterShape> = {
     "Opération en masse, en deux temps. 1) Sans jeton : renvoie l'aperçu des tâches non terminées de la veille et un jeton_confirmation, sans rien modifier. 2) Après accord explicite de Godwin sur cet aperçu : rappeler avec le jeton pour copier ces tâches sur le jour demandé.",
   inputSchema: reporterShape,
   write: true,
+  reindexes: ["task"],
   async handler({ date, jeton_confirmation }, ctx, stores) {
     const now = ctx.now();
     const targetDate = resolveDay(date, ctx.timeZone, now);
@@ -131,6 +133,74 @@ export const reporterTachesVeille: McpTool<typeof reporterShape> = {
       copiees: createdTasks.length,
       deja_reportees: skippedCount,
       taches: createdTasks.map(describeTask),
+    };
+  },
+};
+
+// ---------------------------------------------------------------- one task (evening review, task by task)
+
+const reporterTacheShape = {
+  id: z.string().trim().min(1).max(100).describe("Tâche non terminée à reporter."),
+  vers: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .describe("Jour cible (AAAA-MM-JJ). Par défaut : demain."),
+};
+
+export const reporterTache: McpTool<typeof reporterTacheShape> = {
+  name: "reporter_tache",
+  title: "Reporter une tâche",
+  description:
+    "Reporte UNE tâche non terminée sur un autre jour (demain par défaut), comme le report de Jotly : une copie est créée sur le jour cible et la tâche d'origine reste dans l'historique. Action unitaire, immédiate.",
+  inputSchema: reporterTacheShape,
+  write: true,
+  reindexes: ["task"],
+  async handler({ id, vers }, ctx, stores) {
+    const now = ctx.now();
+    const source = await stores.taskStore.getById(id, ctx.userId);
+    if (!source) throw new McpToolError(`Tâche introuvable : ${id}. Utiliser lire_journee pour retrouver son id.`);
+    if (source.status !== "todo" && source.status !== "in_progress") {
+      throw new McpToolError(`La tâche « ${source.title} » est ${source.status === "done" ? "faite" : "annulée"} : rien à reporter.`);
+    }
+    const targetDate = vers ? resolveDay(vers, ctx.timeZone, now) : addUtcDays(resolveDay(undefined, ctx.timeZone, now), 1);
+    if (targetDate <= source.targetDate) {
+      throw new McpToolError("Le jour cible doit être postérieur au jour de la tâche.");
+    }
+
+    const existing = (await stores.taskStore.listByDate(targetDate, ctx.userId)).find(
+      (task) => task.rolledFromTaskId === source.id
+    );
+    if (existing) {
+      return {
+        ...proof("tache", "deja_reportee", existing.id, formatDateOnly(targetDate), now),
+        tache: describeTask(existing),
+      };
+    }
+
+    const copy = await stores.taskStore.create({
+      userId: ctx.userId,
+      rolledFromTaskId: source.id,
+      title: source.title,
+      description: source.description,
+      status: source.status,
+      targetDate,
+      dueDate: getCarryOverDueDate(source, targetDate),
+      priority: source.priority,
+      project: source.project,
+      subProject: source.subProject,
+      projectId: source.projectId,
+      plannedTime: source.plannedTime,
+      recurrenceSourceTaskId: null,
+      recurrenceOccurrenceDate: null,
+      completedAt: null,
+      cancelledAt: null,
+    });
+    const actionId = await ctx.recordAction([{ entity: "task", id: copy.id, before: null, after: taskSnapshot(copy) }]);
+    return {
+      ...proof("tache", "reportee", copy.id, formatDateOnly(targetDate), now, actionId),
+      tache: describeTask(copy),
+      origine: { id: source.id, date: formatDateOnly(source.targetDate) },
     };
   },
 };

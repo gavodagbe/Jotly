@@ -26,6 +26,7 @@ export const creerTaches: McpTool<typeof creerTachesShape> = {
     "Opération en masse, en deux temps : 1) sans jeton, renvoie l'aperçu des tâches telles qu'elles seront créées (dates, projets résolus), rien n'est créé ; 2) après accord explicite de Godwin, rappeler avec la même liste et le jeton. Sert notamment à préparer le lendemain pendant le bilan du soir.",
   inputSchema: creerTachesShape,
   write: true,
+  reindexes: ["task"],
   async handler({ taches, date, jeton_confirmation }, ctx, stores) {
     const now = ctx.now();
     // Validates every task (dates, projects) before anything is written.

@@ -1,4 +1,5 @@
 import type { z, ZodRawShape } from "zod";
+import type { AssistantSearchSourceType } from "../../assistant/assistant-search-document-types";
 import type { McpDomainStores, ToolContext } from "./tool-kit";
 
 /** A Jotly MCP tool: schema + handler returning plain JSON. Registration adds auth meta, audit and limits. */
@@ -9,6 +10,8 @@ export type McpTool<Shape extends ZodRawShape> = {
   inputSchema: Shape;
   /** Write tools count against the daily write quota. */
   write: boolean;
+  /** Search index types to refresh after a successful call, so `chercher` finds what was just written. */
+  reindexes?: AssistantSearchSourceType[];
   handler(args: z.objectOutputType<Shape, z.ZodTypeAny>, ctx: ToolContext, stores: McpDomainStores): Promise<object>;
 };
 

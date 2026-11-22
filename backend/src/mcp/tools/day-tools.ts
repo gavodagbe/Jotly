@@ -158,6 +158,7 @@ export const ecrireAffirmation: McpTool<typeof ecrireAffirmationShape> = {
     "Écrit ou remplace l'affirmation d'un jour, et/ou la marque faite. Renvoie une preuve et l'ancien texte (pour pouvoir revenir en arrière).",
   inputSchema: ecrireAffirmationShape,
   write: true,
+  reindexes: ["affirmation"],
   async handler({ texte, date, faite }, ctx, stores) {
     const day = resolveDay(date, ctx.timeZone, ctx.now());
     const existing = await stores.dayAffirmationStore.getByDate(day, ctx.userId);

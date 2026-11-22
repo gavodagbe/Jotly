@@ -9,6 +9,7 @@ import { InMemoryWeeklyEntryStore } from "../weekly-entry/weekly-entry-store.in-
 import { InMemoryMcpActionLogStore } from "./actions/action-log-store";
 import { InMemoryMcpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
+import type { McpReindex } from "./mcp-server";
 import { registerMcp } from "./mcp-plugin";
 import { GoogleIdentity, GoogleIdentityProvider } from "./oauth/google-identity";
 import { pkceChallengeS256, randomToken } from "./oauth/oauth-crypto";
@@ -73,7 +74,7 @@ export type TestHarness = {
 
 export async function buildHarness(
   configOverrides: Partial<McpConfig> = {},
-  options: { now?: () => Date; timeZone?: string } = {}
+  options: { now?: () => Date; timeZone?: string; reindex?: McpReindex } = {}
 ): Promise<TestHarness> {
   const app = Fastify({ logger: false });
   const store = new InMemoryMcpOAuthStore();
@@ -106,6 +107,7 @@ export async function buildHarness(
     stores,
     auditStore: audit,
     actionLog,
+    reindex: options.reindex,
     now: options.now,
     fetchMetadata: async (url) => {
       fetchedUrls.push(url);
