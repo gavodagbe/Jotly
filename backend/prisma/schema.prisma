@@ -36,61 +36,61 @@ enum ReminderStatus {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  displayName  String?
-  preferredLocale String @default("en")
-  preferredTimeZone String?
-  requireDailyAffirmation  Boolean @default(false)
-  requireDailyBilan        Boolean @default(false)
-  requireDailyTimeImputation Boolean @default(false)
-  requireWeeklySynthesis   Boolean @default(false)
-  requireMonthlySynthesis  Boolean @default(false)
-  sessions     Session[]
-  passwordResetTokens PasswordResetToken[]
-  tasks        Task[]
-  dayAffirmations DayAffirmation[]
-  dayBilans    DayBilan[]
-  weeklyEntries WeeklyEntry[]
-  monthlyEntries MonthlyEntry[]
-  assistantSearchDocuments AssistantSearchDocument[]
-  gamingTrackChallengeClaims GamingTrackChallengeClaim[]
+  id                                String                             @id @default(cuid())
+  email                             String                             @unique
+  passwordHash                      String
+  displayName                       String?
+  preferredLocale                   String                             @default("en")
+  preferredTimeZone                 String?
+  requireDailyAffirmation           Boolean                            @default(false)
+  requireDailyBilan                 Boolean                            @default(false)
+  requireDailyTimeImputation        Boolean                            @default(false)
+  requireWeeklySynthesis            Boolean                            @default(false)
+  requireMonthlySynthesis           Boolean                            @default(false)
+  sessions                          Session[]
+  passwordResetTokens               PasswordResetToken[]
+  tasks                             Task[]
+  dayAffirmations                   DayAffirmation[]
+  dayBilans                         DayBilan[]
+  weeklyEntries                     WeeklyEntry[]
+  monthlyEntries                    MonthlyEntry[]
+  assistantSearchDocuments          AssistantSearchDocument[]
+  gamingTrackChallengeClaims        GamingTrackChallengeClaim[]
   gamingTrackStreakProtectionUsages GamingTrackStreakProtectionUsage[]
-  gamingTrackNudgeDismissals GamingTrackNudgeDismissal[]
-  googleCalendarConnections GoogleCalendarConnection[]
-  calendarEvents CalendarEvent[]
-  reminders    Reminder[]
-  notes        Note[]
-  projects     Project[]
-  routineTemplates RoutineTemplate[]
-  routineCompletions RoutineCompletion[]
-  taskTimeEntries TaskTimeEntry[]
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  gamingTrackNudgeDismissals        GamingTrackNudgeDismissal[]
+  googleCalendarConnections         GoogleCalendarConnection[]
+  calendarEvents                    CalendarEvent[]
+  reminders                         Reminder[]
+  notes                             Note[]
+  projects                          Project[]
+  routineTemplates                  RoutineTemplate[]
+  routineCompletions                RoutineCompletion[]
+  taskTimeEntries                   TaskTimeEntry[]
+  createdAt                         DateTime                           @default(now())
+  updatedAt                         DateTime                           @updatedAt
 }
 
 model Session {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   revokedAt DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   usedAt    DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -132,6 +132,8 @@ model Task {
   sourceTask               Task?               @relation("TaskRecurrenceInstances", fields: [recurrenceSourceTaskId], references: [id], onDelete: SetNull)
   recurrenceInstances      Task[]              @relation("TaskRecurrenceInstances")
 
+  @@unique([rolledFromTaskId, targetDate])
+  @@unique([recurrenceSourceTaskId, recurrenceOccurrenceDate])
   @@index([userId, targetDate])
   @@index([userId, dueDate])
   @@index([userId, status])
@@ -143,20 +145,18 @@ model Task {
   @@index([recurrenceSourceTaskId])
   @@index([calendarEventId])
   @@index([projectId])
-  @@unique([rolledFromTaskId, targetDate])
-  @@unique([recurrenceSourceTaskId, recurrenceOccurrenceDate])
 }
 
 model DayAffirmation {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  targetDate  DateTime @db.Date
+  targetDate  DateTime  @db.Date
   text        String
-  isCompleted Boolean  @default(false)
+  isCompleted Boolean   @default(false)
   completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, targetDate])
   @@index([userId, targetDate])
@@ -263,13 +263,13 @@ model TaskRecurrenceRule {
 }
 
 model GamingTrackChallengeClaim {
-  id                String   @id @default(cuid())
-  userId            String
-  challengeId       String
+  id                 String   @id @default(cuid())
+  userId             String
+  challengeId        String
   challengeWeekStart DateTime @db.Date
-  rewardXp          Int
-  claimedAt         DateTime @default(now())
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardXp           Int
+  claimedAt          DateTime @default(now())
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, challengeId, challengeWeekStart])
   @@index([userId, challengeWeekStart])
@@ -287,32 +287,32 @@ model GamingTrackStreakProtectionUsage {
 }
 
 model GamingTrackNudgeDismissal {
-  id         String   @id @default(cuid())
-  userId     String
-  nudgeId    String
+  id          String   @id @default(cuid())
+  userId      String
+  nudgeId     String
   dismissedOn DateTime @db.Date
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, nudgeId, dismissedOn])
   @@index([userId, dismissedOn])
 }
 
 model GoogleCalendarConnection {
-  id                 String    @id @default(cuid())
+  id                 String          @id @default(cuid())
   userId             String
   googleAccountEmail String
   accessToken        String
   refreshToken       String
   tokenExpiresAt     DateTime
-  calendarId         String    @default("primary")
-  color              String    @default("#6366f1")
+  calendarId         String          @default("primary")
+  color              String          @default("#6366f1")
   lastSyncToken      String?
   lastSyncedAt       DateTime?
-  needsReconnect     Boolean   @default(false)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  needsReconnect     Boolean         @default(false)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   events             CalendarEvent[]
 
   @@unique([userId, googleAccountEmail])
@@ -320,7 +320,7 @@ model GoogleCalendarConnection {
 }
 
 model CalendarEvent {
-  id               String             @id @default(cuid())
+  id               String                   @id @default(cuid())
   userId           String
   connectionId     String
   googleEventId    String
@@ -329,21 +329,21 @@ model CalendarEvent {
   location         String?
   startTime        DateTime
   endTime          DateTime
-  isAllDay         Boolean            @default(false)
-  startDate        DateTime?          @db.Date
-  endDate          DateTime?          @db.Date
-  status           String             @default("confirmed")
+  isAllDay         Boolean                  @default(false)
+  startDate        DateTime?                @db.Date
+  endDate          DateTime?                @db.Date
+  status           String                   @default("confirmed")
   htmlLink         String?
   attendees        String?
   organizer        String?
   recurringEventId String?
-  syncedAt         DateTime           @default(now())
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncedAt         DateTime                 @default(now())
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   connection       GoogleCalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   notes            CalendarEventNote[]
-  linkedNote       Note?              @relation("CalendarEventLinkedNote")
+  linkedNote       Note?                    @relation("CalendarEventLinkedNote")
   linkedTasks      Task[]
 
   @@unique([connectionId, googleEventId])
@@ -353,13 +353,13 @@ model CalendarEvent {
 }
 
 model CalendarEventNote {
-  id              String        @id @default(cuid())
-  calendarEventId String        @unique
+  id              String                        @id @default(cuid())
+  calendarEventId String                        @unique
   userId          String
   body            String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  calendarEvent   CalendarEvent @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  calendarEvent   CalendarEvent                 @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
   attachments     CalendarEventNoteAttachment[]
 
   @@index([userId])
@@ -425,21 +425,21 @@ model ReminderAttachment {
 }
 
 model Note {
-  id          String           @id @default(cuid())
-  userId      String
+  id              String           @id @default(cuid())
+  userId          String
   calendarEventId String?
-  title       String?
-  body        String
-  color       String?
-  targetDate  DateTime?        @db.Date
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  calendarEvent CalendarEvent? @relation("CalendarEventLinkedNote", fields: [calendarEventId], references: [id], onDelete: SetNull)
-  attachments NoteAttachment[]
+  title           String?
+  body            String
+  color           String?
+  targetDate      DateTime?        @db.Date
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarEvent   CalendarEvent?   @relation("CalendarEventLinkedNote", fields: [calendarEventId], references: [id], onDelete: SetNull)
+  attachments     NoteAttachment[]
 
-  @@index([userId])
   @@unique([calendarEventId])
+  @@index([userId])
   @@index([userId, targetDate])
   @@index([userId, createdAt])
   @@index([userId, calendarEventId])
@@ -461,17 +461,17 @@ model NoteAttachment {
 }
 
 model RoutineTemplate {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   userId      String
-  challenge   String   @default("normal")
+  challenge   String              @default("normal")
   startTime   String?
   endTime     String?
   title       String
   sortOrder   Int
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   completions RoutineCompletion[]
 
   @@index([userId, isActive, sortOrder])
@@ -519,19 +519,96 @@ model AssistantSearchDocument {
 }
 
 model Project {
-  id        String    @id @default(cuid())
+  id        String     @id @default(cuid())
   userId    String
   name      String
   parentId  String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent    Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children  Project[] @relation("ProjectHierarchy")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Project?   @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Project[]  @relation("ProjectHierarchy")
   tasks     Task[]
   reminders Reminder[]
 
   @@unique([userId, parentId, name])
   @@index([userId])
   @@index([parentId])
+}
+
+// ---------------------------------------------------------------- MCP server (LLM access)
+// Client ids may be URLs (Client ID Metadata Documents), hence plain String keys.
+model McpOAuthClient {
+  clientId                String   @id
+  clientSecretHash        String?
+  clientName              String?
+  redirectUris            String[]
+  tokenEndpointAuthMethod String   @default("none")
+  isMetadataDocument      Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model McpAuthRequest {
+  id                 String   @id @default(cuid())
+  stateHash          String   @unique
+  clientId           String
+  redirectUri        String
+  codeChallenge      String
+  clientState        String?
+  scope              String
+  resource           String?
+  googleCodeVerifier String
+  email              String?
+  consentCsrfHash    String?
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model McpAuthCode {
+  codeHash      String    @id
+  clientId      String
+  redirectUri   String
+  codeChallenge String
+  scope         String
+  resource      String?
+  email         String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model McpToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  kind      String
+  familyId  String
+  clientId  String
+  email     String
+  scope     String
+  resource  String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+model McpAuditLog {
+  id         String   @id @default(cuid())
+  email      String?
+  clientId   String?
+  tool       String
+  status     String
+  durationMs Int
+  argKeys    String[]
+  targetId   String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
