@@ -1,9 +1,16 @@
 import Fastify, { FastifyInstance } from "fastify";
+import { InMemoryDayAffirmationStore } from "../day-affirmation/day-affirmation-store.in-memory";
+import { InMemoryDayBilanStore } from "../day-bilan/day-bilan-store.in-memory";
+import { InMemoryProjectStore } from "../projects/project-store.in-memory";
+import { InMemoryTaskStore } from "../recurrence/recurrence-test-doubles";
+import { InMemoryReminderStore } from "../reminders/reminder-store.in-memory";
+import { InMemoryMcpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
 import { registerMcp } from "./mcp-plugin";
 import { GoogleIdentity, GoogleIdentityProvider } from "./oauth/google-identity";
 import { pkceChallengeS256, randomToken } from "./oauth/oauth-crypto";
 import { InMemoryMcpOAuthStore } from "./oauth/oauth-store.in-memory";
+import { McpDomainStores } from "./tools/tool-kit";
 
 export const BASE_URL = "https://jotly.test";
 export const CLAUDE_CLIENT_ID = "https://claude.ai/oauth/mcp-oauth-client-metadata";
@@ -52,31 +59,53 @@ export type TestHarness = {
   google: FakeGoogle;
   config: McpConfig;
   fetchedUrls: string[];
+  stores: McpDomainStores & {
+    taskStore: InMemoryTaskStore;
+    reminderStore: InMemoryReminderStore;
+    projectStore: InMemoryProjectStore;
+  };
+  audit: InMemoryMcpAuditStore;
 };
 
-export async function buildHarness(configOverrides: Partial<McpConfig> = {}): Promise<TestHarness> {
+export async function buildHarness(
+  configOverrides: Partial<McpConfig> = {},
+  options: { now?: () => Date; timeZone?: string } = {}
+): Promise<TestHarness> {
   const app = Fastify({ logger: false });
   const store = new InMemoryMcpOAuthStore();
   const google = new FakeGoogle();
   const config = testConfig(configOverrides);
   const fetchedUrls: string[] = [];
+  const stores = {
+    taskStore: new InMemoryTaskStore(),
+    reminderStore: new InMemoryReminderStore(),
+    dayAffirmationStore: new InMemoryDayAffirmationStore(),
+    dayBilanStore: new InMemoryDayBilanStore(),
+    projectStore: new InMemoryProjectStore(),
+  };
+  const audit = new InMemoryMcpAuditStore();
 
   const { guard } = registerMcp(app, {
     config,
     oauthStore: store,
     authStore: {
       async findUserByEmail(email: string) {
-        return email === config.jotlyUserEmail ? ({ id: JOTLY_USER_ID } as never) : null;
+        return email === config.jotlyUserEmail
+          ? ({ id: JOTLY_USER_ID, preferredTimeZone: options.timeZone ?? null } as never)
+          : null;
       },
     },
     google,
+    stores,
+    auditStore: audit,
+    now: options.now,
     fetchMetadata: async (url) => {
       fetchedUrls.push(url);
       return { client_id: url, client_name: "Claude", redirect_uris: [CLAUDE_REDIRECT] };
     },
   });
 
-  // Stand-in for /mcp until the MCP transport is mounted.
+  // Exposes the guard's verdict directly, to test auth without the MCP protocol.
   app.get("/probe", async (request, reply) => {
     const result = await guard.verify(request.headers.authorization);
     if (!result.ok) return guard.refuse(request, reply, result.reason);
@@ -84,7 +113,7 @@ export async function buildHarness(configOverrides: Partial<McpConfig> = {}): Pr
   });
 
   await app.ready();
-  return { app, store, google, config, fetchedUrls };
+  return { app, store, google, config, fetchedUrls, stores, audit };
 }
 
 export function hiddenInput(html: string, name: string): string {
@@ -151,4 +180,29 @@ export async function obtainTokens(h: TestHarness, verifier = randomToken(48)) {
     }),
   });
   return response.json() as { access_token: string; refresh_token: string; expires_in: number };
+}
+
+let rpcId = 1;
+
+/** Sends one JSON-RPC request to POST /mcp, as Claude or ChatGPT would. */
+export async function rpc(h: TestHarness, token: string | null, method: string, params: object = {}) {
+  const response = await h.app.inject({
+    method: "POST",
+    url: "/mcp",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    payload: { jsonrpc: "2.0", id: rpcId++, method, params },
+  });
+  return response;
+}
+
+/** Calls a tool and returns its parsed JSON payload plus the isError flag. */
+export async function callTool(h: TestHarness, token: string, name: string, args: object = {}) {
+  const response = await rpc(h, token, "tools/call", { name, arguments: args });
+  if (response.statusCode !== 200) throw new Error(`tools/call ${name} returned ${response.statusCode}: ${response.body}`);
+  const result = response.json().result as { content: { text: string }[]; isError?: boolean };
+  return { data: JSON.parse(result.content[0].text), isError: result.isError === true };
 }

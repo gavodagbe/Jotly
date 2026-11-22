@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { AuthStore } from "../../auth/auth-store";
+import { safeTimeZone } from "../mcp-dates";
 import { McpConfig } from "../mcp-config";
 import { protectedResourceMetadataUrl } from "./metadata-routes";
 import { sha256Hex, unverifiedJwtClaims } from "./oauth-crypto";
@@ -11,6 +12,8 @@ export type McpAuthContext = {
   scope: string;
   /** Jotly user every MCP call acts as (MCP_JOTLY_USER_EMAIL). */
   userId: string;
+  /** That user's time zone (profile), Europe/Paris by default. */
+  timeZone: string;
 };
 
 type RefusalReason =
@@ -38,13 +41,17 @@ export function createBearerGuard(options: {
 }) {
   const { config, store, authStore } = options;
   const now = options.now ?? (() => new Date());
-  let cachedUserId: string | null = null;
+  let cachedUser: { id: string; timeZone: string; loadedAt: number } | null = null;
 
-  async function resolveJotlyUserId(): Promise<string | null> {
-    if (!cachedUserId) {
-      cachedUserId = (await authStore.findUserByEmail(config.jotlyUserEmail))?.id ?? null;
+  /** The Jotly account all calls act as; re-read every 5 minutes to follow time-zone changes. */
+  async function resolveJotlyUser(): Promise<{ id: string; timeZone: string } | null> {
+    if (!cachedUser || now().getTime() - cachedUser.loadedAt > 5 * 60 * 1000) {
+      const user = await authStore.findUserByEmail(config.jotlyUserEmail);
+      cachedUser = user
+        ? { id: user.id, timeZone: safeTimeZone(user.preferredTimeZone), loadedAt: now().getTime() }
+        : null;
     }
-    return cachedUserId;
+    return cachedUser;
   }
 
   async function verify(authorization: string | undefined): Promise<BearerResult> {
@@ -59,10 +66,13 @@ export function createBearerGuard(options: {
     // Re-checked on every call: removing an address from MCP_ALLOWED_EMAILS cuts access at once.
     if (!config.allowedEmails.has(token.email)) return { ok: false, reason: "email_not_allowed" };
 
-    const userId = await resolveJotlyUserId();
-    if (!userId) return { ok: false, reason: "jotly_user_missing" };
+    const user = await resolveJotlyUser();
+    if (!user) return { ok: false, reason: "jotly_user_missing" };
 
-    return { ok: true, context: { email: token.email, clientId: token.clientId, scope: token.scope, userId } };
+    return {
+      ok: true,
+      context: { email: token.email, clientId: token.clientId, scope: token.scope, userId: user.id, timeZone: user.timeZone },
+    };
   }
 
   /** Sends the 401 with the discovery hint, and logs why — never the token itself. */

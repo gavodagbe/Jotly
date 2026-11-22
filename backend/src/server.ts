@@ -6,6 +6,13 @@ import { registerMcp } from "./mcp/mcp-plugin";
 import { createGoogleIdentityProvider } from "./mcp/oauth/google-identity";
 import { OAUTH_PATHS } from "./mcp/oauth/metadata-routes";
 import { createPrismaMcpOAuthStore } from "./mcp/oauth/oauth-store";
+import { createPrismaMcpAuditStore } from "./mcp/audit-log";
+import { createPrismaDayAffirmationStore } from "./day-affirmation/day-affirmation-store";
+import { createPrismaDayBilanStore } from "./day-bilan/day-bilan-store";
+import { createPrismaProjectStore } from "./projects/project-store";
+import { createPrismaRecurrenceStore } from "./recurrence/recurrence-store";
+import { createPrismaReminderStore } from "./reminders/reminder-store";
+import { createPrismaTaskStore } from "./tasks/task-store";
 
 async function start(): Promise<void> {
   const env = getEnv();
@@ -31,6 +38,15 @@ async function start(): Promise<void> {
       config: mcpConfig,
       oauthStore: createPrismaMcpOAuthStore(),
       authStore: createPrismaAuthStore(),
+      auditStore: createPrismaMcpAuditStore(),
+      stores: {
+        taskStore: createPrismaTaskStore(),
+        reminderStore: createPrismaReminderStore(),
+        dayAffirmationStore: createPrismaDayAffirmationStore(),
+        dayBilanStore: createPrismaDayBilanStore(),
+        projectStore: createPrismaProjectStore(),
+        recurrenceStore: createPrismaRecurrenceStore(),
+      },
       google: createGoogleIdentityProvider({
         clientId: mcpConfig.googleClientId,
         clientSecret: mcpConfig.googleClientSecret,

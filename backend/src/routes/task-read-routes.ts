@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Task } from "@prisma/client";
 import { materializeRecurringTasksForDate } from "../recurrence/recurrence-service";
+import { listTaskAlerts } from "../tasks/task-alerts-service";
 import { sendError, zodIssuesToStrings } from "./route-helpers";
 import { formatDateOnly, parseDateOnly } from "../tasks/task-store";
 import type { TasksRouteOptions } from "./tasks";
@@ -182,27 +183,12 @@ export function registerTaskReadRoutes(app: FastifyInstance, options: TasksRoute
       );
     }
 
-    const tomorrowDate = addUtcDays(anchorDate, 1);
-    const endExclusive = addUtcDays(anchorDate, 2);
-    const startInclusive = addUtcDays(anchorDate, -STALE_THRESHOLD_DAYS);
-
     try {
-      const dueSoonTasks = (await taskStore.listByUser(authUserId))
-        .filter(
-          (task) =>
-            task.dueDate !== null &&
-            isTaskDueSoonStatus(task.status) &&
-            task.dueDate.getTime() >= startInclusive.getTime() &&
-            task.dueDate.getTime() < endExclusive.getTime()
-        )
-        .sort(compareDueSoonTasks);
-
-      const dueTodayCount = dueSoonTasks.filter(
-        (task) => task.dueDate && formatDateOnly(task.dueDate) === formatDateOnly(anchorDate)
-      ).length;
-      const dueTomorrowCount = dueSoonTasks.filter(
-        (task) => task.dueDate && formatDateOnly(task.dueDate) === formatDateOnly(tomorrowDate)
-      ).length;
+      const { tasks: dueSoonTasks, dueTodayCount, dueTomorrowCount } = await listTaskAlerts(
+        taskStore,
+        authUserId,
+        anchorDate
+      );
 
       return reply.send({
         data: {

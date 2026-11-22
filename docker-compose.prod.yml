@@ -36,6 +36,21 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
       GOOGLE_CALENDAR_ENCRYPTION_KEY: ${GOOGLE_CALENDAR_ENCRYPTION_KEY:-}
+      # MCP server for LLM clients (ChatGPT, Claude); see README "MCP server".
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_BASE_URL: ${MCP_BASE_URL:-}
+      MCP_ALLOWED_EMAILS: ${MCP_ALLOWED_EMAILS:-}
+      MCP_JOTLY_USER_EMAIL: ${MCP_JOTLY_USER_EMAIL:-}
+      MCP_ALLOWED_REDIRECT_URIS: ${MCP_ALLOWED_REDIRECT_URIS:-}
+      MCP_CIMD_ALLOWED_HOSTS: ${MCP_CIMD_ALLOWED_HOSTS:-claude.ai,chatgpt.com}
+      MCP_GOOGLE_CLIENT_ID: ${MCP_GOOGLE_CLIENT_ID:-}
+      MCP_GOOGLE_CLIENT_SECRET: ${MCP_GOOGLE_CLIENT_SECRET:-}
+      MCP_RATE_LIMIT_PER_SECOND: ${MCP_RATE_LIMIT_PER_SECOND:-3}
+      MCP_RATE_LIMIT_BURST: ${MCP_RATE_LIMIT_BURST:-30}
+      MCP_DAILY_WRITE_LIMIT: ${MCP_DAILY_WRITE_LIMIT:-100}
+    # Loopback only: host nginx routes /mcp, /oauth/ and OAuth discovery here.
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-3101}:3001"
     depends_on:
       postgres:
         condition: service_healthy

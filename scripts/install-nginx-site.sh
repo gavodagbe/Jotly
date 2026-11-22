@@ -39,6 +39,8 @@ APP_DOMAIN="${APP_DOMAIN:-$(read_env_value APP_DOMAIN "$ENV_FILE")}"
 FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-$(read_env_value FRONTEND_HOST_PORT "$ENV_FILE")}"
 APP_DOMAIN="${APP_DOMAIN:-jotly.godwinavodagbe.com}"
 FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-3100}"
+BACKEND_HOST_PORT="${BACKEND_HOST_PORT:-$(read_env_value BACKEND_HOST_PORT "$ENV_FILE")}"
+BACKEND_HOST_PORT="${BACKEND_HOST_PORT:-3101}"
 
 SITE_AVAILABLE="/etc/nginx/sites-available/${APP_DOMAIN}.conf"
 SITE_ENABLED="/etc/nginx/sites-enabled/${APP_DOMAIN}.conf"
@@ -51,6 +53,18 @@ server {
     server_name ${APP_DOMAIN};
 
     client_max_body_size 20m;
+
+    # MCP server (LLM clients): endpoint, OAuth and discovery go straight to the backend.
+    location ~ ^/(mcp|oauth/.*|\.well-known/(oauth-protected-resource|oauth-authorization-server|openid-configuration)(/.*)?)$ {
+        proxy_pass http://127.0.0.1:${BACKEND_HOST_PORT};
+        proxy_http_version 1.1;
+        proxy_buffering off;
+
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:${FRONTEND_HOST_PORT};
@@ -101,6 +115,18 @@ server {
     proxy_read_timeout 120s;
     proxy_send_timeout 120s;
 
+    # MCP server (LLM clients): endpoint, OAuth and discovery go straight to the backend.
+    location ~ ^/(mcp|oauth/.*|\.well-known/(oauth-protected-resource|oauth-authorization-server|openid-configuration)(/.*)?)$ {
+        proxy_pass http://127.0.0.1:${BACKEND_HOST_PORT};
+        proxy_http_version 1.1;
+        proxy_buffering off;
+
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:${FRONTEND_HOST_PORT};
         proxy_http_version 1.1;
@@ -140,3 +166,4 @@ echo "Nginx site updated: $SITE_AVAILABLE"
 echo "Mode: $MODE"
 echo "Domain: $APP_DOMAIN"
 echo "Upstream: http://127.0.0.1:${FRONTEND_HOST_PORT}"
+echo "MCP upstream: http://127.0.0.1:${BACKEND_HOST_PORT}"

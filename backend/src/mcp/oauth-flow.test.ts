@@ -30,6 +30,7 @@ test("full flow with a URL client_id (CIMD) issues a token that acts as the Jotl
     clientId: CLAUDE_CLIENT_ID,
     scope: "jotly",
     userId: JOTLY_USER_ID,
+    timeZone: "Europe/Paris",
   });
 
   // Only hashes are stored, never the tokens themselves.

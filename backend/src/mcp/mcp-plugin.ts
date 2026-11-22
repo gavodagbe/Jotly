@@ -1,6 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { AuthStore } from "../auth/auth-store";
+import { McpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
+import { registerMcpRoute } from "./mcp-route";
 import { registerAuthorizeRoutes } from "./oauth/authorize-routes";
 import { createBearerGuard } from "./oauth/bearer-guard";
 import { createClientRegistry, MetadataFetcher } from "./oauth/client-registry";
@@ -9,12 +11,15 @@ import { registerMetadataRoutes } from "./oauth/metadata-routes";
 import { McpOAuthStore } from "./oauth/oauth-store";
 import { registerTokenRoutes } from "./oauth/token-routes";
 import { TokenBucketLimiter } from "./rate-limit";
+import { McpDomainStores } from "./tools/tool-kit";
 
 export type McpPluginOptions = {
   config: McpConfig;
   oauthStore: McpOAuthStore;
   authStore: Pick<AuthStore, "findUserByEmail">;
   google: GoogleIdentityProvider;
+  stores: McpDomainStores;
+  auditStore: McpAuditStore;
   fetchMetadata?: MetadataFetcher;
   now?: () => Date;
 };
@@ -25,8 +30,7 @@ const OAUTH_IP_BURST = 20;
 
 /**
  * Registers the MCP authorization server (discovery, registration, authorize,
- * consent, token) in an encapsulated context and returns the bearer guard
- * protecting /mcp.
+ * consent, token) and the /mcp endpoint in an encapsulated context.
  */
 export function registerMcp(app: FastifyInstance, options: McpPluginOptions) {
   const { config, oauthStore, now } = options;
@@ -47,10 +51,12 @@ export function registerMcp(app: FastifyInstance, options: McpPluginOptions) {
     registerMetadataRoutes(scope, config);
     registerAuthorizeRoutes(scope, { config, store: oauthStore, clients, google: options.google, ipLimiter, now });
     registerTokenRoutes(scope, { config, store: oauthStore, clients, ipLimiter, now });
+    registerMcpRoute(scope, { config, guard, stores: options.stores, auditStore: options.auditStore, now });
   });
 
   app.addHook("onClose", async () => {
     await oauthStore.close?.();
+    await options.auditStore.close?.();
   });
 
   return { guard };
