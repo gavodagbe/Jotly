@@ -2,11 +2,11 @@ import type { Task } from "@prisma/client";
 import { z } from "zod";
 import { normalizeProjectName, ProjectStore, resolveProjectDenormalization } from "../../projects/project-store";
 import { getTimestampsForNewStatus, getTimestampsForStatusTransition } from "../../tasks/task-route-helpers";
-import { parseDateOnly, TaskUpdateInput } from "../../tasks/task-store";
+import { parseDateOnly, TaskCreateInput, TaskUpdateInput } from "../../tasks/task-store";
 import { formatDateOnly, resolveDay } from "../mcp-dates";
 import { describeTask } from "./day-tools";
 import { McpTool } from "./tool-definition";
-import { McpToolError, proof } from "./tool-kit";
+import { McpDomainStores, McpToolError, proof, ToolContext } from "./tool-kit";
 
 const optionalDate = (description: string) =>
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe(description);
@@ -48,7 +48,44 @@ async function getOwnedTask(id: string, userId: string, stores: { taskStore: { g
   return task;
 }
 
-const creerTacheShape = {
+export type NewTaskArgs = {
+  titre: string;
+  date?: string;
+  description?: string;
+  priorite?: "low" | "medium" | "high";
+  echeance?: string;
+  projet?: string;
+  duree_prevue_min?: number;
+};
+
+/** Validates a new task (dates, project by name) into the store input. Shared by creer_tache and creer_taches. */
+export async function prepareTaskCreate(
+  args: NewTaskArgs,
+  ctx: ToolContext,
+  stores: Pick<McpDomainStores, "projectStore">
+): Promise<TaskCreateInput> {
+  const now = ctx.now();
+  const targetDate = resolveDay(args.date, ctx.timeZone, now);
+  const dueDate = parseOptionalDate(args.echeance, "Échéance") ?? targetDate;
+  const project = args.projet
+    ? await resolveProjectByName(stores.projectStore, ctx.userId, args.projet)
+    : { projectId: null, project: null, subProject: null };
+
+  return {
+    userId: ctx.userId,
+    title: args.titre,
+    description: args.description || null,
+    status: "todo",
+    targetDate,
+    dueDate,
+    priority: args.priorite ?? "medium",
+    ...project,
+    plannedTime: args.duree_prevue_min ?? null,
+    ...getTimestampsForNewStatus("todo", now),
+  };
+}
+
+export const creerTacheShape = {
   titre: z.string().trim().min(1).max(300).describe("Titre court de la tâche."),
   date: optionalDate("Jour où la tâche est planifiée (AAAA-MM-JJ). Par défaut : aujourd'hui."),
   description: z.string().trim().max(5000).optional(),
@@ -61,30 +98,12 @@ const creerTacheShape = {
 export const creerTache: McpTool<typeof creerTacheShape> = {
   name: "creer_tache",
   title: "Créer une tâche",
-  description: "Crée UNE tâche dans Jotly. Pour plusieurs tâches, demander d'abord confirmation à Godwin, puis appeler l'outil une fois par tâche.",
+  description: "Crée UNE tâche dans Jotly. Pour plusieurs tâches d'un coup, utiliser creer_taches.",
   inputSchema: creerTacheShape,
   write: true,
   async handler(args, ctx, stores) {
     const now = ctx.now();
-    const targetDate = resolveDay(args.date, ctx.timeZone, now);
-    const dueDate = parseOptionalDate(args.echeance, "Échéance") ?? targetDate;
-    const project = args.projet
-      ? await resolveProjectByName(stores.projectStore, ctx.userId, args.projet)
-      : { projectId: null, project: null, subProject: null };
-
-    const task = await stores.taskStore.create({
-      userId: ctx.userId,
-      title: args.titre,
-      description: args.description || null,
-      status: "todo",
-      targetDate,
-      dueDate,
-      priority: args.priorite ?? "medium",
-      ...project,
-      plannedTime: args.duree_prevue_min ?? null,
-      ...getTimestampsForNewStatus("todo", now),
-    });
-
+    const task = await stores.taskStore.create(await prepareTaskCreate(args, ctx, stores));
     return { ...proof("tache", "creee", task.id, formatDateOnly(task.targetDate), now), tache: describeTask(task) };
   },
 };

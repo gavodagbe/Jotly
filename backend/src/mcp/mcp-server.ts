@@ -4,7 +4,9 @@ import { McpAuditStore } from "./audit-log";
 import { McpAuthContext } from "./oauth/bearer-guard";
 import { DailyQuota, TokenBucketLimiter } from "./rate-limit";
 import { ecrireAffirmation, lireAffirmation, lireJournee } from "./tools/day-tools";
+import { creerTaches } from "./tools/bulk-task-tools";
 import { lireObjectifs, publierObjectifs } from "./tools/objective-tools";
+import { ecrireBilan, lirePeriode } from "./tools/review-tools";
 import { creerRappel, reporterTachesVeille } from "./tools/reminder-carry-over-tools";
 import { creerTache, modifierTache, terminerTache } from "./tools/task-tools";
 import { AnyMcpTool } from "./tools/tool-definition";
@@ -28,13 +30,18 @@ export const MCP_TOOLS: AnyMcpTool[] = [
   reporterTachesVeille,
   lireObjectifs,
   publierObjectifs,
+  ecrireBilan,
+  creerTaches,
+  lirePeriode,
 ];
 
 export const MCP_INSTRUCTIONS = `Jotly : l'outil d'action quotidienne de Godwin (tâches pro et perso du jour, rappels, affirmation, bilan du jour), en français. Le Coffre Vision (autre serveur) sert à comprendre et décider ; Jotly sert à agir.
 - Pour toute question sur la journée, l'avancement ou les tâches : appeler lire_journee, puis répondre à partir de ce qu'il renvoie. Ne rien inventer.
 - Ne JAMAIS dire qu'une action est faite sans avoir reçu la réponse de l'outil. Après chaque écriture, afficher la preuve renvoyée : identifiant et date (ex. « Tâche créée — id cm…, 22/11/2026 »). Sans preuve, dire que l'action n'a pas eu lieu.
-- Actions unitaires (créer une tâche, la marquer faite, la modifier, créer un rappel, écrire l'affirmation) : les exécuter immédiatement quand Godwin les demande.
-- Opérations en masse : reporter_taches_veille s'appelle d'abord sans jeton (aperçu) ; montrer la liste à Godwin et n'appeler avec jeton_confirmation qu'après son accord explicite. Pour créer plusieurs tâches, récapituler la liste et demander confirmation avant d'appeler creer_tache pour chacune.
+- Actions unitaires (créer une tâche, la marquer faite, la modifier, créer un rappel, écrire l'affirmation ou le bilan) : les exécuter immédiatement quand Godwin les demande.
+- Opérations en masse (reporter_taches_veille, creer_taches, publier_objectifs) : appeler d'abord sans jeton (aperçu), montrer l'aperçu à Godwin, et n'appeler avec jeton_confirmation qu'après son accord explicite.
+- Bilan du soir (« Bilan ») : lire_journee ; poser à Godwin quelques questions courtes (humeur de 1 à 5, victoires, blocages, leçons) ; écrire avec ecrire_bilan dans ses mots ; proposer les tâches du lendemain à partir des tâches non terminées et des objectifs de la semaine, puis creer_taches (aperçu, accord, jeton) pour demain.
+- Analyse mensuelle : lire le plan et les objectifs dans le Coffre Vision ; lire_periode sur le mois écoulé (et ses semaines si utile) ; proposer à Godwin les objectifs du mois suivant et de ses semaines ; après validation du plan, publier_objectifs (aperçu, accord, jeton). Les décisions et la capture restent dans le coffre.
 - Aucune suppression n'est possible. Pour annuler une modification, utiliser modifier_tache avec les valeurs « avant » renvoyées ; pour abandonner une tâche, statut cancelled.
 - Utiliser les identifiants renvoyés par lire_journee ; ne jamais deviner un id.
 - Heures des rappels en heure locale de Godwin (AAAA-MM-JJTHH:MM). Dates absolues (JJ/MM/AAAA) dans les réponses.

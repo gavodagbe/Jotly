@@ -41,7 +41,7 @@ export const WRITE_ANNOTATIONS = {
 };
 
 export type Proof = {
-  type: "tache" | "rappel" | "affirmation" | "report" | "objectifs";
+  type: "tache" | "taches" | "rappel" | "affirmation" | "bilan" | "report" | "objectifs";
   action: string;
   id: string;
   date: string;

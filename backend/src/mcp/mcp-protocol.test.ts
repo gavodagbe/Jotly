@@ -10,6 +10,8 @@ const WRITE_TOOLS = [
   "creer_rappel",
   "reporter_taches_veille",
   "publier_objectifs",
+  "ecrire_bilan",
+  "creer_taches",
 ];
 
 test("POST /mcp without a token gets 401 with the discovery hint", async () => {
@@ -52,10 +54,13 @@ test("every tool declares the oauth2 security scheme, and only read tools are re
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
     "creer_rappel",
     "creer_tache",
+    "creer_taches",
     "ecrire_affirmation",
+    "ecrire_bilan",
     "lire_affirmation",
     "lire_journee",
     "lire_objectifs",
+    "lire_periode",
     "modifier_tache",
     "publier_objectifs",
     "reporter_taches_veille",
