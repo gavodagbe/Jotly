@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { MCP_SCOPE, McpConfig } from "../mcp-config";
+import { SUPPORTED_ASSERTION_ALGS } from "./client-assertion";
 
 export const OAUTH_PATHS = {
   authorize: "/oauth/authorize",
@@ -31,7 +32,8 @@ export function registerMetadataRoutes(app: FastifyInstance, config: McpConfig):
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic", "private_key_jwt"],
+    token_endpoint_auth_signing_alg_values_supported: [...SUPPORTED_ASSERTION_ALGS],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
   };

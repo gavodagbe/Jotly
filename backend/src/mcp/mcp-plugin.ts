@@ -7,7 +7,8 @@ import { registerMcpRoute } from "./mcp-route";
 import type { McpReindex } from "./mcp-server";
 import { registerAuthorizeRoutes } from "./oauth/authorize-routes";
 import { createBearerGuard } from "./oauth/bearer-guard";
-import { createClientRegistry, MetadataFetcher } from "./oauth/client-registry";
+import { createClientAssertionVerifier } from "./oauth/client-assertion";
+import { createClientRegistry, fetchMetadataDocument, MetadataFetcher } from "./oauth/client-registry";
 import { GoogleIdentityProvider } from "./oauth/google-identity";
 import { registerMetadataRoutes } from "./oauth/metadata-routes";
 import { McpOAuthStore } from "./oauth/oauth-store";
@@ -39,7 +40,9 @@ const OAUTH_IP_BURST = 20;
 export function registerMcp(app: FastifyInstance, options: McpPluginOptions) {
   const { config, oauthStore, now } = options;
   const guard = createBearerGuard({ config, store: oauthStore, authStore: options.authStore, now });
-  const clients = createClientRegistry({ config, store: oauthStore, fetchMetadata: options.fetchMetadata, now });
+  const fetchMetadata = options.fetchMetadata ?? fetchMetadataDocument;
+  const clients = createClientRegistry({ config, store: oauthStore, fetchMetadata, now });
+  const assertions = createClientAssertionVerifier({ config, fetchJwks: fetchMetadata, now });
   const ipLimiter = new TokenBucketLimiter(OAUTH_IP_RATE_PER_SECOND, OAUTH_IP_BURST);
 
   app.register(async (scope) => {
@@ -54,7 +57,7 @@ export function registerMcp(app: FastifyInstance, options: McpPluginOptions) {
 
     registerMetadataRoutes(scope, config);
     registerAuthorizeRoutes(scope, { config, store: oauthStore, clients, google: options.google, ipLimiter, now });
-    registerTokenRoutes(scope, { config, store: oauthStore, clients, ipLimiter, now });
+    registerTokenRoutes(scope, { config, store: oauthStore, clients, assertions, ipLimiter, now });
     registerMcpRoute(scope, { config, guard, stores: options.stores, auditStore: options.auditStore, actionLog: options.actionLog, reindex: options.reindex, now });
   });
 

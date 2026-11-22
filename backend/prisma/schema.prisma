@@ -544,6 +544,8 @@ model McpOAuthClient {
   clientName              String?
   redirectUris            String[]
   tokenEndpointAuthMethod String   @default("none")
+  /// For private_key_jwt clients: where their public signing keys are published.
+  jwksUri                 String?
   isMetadataDocument      Boolean  @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt

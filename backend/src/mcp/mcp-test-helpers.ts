@@ -74,7 +74,7 @@ export type TestHarness = {
 
 export async function buildHarness(
   configOverrides: Partial<McpConfig> = {},
-  options: { now?: () => Date; timeZone?: string; reindex?: McpReindex } = {}
+  options: { now?: () => Date; timeZone?: string; reindex?: McpReindex; documents?: Record<string, unknown> } = {}
 ): Promise<TestHarness> {
   const app = Fastify({ logger: false });
   const store = new InMemoryMcpOAuthStore();
@@ -111,6 +111,7 @@ export async function buildHarness(
     now: options.now,
     fetchMetadata: async (url) => {
       fetchedUrls.push(url);
+      if (options.documents && url in options.documents) return options.documents[url];
       return { client_id: url, client_name: "Claude", redirect_uris: [CLAUDE_REDIRECT] };
     },
   });
@@ -142,13 +143,13 @@ export function form(values: Record<string, string>) {
 /** Runs authorize → Google → consent and returns the client-facing redirect URL. */
 export async function authorizeToRedirect(
   h: TestHarness,
-  options: { clientId?: string; verifier?: string; decision?: "allow" | "deny" } = {}
+  options: { clientId?: string; redirectUri?: string; verifier?: string; decision?: "allow" | "deny" } = {}
 ): Promise<URL> {
   const verifier = options.verifier ?? randomToken(48);
   const query = new URLSearchParams({
     response_type: "code",
     client_id: options.clientId ?? CLAUDE_CLIENT_ID,
-    redirect_uri: CLAUDE_REDIRECT,
+    redirect_uri: options.redirectUri ?? CLAUDE_REDIRECT,
     code_challenge: pkceChallengeS256(verifier),
     code_challenge_method: "S256",
     state: "client-state-1",

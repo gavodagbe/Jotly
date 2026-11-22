@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { McpConfig } from "../mcp-config";
 import { clientIp, TokenBucketLimiter } from "../rate-limit";
+import { assertionIssuer, CLIENT_ASSERTION_TYPE, ClientAssertionVerifier } from "./client-assertion";
 import { ClientRegistry, OAuthClientError } from "./client-registry";
 import { OAUTH_PATHS } from "./metadata-routes";
 import { randomToken, sha256Hex, verifyPkceS256 } from "./oauth-crypto";
@@ -15,6 +16,7 @@ export type TokenRouteOptions = {
   config: McpConfig;
   store: McpOAuthStore;
   clients: ClientRegistry;
+  assertions: ClientAssertionVerifier;
   ipLimiter: TokenBucketLimiter;
   now?: () => Date;
 };
@@ -31,6 +33,10 @@ class TokenError extends Error {
 
 /** Client credentials from HTTP Basic (client_secret_basic) or the body (client_secret_post / none). */
 function readClientCredentials(request: FastifyRequest, body: Body): { clientId: string; secret: string | null } {
+  if (!body.client_id && body.client_assertion) {
+    // private_key_jwt without client_id: the (still unverified) issuer names the client to verify against.
+    return { clientId: assertionIssuer(body.client_assertion) ?? "", secret: null };
+  }
   const header = request.headers.authorization;
   if (header?.toLowerCase().startsWith("basic ")) {
     const decoded = Buffer.from(header.slice(6).trim(), "base64").toString("utf8");
@@ -46,7 +52,7 @@ function readClientCredentials(request: FastifyRequest, body: Body): { clientId:
 }
 
 export function registerTokenRoutes(app: FastifyInstance, options: TokenRouteOptions): void {
-  const { config, store, clients, ipLimiter } = options;
+  const { config, store, clients, assertions, ipLimiter } = options;
   const now = options.now ?? (() => new Date());
 
   async function issueTokens(input: {
@@ -89,6 +95,26 @@ export function registerTokenRoutes(app: FastifyInstance, options: TokenRouteOpt
       client = await clients.resolve(credentials.clientId);
     } catch (error) {
       throw new TokenError("invalid_client", error instanceof OAuthClientError ? error.message : "Unknown client", 401);
+    }
+    if (client.tokenEndpointAuthMethod === "private_key_jwt") {
+      if (body.client_assertion_type !== CLIENT_ASSERTION_TYPE || !body.client_assertion || !client.jwksUri) {
+        throw new TokenError("invalid_client", "private_key_jwt client assertion is required", 401);
+      }
+      let reason: string | null;
+      try {
+        reason = await assertions.verifyAssertion({
+          clientId: client.clientId,
+          jwksUri: client.jwksUri,
+          assertion: body.client_assertion,
+          tokenEndpoint: `${config.baseUrl}${OAUTH_PATHS.token}`,
+        });
+      } catch (error) {
+        reason = `unable to verify (${error instanceof Error ? error.message : "error"})`;
+      }
+      if (reason) {
+        throw new TokenError("invalid_client", `Client assertion refused: ${reason}`, 401);
+      }
+      return client;
     }
     if (!clients.authenticate(client, credentials.secret)) {
       throw new TokenError("invalid_client", "Client authentication failed", 401);
