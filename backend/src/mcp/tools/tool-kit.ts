@@ -1,9 +1,11 @@
 import type { DayAffirmationStore } from "../../day-affirmation/day-affirmation-store";
 import type { DayBilanStore } from "../../day-bilan/day-bilan-store";
+import type { MonthlyEntryStore } from "../../monthly-entry/monthly-entry-store";
 import type { ProjectStore } from "../../projects/project-store";
 import type { RecurrenceStore } from "../../recurrence/recurrence-store";
 import type { ReminderStore } from "../../reminders/reminder-store";
 import type { TaskStore } from "../../tasks/task-store";
+import type { WeeklyEntryStore } from "../../weekly-entry/weekly-entry-store";
 import { MCP_SCOPE } from "../mcp-config";
 
 /** Error whose message is shown to the LLM (French, actionable). Other errors are masked. */
@@ -15,6 +17,8 @@ export type McpDomainStores = {
   dayAffirmationStore: DayAffirmationStore;
   dayBilanStore: DayBilanStore;
   projectStore: ProjectStore;
+  weeklyEntryStore: WeeklyEntryStore;
+  monthlyEntryStore: MonthlyEntryStore;
   recurrenceStore?: RecurrenceStore;
 };
 
@@ -37,7 +41,7 @@ export const WRITE_ANNOTATIONS = {
 };
 
 export type Proof = {
-  type: "tache" | "rappel" | "affirmation" | "report";
+  type: "tache" | "rappel" | "affirmation" | "report" | "objectifs";
   action: string;
   id: string;
   date: string;

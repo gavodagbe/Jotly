@@ -9,6 +9,7 @@ const WRITE_TOOLS = [
   "modifier_tache",
   "creer_rappel",
   "reporter_taches_veille",
+  "publier_objectifs",
 ];
 
 test("POST /mcp without a token gets 401 with the discovery hint", async () => {
@@ -54,7 +55,9 @@ test("every tool declares the oauth2 security scheme, and only read tools are re
     "ecrire_affirmation",
     "lire_affirmation",
     "lire_journee",
+    "lire_objectifs",
     "modifier_tache",
+    "publier_objectifs",
     "reporter_taches_veille",
     "terminer_tache",
   ]);
