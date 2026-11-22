@@ -6,6 +6,7 @@ import type { RecurrenceStore } from "../../recurrence/recurrence-store";
 import type { ReminderStore } from "../../reminders/reminder-store";
 import type { TaskStore } from "../../tasks/task-store";
 import type { WeeklyEntryStore } from "../../weekly-entry/weekly-entry-store";
+import type { ActionChange } from "../actions/snapshots";
 import { MCP_SCOPE } from "../mcp-config";
 
 /** Error whose message is shown to the LLM (French, actionable). Other errors are masked. */
@@ -27,6 +28,8 @@ export type ToolContext = {
   userId: string;
   timeZone: string;
   now: () => Date;
+  /** Records the entities a write changed (for undo); returns the action_id to put in the proof. */
+  recordAction(changes: ActionChange[]): Promise<string>;
 };
 
 // ChatGPT only forwards the OAuth token to tools that declare they need it.
@@ -41,16 +44,27 @@ export const WRITE_ANNOTATIONS = {
 };
 
 export type Proof = {
-  type: "tache" | "taches" | "rappel" | "affirmation" | "bilan" | "report" | "objectifs";
+  type: "tache" | "taches" | "rappel" | "affirmation" | "bilan" | "report" | "objectifs" | "annulation";
   action: string;
   id: string;
   date: string;
   horodatage: string;
+  /** Pass to `annuler` to undo this write. */
+  action_id?: string;
 };
 
 /** Every write returns a proof the LLM must show (id + date) — no proof, no action. */
-export function proof(type: Proof["type"], action: string, id: string, date: string, at: Date): { preuve: Proof } {
-  return { preuve: { type, action, id, date, horodatage: at.toISOString() } };
+export function proof(
+  type: Proof["type"],
+  action: string,
+  id: string,
+  date: string,
+  at: Date,
+  actionId?: string
+): { preuve: Proof } {
+  return {
+    preuve: { type, action, id, date, horodatage: at.toISOString(), ...(actionId ? { action_id: actionId } : {}) },
+  };
 }
 
 export function truncate(value: string | null | undefined, max = 500): string | null {

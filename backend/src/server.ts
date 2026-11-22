@@ -7,6 +7,7 @@ import { createGoogleIdentityProvider } from "./mcp/oauth/google-identity";
 import { OAUTH_PATHS } from "./mcp/oauth/metadata-routes";
 import { createPrismaMcpOAuthStore } from "./mcp/oauth/oauth-store";
 import { createPrismaMcpAuditStore } from "./mcp/audit-log";
+import { createPrismaMcpActionLogStore } from "./mcp/actions/action-log-store";
 import { createPrismaDayAffirmationStore } from "./day-affirmation/day-affirmation-store";
 import { createPrismaDayBilanStore } from "./day-bilan/day-bilan-store";
 import { createPrismaProjectStore } from "./projects/project-store";
@@ -41,6 +42,7 @@ async function start(): Promise<void> {
       oauthStore: createPrismaMcpOAuthStore(),
       authStore: createPrismaAuthStore(),
       auditStore: createPrismaMcpAuditStore(),
+      actionLog: createPrismaMcpActionLogStore(),
       stores: {
         taskStore: createPrismaTaskStore(),
         reminderStore: createPrismaReminderStore(),

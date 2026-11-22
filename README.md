@@ -403,8 +403,16 @@ LLM clients will read professional and client data in clear.
    - ChatGPT: use the web connector on chatgpt.com (developer mode), which also works on
      mobile. The local MCP mode of the ChatGPT Mac app did not forward the token.
 
-Tools: `lire_journee`, `lire_affirmation`, `ecrire_affirmation`, `creer_tache`,
-`terminer_tache`, `modifier_tache`, `creer_rappel`, `reporter_taches_veille` (preview, then
-confirmation token). No deletion tool. Every write returns a proof (id, date); every call
-is written to `McpAuditLog` (who, tool, duration, argument names — never content).
+Tools:
+- day: `lire_journee`, `lire_affirmation`, `ecrire_affirmation`, `ecrire_bilan`
+- tasks and reminders: `creer_tache`, `terminer_tache`, `modifier_tache`, `creer_rappel`
+- bulk (preview, then confirmation token): `reporter_taches_veille`, `creer_taches`, `publier_objectifs`
+- objectives and reviews: `lire_objectifs`, `lire_periode` (week or month summary)
+- `annuler`: undoes an LLM write within 7 days from the `action_id` in its proof
+
+No deletion tool. Week and month objectives published from the Coffre Vision go into the existing
+objective fields, first line `[Coffre Vision] …`; day objectives are the day's tasks. Every write
+returns a proof (id, date, action_id); every call is written to `McpAuditLog` (who, tool,
+duration, argument names — never content). `McpActionLog` keeps before/after snapshots for
+undo (content included) and is purged after 30 days.
 Removing an address from `MCP_ALLOWED_EMAILS` and restarting the backend cuts its access.

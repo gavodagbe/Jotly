@@ -1,4 +1,5 @@
 import type { Task } from "@prisma/client";
+import { taskSnapshot } from "../actions/snapshots";
 import { z } from "zod";
 import { normalizeProjectName, ProjectStore, resolveProjectDenormalization } from "../../projects/project-store";
 import { getTimestampsForNewStatus, getTimestampsForStatusTransition } from "../../tasks/task-route-helpers";
@@ -104,7 +105,11 @@ export const creerTache: McpTool<typeof creerTacheShape> = {
   async handler(args, ctx, stores) {
     const now = ctx.now();
     const task = await stores.taskStore.create(await prepareTaskCreate(args, ctx, stores));
-    return { ...proof("tache", "creee", task.id, formatDateOnly(task.targetDate), now), tache: describeTask(task) };
+    const actionId = await ctx.recordAction([{ entity: "task", id: task.id, before: null, after: taskSnapshot(task) }]);
+    return {
+      ...proof("tache", "creee", task.id, formatDateOnly(task.targetDate), now, actionId),
+      tache: describeTask(task),
+    };
   },
 };
 
@@ -131,8 +136,11 @@ export const terminerTache: McpTool<typeof terminerTacheShape> = {
       ctx.userId
     );
     if (!updated) throw new McpToolError(`Tâche introuvable : ${id}.`);
+    const actionId = await ctx.recordAction([
+      { entity: "task", id, before: taskSnapshot(task), after: taskSnapshot(updated) },
+    ]);
     return {
-      ...proof("tache", "faite", updated.id, formatDateOnly(updated.targetDate), now),
+      ...proof("tache", "faite", updated.id, formatDateOnly(updated.targetDate), now, actionId),
       tache: describeTask(updated),
       avant: { statut: task.status },
     };
@@ -184,8 +192,11 @@ export const modifierTache: McpTool<typeof modifierTacheShape> = {
       (key) => JSON.stringify(after[key]) !== JSON.stringify(before[key])
     );
 
+    const actionId = await ctx.recordAction([
+      { entity: "task", id: updated.id, before: taskSnapshot(task), after: taskSnapshot(updated) },
+    ]);
     return {
-      ...proof("tache", "modifiee", updated.id, formatDateOnly(updated.targetDate), now),
+      ...proof("tache", "modifiee", updated.id, formatDateOnly(updated.targetDate), now, actionId),
       avant: Object.fromEntries(changed.map((key) => [key, before[key]])),
       apres: Object.fromEntries(changed.map((key) => [key, after[key]])),
     };

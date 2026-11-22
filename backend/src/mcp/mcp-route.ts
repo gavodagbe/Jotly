@@ -1,5 +1,6 @@
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { McpActionLogStore } from "./actions/action-log-store";
 import { McpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
 import { buildMcpServer } from "./mcp-server";
@@ -12,6 +13,7 @@ export type McpRouteOptions = {
   guard: BearerGuard;
   stores: McpDomainStores;
   auditStore: McpAuditStore;
+  actionLog: McpActionLogStore;
   now?: () => Date;
 };
 
@@ -30,6 +32,7 @@ export function registerMcpRoute(app: FastifyInstance, options: McpRouteOptions)
     const server = buildMcpServer(auth.context, {
       stores: options.stores,
       auditStore: options.auditStore,
+      actionLog: options.actionLog,
       callLimiter,
       writeQuota,
       log: request.log,

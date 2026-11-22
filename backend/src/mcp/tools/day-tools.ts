@@ -1,4 +1,5 @@
 import type { DayAffirmation, Reminder, Task } from "@prisma/client";
+import { affirmationSnapshot } from "../actions/snapshots";
 import { z } from "zod";
 import { materializeRecurringTasksForDate } from "../../recurrence/recurrence-service";
 import { listTaskAlerts } from "../../tasks/task-alerts-service";
@@ -178,8 +179,16 @@ export const ecrireAffirmation: McpTool<typeof ecrireAffirmationShape> = {
       completedAt: isCompleted ? existing?.completedAt ?? now : null,
     });
 
+    const actionId = await ctx.recordAction([
+      {
+        entity: "affirmation",
+        date: formatDateOnly(day),
+        before: existing ? affirmationSnapshot(existing) : null,
+        after: affirmationSnapshot(saved),
+      },
+    ]);
     return {
-      ...proof("affirmation", existing ? "modifiee" : "creee", saved.id, formatDateOnly(day), now),
+      ...proof("affirmation", existing ? "modifiee" : "creee", saved.id, formatDateOnly(day), now, actionId),
       affirmation: describeAffirmation(saved),
       avant: existing ? { texte: existing.text, faite: existing.isCompleted } : null,
     };

@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { AuthStore } from "../auth/auth-store";
+import { McpActionLogStore } from "./actions/action-log-store";
 import { McpAuditStore } from "./audit-log";
 import { McpConfig } from "./mcp-config";
 import { registerMcpRoute } from "./mcp-route";
@@ -20,6 +21,7 @@ export type McpPluginOptions = {
   google: GoogleIdentityProvider;
   stores: McpDomainStores;
   auditStore: McpAuditStore;
+  actionLog: McpActionLogStore;
   fetchMetadata?: MetadataFetcher;
   now?: () => Date;
 };
@@ -51,12 +53,13 @@ export function registerMcp(app: FastifyInstance, options: McpPluginOptions) {
     registerMetadataRoutes(scope, config);
     registerAuthorizeRoutes(scope, { config, store: oauthStore, clients, google: options.google, ipLimiter, now });
     registerTokenRoutes(scope, { config, store: oauthStore, clients, ipLimiter, now });
-    registerMcpRoute(scope, { config, guard, stores: options.stores, auditStore: options.auditStore, now });
+    registerMcpRoute(scope, { config, guard, stores: options.stores, auditStore: options.auditStore, actionLog: options.actionLog, now });
   });
 
   app.addHook("onClose", async () => {
     await oauthStore.close?.();
     await options.auditStore.close?.();
+    await options.actionLog.close?.();
   });
 
   return { guard };

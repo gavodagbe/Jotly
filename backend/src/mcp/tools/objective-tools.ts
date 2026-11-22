@@ -189,8 +189,18 @@ export const publierObjectifs: McpTool<typeof publierShape> = {
       const entry = await writeObjective(stores, ctx.userId, period, after);
       saved.push({ periode: period.periode, cle: period.cle, id: entry.id, avant: before });
     }
+    const actionId = await ctx.recordAction(
+      planned.map(({ period, before, after }) => ({
+        entity: "objective" as const,
+        periode: period.periode,
+        year: period.year,
+        number: period.number,
+        before: { objective: before },
+        after: { objective: after },
+      }))
+    );
     return {
-      ...proof("objectifs", "publies", saved.map((entry) => entry.id).join(","), formatDateOnly(today), now),
+      ...proof("objectifs", "publies", saved.map((entry) => entry.id).join(","), formatDateOnly(today), now, actionId),
       periodes: saved,
     };
   },
